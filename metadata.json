@@ -1,0 +1,5 @@
+{
+  "name": "Gemini Professional Assistant",
+  "description": "A customizable chatbot powered by Gemini 2.5 Flash. Users can define system prompts, upload knowledge files for RAG, and manage assistants and chat sessions locally in the browser. It also supports sharing configurations via Google Sheets.",
+  "requestFramePermissions": []
+}
