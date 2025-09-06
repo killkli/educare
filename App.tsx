@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Assistant, ChatSession, ChatMessage } from './types';
 import * as db from './services/db';
-import { saveAssistantsToSheet, loadAssistantFromSheet } from './services/googleSheetService';
 import AssistantEditor from './components/AssistantEditor';
 import ChatWindow from './components/ChatWindow';
+import MigrationPanel from './components/MigrationPanel';
+import SharedAssistant from './components/SharedAssistant';
 import { PlusIcon, ChatIcon, TrashIcon, EditIcon, SettingsIcon } from './components/Icons';
 
 type ViewMode = 'chat' | 'edit_assistant' | 'new_assistant' | 'settings';
@@ -16,9 +17,26 @@ const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('chat');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [googleScriptUrl, setGoogleScriptUrl] = useState('');
-  const [tempScriptUrl, setTempScriptUrl] = useState('');
-  const [shareStatus, setShareStatus] = useState('');
+
+  // 檢查是否為分享模式
+  const isSharedMode = () => {
+    const params = new URLSearchParams(window.location.search);
+    return params.has('share');
+  };
+
+  // 獲取分享的 Assistant ID
+  const getSharedAssistantId = () => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('share');
+  };
+
+  // 如果是分享模式，直接渲染 SharedAssistant 組件
+  if (isSharedMode()) {
+    const assistantId = getSharedAssistantId();
+    if (assistantId) {
+      return <SharedAssistant assistantId={assistantId} />;
+    }
+  }
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -26,9 +44,6 @@ const App: React.FC = () => {
       const storedAssistants = await db.getAllAssistants();
       setAssistants(storedAssistants.sort((a, b) => b.createdAt - a.createdAt));
       
-      const storedUrl = localStorage.getItem('googleScriptUrl') || '';
-      setGoogleScriptUrl(storedUrl);
-      setTempScriptUrl(storedUrl);
 
       if (storedAssistants.length > 0) {
         handleSelectAssistant(storedAssistants[0].id);
@@ -44,40 +59,7 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const handleSharedUrl = async () => {
-      const hash = window.location.hash;
-      if (hash.startsWith('#/share?')) {
-        const params = new URLSearchParams(hash.substring(8));
-        const scriptUrl = params.get('scriptUrl');
-        const assistantId = params.get('assistantId');
-
-        if (scriptUrl && assistantId) {
-          setIsLoading(true);
-          setShareStatus('Loading shared assistant...');
-          try {
-            const loadedAssistant = await loadAssistantFromSheet(decodeURIComponent(scriptUrl), assistantId);
-            if (loadedAssistant) {
-              await db.saveAssistant(loadedAssistant);
-              await loadData(); // Reload all data
-              handleSelectAssistant(loadedAssistant.id);
-              setShareStatus('Shared assistant loaded successfully!');
-            } else {
-              setShareStatus('Could not find the shared assistant.');
-            }
-          } catch(e) {
-            console.error(e);
-            setShareStatus('Failed to load shared assistant.');
-          } finally {
-            setIsLoading(false);
-            window.location.hash = ''; // Clear hash
-            setTimeout(() => setShareStatus(''), 5000);
-          }
-        }
-      }
-    };
-    
     loadData();
-    handleSharedUrl();
   }, [loadData]);
 
 
@@ -172,34 +154,6 @@ const App: React.FC = () => {
       setSessions(prev => prev.map(s => s.id === updatedSession.id ? updatedSession : s));
   };
   
-  const handleSaveSettings = () => {
-      setGoogleScriptUrl(tempScriptUrl);
-      localStorage.setItem('googleScriptUrl', tempScriptUrl);
-      setViewMode('chat');
-  };
-  
-  const handleSyncToSheet = async () => {
-    if (!googleScriptUrl) {
-        alert("Please set your Google Apps Script URL in Settings first.");
-        return;
-    }
-    try {
-        await saveAssistantsToSheet(googleScriptUrl, assistants);
-        alert("Assistants synced to Google Sheet successfully!");
-    } catch(e) {
-        alert("Failed to sync assistants. Check the console for errors.");
-    }
-  };
-
-  const generateShareLink = (assistantId: string) => {
-    if (!googleScriptUrl) {
-        alert("Please set and save your Google Apps Script URL to generate a share link.");
-        return;
-    }
-    const url = `${window.location.origin}${window.location.pathname}#/share?scriptUrl=${encodeURIComponent(googleScriptUrl)}&assistantId=${assistantId}`;
-    navigator.clipboard.writeText(url);
-    alert("Share link copied to clipboard!");
-  };
 
 
   return (
@@ -248,40 +202,20 @@ const App: React.FC = () => {
 
       {/* Main Content */}
       <main className="flex-1 bg-gray-800">
-        {shareStatus && <div className="bg-cyan-600 text-white text-center p-2 text-sm">{shareStatus}</div>}
         {viewMode === 'new_assistant' && <AssistantEditor assistant={null} onSave={handleSaveAssistant} onCancel={() => { if(assistants.length > 0) setViewMode('chat')}} />}
         {viewMode === 'edit_assistant' && currentAssistant && <AssistantEditor assistant={currentAssistant} onSave={handleSaveAssistant} onCancel={() => setViewMode('chat')} />}
-        {viewMode === 'chat' && currentAssistant && currentSession && <ChatWindow session={currentSession} assistantName={currentAssistant.name} systemPrompt={currentAssistant.systemPrompt} ragChunks={currentAssistant.ragChunks} onNewMessage={handleNewMessage} />}
+        {viewMode === 'chat' && currentAssistant && currentSession && <ChatWindow session={currentSession} assistantName={currentAssistant.name} systemPrompt={currentAssistant.systemPrompt} assistantId={currentAssistant.id} ragChunks={currentAssistant.ragChunks} onNewMessage={handleNewMessage} />}
         {viewMode === 'settings' && (
-            <div className="p-6 bg-gray-800 h-full">
-                <h2 className="text-2xl font-bold mb-4 text-white">Settings & Sharing</h2>
-                <div className="bg-gray-700 p-6 rounded-lg">
-                    <h3 className="text-lg font-semibold mb-2 text-white">Google Sheet Sync</h3>
-                    {/* FIX: Escaped curly braces to prevent JSX from interpreting the content as a JavaScript expression. */}
-                    <p className="text-sm text-gray-400 mb-4">To sync and share assistants, create a Google Apps Script Web App and paste its URL below. Your script should handle GET requests with `action=load&id=ASSISTANT_ID` and POST requests with `{'{'}action:'save', payload:[...assistants]{'}'}`.</p>
-                    <label htmlFor="scriptUrl" className="block text-sm font-medium text-gray-400 mb-1">Google Apps Script URL</label>
-                    <input id="scriptUrl" type="text" value={tempScriptUrl} onChange={(e) => setTempScriptUrl(e.target.value)} className="w-full bg-gray-800 border border-gray-600 rounded-md px-3 py-2 text-white mb-4" />
-                    <div className="flex justify-end space-x-2">
-                        <button onClick={() => setViewMode('chat')} className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white font-semibold">Cancel</button>
-                        <button onClick={handleSaveSettings} className="px-4 py-2 rounded-md bg-cyan-600 hover:bg-cyan-500 text-white font-bold">Save URL</button>
-                    </div>
-                    <button onClick={handleSyncToSheet} disabled={!googleScriptUrl} className="mt-4 px-4 py-2 rounded-md bg-cyan-700 hover:bg-cyan-600 disabled:bg-gray-500 disabled:cursor-not-allowed text-white font-semibold">
-                        Sync All Assistants to Sheet
-                    </button>
-                    <div className="mt-6 border-t border-gray-600 pt-4">
-                        <h3 className="text-lg font-semibold mb-2 text-white">Generate Share Links</h3>
-                        <p className="text-sm text-gray-400 mb-4">Select an assistant to generate a shareable link. Assistants must be synced first.</p>
-                        {assistants.map(asst => (
-                            <div key={asst.id} className="flex items-center justify-between p-2 bg-gray-800 rounded-md mb-2">
-                               <span>{asst.name}</span>
-                               <button onClick={() => generateShareLink(asst.id)} className="text-sm px-3 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-white">Copy Link</button>
-                            </div>
-                        ))}
-                    </div>
+            <div className="p-6 bg-gray-800 h-full overflow-y-auto">
+                <h2 className="text-2xl font-bold mb-6 text-white">Settings</h2>
+                
+                {/* Turso Migration Panel */}
+                <div className="mb-6">
+                  <MigrationPanel />
                 </div>
             </div>
         )}
-        {(isLoading && !shareStatus) && <div className="flex items-center justify-center h-full text-gray-400">Loading Assistants...</div>}
+        {isLoading && <div className="flex items-center justify-center h-full text-gray-400">Loading Assistants...</div>}
         {(!currentAssistant && !isLoading && viewMode !== 'new_assistant') && <div className="flex items-center justify-center h-full text-gray-400">Select an assistant or create a new one to begin.</div>}
       </main>
     </div>

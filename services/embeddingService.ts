@@ -21,15 +21,41 @@ class EmbeddingSingleton {
 
   static async getInstance(progress_callback?: (progress: any) => void) {
     if (this.instance === null) {
-      // Use a feature-extraction pipeline for creating embeddings
-      this.instance = pipeline('feature-extraction', this.model_id, {
-        // FIX: Removed 'quantized: true' as it was causing a TypeScript error,
-        // indicating it's not a recognized property in the current version's PretrainedModelOptions.
-        progress_callback,
-        device: 'webgpu',
-      });
+      // First try WebGPU with quantization, fallback to CPU with quantization if WebGPU fails
+      this.instance = this.createPipelineWithFallback(progress_callback);
     }
     return this.instance;
+  }
+
+  private static async createPipelineWithFallback(progress_callback?: (progress: any) => void): Promise<FeatureExtractionPipeline> {
+    // Try WebGPU first with q4 quantization
+    try {
+      console.log('🚀 Attempting to initialize embedding model with WebGPU...');
+      const webgpuPipeline = await pipeline('feature-extraction', this.model_id, {
+        progress_callback,
+        device: 'webgpu',
+        dtype: 'q4' as any, // Force q4 quantization
+      });
+      console.log('✅ WebGPU embedding model initialized successfully');
+      return webgpuPipeline;
+    } catch (webgpuError) {
+      console.warn('⚠️ WebGPU initialization failed, falling back to CPU:', webgpuError);
+      
+      // Fallback to default device (CPU) with q4 quantization
+      try {
+        console.log('🔄 Initializing embedding model with CPU fallback...');
+        const cpuPipeline = await pipeline('feature-extraction', this.model_id, {
+          progress_callback,
+          // No device specified = default CPU device
+          dtype: 'q4' as any, // Use q4 quantization for better performance
+        });
+        console.log('✅ CPU embedding model initialized successfully');
+        return cpuPipeline;
+      } catch (cpuError) {
+        console.error('❌ Both WebGPU and CPU initialization failed:', cpuError);
+        throw new Error(`Failed to initialize embedding model. WebGPU error: ${webgpuError}. CPU error: ${cpuError}`);
+      }
+    }
   }
 }
 
