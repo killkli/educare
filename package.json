@@ -6,17 +6,31 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "init-turso": "tsx scripts/initTurso.ts",
+    "migrate-to-turso": "tsx scripts/migrateToTurso.ts",
+    "create-test-data": "tsx scripts/createTestData.ts",
+    "update-turso-schema": "tsx scripts/updateTursoSchema.ts",
+    "cleanup-turso-schema": "tsx scripts/cleanupTursoSchema.ts",
+    "test-vector-search": "tsx scripts/testVectorSearch.ts",
+    "test-sharing": "tsx scripts/testSharing.ts",
+    "add-description-field": "tsx scripts/addDescriptionField.ts"
   },
   "dependencies": {
     "@google/genai": "^1.17.0",
+    "@huggingface/transformers": "latest",
+    "@libsql/client": "^0.15.14",
+    "highlight.js": "^11.11.1",
+    "idb": "^8.0.3",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "idb": "^8.0.3",
-    "@huggingface/transformers": "latest"
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
+    "tsx": "^4.20.5",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }
