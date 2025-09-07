@@ -22,6 +22,8 @@ const App: React.FC = () => {
   const [, setError] = useState<string | null>(null);
   const [isShared, setIsShared] = useState(false);
   const [sharedAssistantId, setSharedAssistantId] = useState<string | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
 
   const handleNewSession = useCallback(async (assistantId: string) => {
     const newSession: ChatSession = {
@@ -74,7 +76,7 @@ const App: React.FC = () => {
     }
   }, [handleSelectAssistant]);
 
-  // Check for shared mode on mount
+  // Check for shared mode and screen size on mount
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const shared = params.has('share');
@@ -82,6 +84,19 @@ const App: React.FC = () => {
 
     setIsShared(shared);
     setSharedAssistantId(assistantId);
+
+    // 檢測螢幕尺寸
+    const checkScreenSize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (mobile) {
+        setIsSidebarOpen(false); // 移動端預設關閉側邊欄
+      }
+    };
+
+    checkScreenSize();
+    window.addEventListener('resize', checkScreenSize);
+    return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
 
   useEffect(() => {
@@ -164,200 +179,343 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className='flex h-screen font-sans'>
+    <div className='flex h-screen font-sans bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 relative'>
+      {/* Mobile Sidebar Overlay */}
+      {isMobile && isSidebarOpen && (
+        <div
+          className='fixed inset-0 bg-black/50 z-40 md:hidden'
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <div className='w-80 bg-gray-900 flex flex-col p-4 border-r border-gray-700'>
-        <h1 className='text-xl font-bold text-white mb-4'>專業助理</h1>
+      <div
+        className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} ${
+          isMobile ? 'fixed left-0 top-0 h-full z-50 w-80' : 'relative w-80 flex-shrink-0'
+        } bg-gray-900/95 backdrop-blur-sm flex flex-col p-6 border-r border-gray-700/50 shadow-2xl transition-transform duration-300 ease-in-out`}
+      >
+        <div className='flex items-center justify-between mb-6'>
+          <h1 className='text-2xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent'>
+            專業助理
+          </h1>
+          {isMobile && (
+            <button
+              onClick={() => setIsSidebarOpen(false)}
+              className='p-2 text-gray-400 hover:text-white rounded-lg hover:bg-gray-800/50 transition-colors'
+            >
+              <svg className='w-5 h-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                <path
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  strokeWidth={2}
+                  d='M6 18L18 6M6 6l12 12'
+                />
+              </svg>
+            </button>
+          )}
+        </div>
         <button
           onClick={() => setViewMode('new_assistant')}
-          className='w-full flex items-center justify-center p-2 mb-4 bg-cyan-600 hover:bg-cyan-500 text-white rounded-md font-semibold'
+          className='w-full flex items-center justify-center p-3 mb-6 bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5'
         >
           <PlusIcon className='w-5 h-5 mr-2' /> 新增助理
         </button>
 
         {/* Assistants List */}
-        <div className='flex-1 overflow-y-auto pr-2'>
-          <h2 className='text-xs font-bold text-gray-400 uppercase tracking-wider mb-2'>助理</h2>
-          {assistants.map(asst => (
-            <div
-              key={asst.id}
-              className={`group flex items-center p-2 rounded-md cursor-pointer mb-1 ${currentAssistant?.id === asst.id ? 'bg-gray-700' : 'hover:bg-gray-800'}`}
-              onClick={() => handleSelectAssistant(asst.id)}
-            >
-              <span className='flex-1 truncate text-sm'>{asst.name}</span>
-              <button
-                onClick={e => {
-                  e.stopPropagation();
-                  setViewMode('edit_assistant');
-                  setCurrentAssistant(asst);
-                }}
-                className='opacity-0 group-hover:opacity-100 text-gray-400 hover:text-white p-1'
-              >
-                <EditIcon className='w-4 h-4' />
-              </button>
-              <button
-                onClick={e => {
-                  e.stopPropagation();
-                  handleDeleteAssistant(asst.id);
-                }}
-                className='opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 p-1'
-              >
-                <TrashIcon className='w-4 h-4' />
-              </button>
+        <div className='flex-1 overflow-y-auto'>
+          <div className='mb-6'>
+            <h2 className='text-sm font-bold text-gray-300 uppercase tracking-wider mb-4 px-2'>
+              助理
+            </h2>
+            <div className='space-y-2'>
+              {assistants.map(asst => (
+                <div
+                  key={asst.id}
+                  className={`group flex items-center p-3 rounded-lg cursor-pointer transition-all duration-200 ${
+                    currentAssistant?.id === asst.id
+                      ? 'bg-cyan-600/20 border border-cyan-500/30 text-white shadow-md'
+                      : 'bg-gray-800/30 hover:bg-gray-700/50 text-gray-200 hover:text-white border border-transparent hover:border-gray-600/30'
+                  }`}
+                  onClick={() => handleSelectAssistant(asst.id)}
+                >
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 flex-shrink-0 ${
+                      currentAssistant?.id === asst.id ? 'bg-cyan-500' : 'bg-gray-600'
+                    }`}
+                  >
+                    <svg
+                      className='w-4 h-4 text-white'
+                      fill='none'
+                      stroke='currentColor'
+                      viewBox='0 0 24 24'
+                    >
+                      <path
+                        strokeLinecap='round'
+                        strokeLinejoin='round'
+                        strokeWidth={2}
+                        d='M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z'
+                      />
+                    </svg>
+                  </div>
+                  <span className='flex-1 truncate font-medium'>{asst.name}</span>
+                  <div className='flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200'>
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        setViewMode('edit_assistant');
+                        setCurrentAssistant(asst);
+                      }}
+                      className='p-1.5 text-gray-400 hover:text-cyan-400 rounded-md hover:bg-gray-600/30 transition-colors'
+                      title='編輯助理'
+                    >
+                      <EditIcon className='w-4 h-4' />
+                    </button>
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        handleDeleteAssistant(asst.id);
+                      }}
+                      className='p-1.5 text-gray-400 hover:text-red-400 rounded-md hover:bg-red-500/20 transition-colors'
+                      title='刪除助理'
+                    >
+                      <TrashIcon className='w-4 h-4' />
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
 
           {currentAssistant && (
-            <div className='mt-6'>
-              <h2 className='text-xs font-bold text-gray-400 uppercase tracking-wider mb-2'>
+            <div>
+              <h2 className='text-sm font-bold text-gray-300 uppercase tracking-wider mb-4 px-2'>
                 聊天記錄
               </h2>
               <button
                 onClick={() => handleNewSession(currentAssistant.id)}
-                className='w-full flex items-center p-2 mb-2 bg-gray-700 hover:bg-gray-600 text-white rounded-md text-sm'
+                className='w-full flex items-center justify-center p-3 mb-4 bg-gray-700/50 hover:bg-gray-600/60 text-gray-200 hover:text-white rounded-lg text-sm font-medium border border-gray-600/30 hover:border-gray-500/50 transition-all duration-200'
               >
                 <PlusIcon className='w-4 h-4 mr-2' /> 新增聊天
               </button>
-              {sessions.map(sess => (
-                <div
-                  key={sess.id}
-                  className={`group flex items-center p-2 rounded-md cursor-pointer ${currentSession?.id === sess.id ? 'bg-gray-700' : 'hover:bg-gray-800'}`}
-                  onClick={() => setCurrentSession(sess)}
-                >
-                  <ChatIcon className='w-4 h-4 mr-2 text-gray-400' />
-                  <span className='flex-1 truncate text-sm'>{sess.title}</span>
-                  <button
-                    onClick={e => {
-                      e.stopPropagation();
-                      handleDeleteSession(sess.id);
-                    }}
-                    className='opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 p-1'
+              <div className='space-y-2'>
+                {sessions.map(sess => (
+                  <div
+                    key={sess.id}
+                    className={`group flex items-center p-3 rounded-lg cursor-pointer transition-all duration-200 ${
+                      currentSession?.id === sess.id
+                        ? 'bg-cyan-600/20 border border-cyan-500/30 text-white shadow-md'
+                        : 'bg-gray-800/30 hover:bg-gray-700/50 text-gray-200 hover:text-white border border-transparent hover:border-gray-600/30'
+                    }`}
+                    onClick={() => setCurrentSession(sess)}
                   >
-                    <TrashIcon className='w-4 h-4' />
-                  </button>
-                </div>
-              ))}
+                    <div
+                      className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 flex-shrink-0 ${
+                        currentSession?.id === sess.id ? 'bg-cyan-500' : 'bg-gray-600'
+                      }`}
+                    >
+                      <ChatIcon className='w-4 h-4 text-white' />
+                    </div>
+                    <span className='flex-1 truncate font-medium'>{sess.title}</span>
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        handleDeleteSession(sess.id);
+                      }}
+                      className='opacity-0 group-hover:opacity-100 p-1.5 text-gray-400 hover:text-red-400 rounded-md hover:bg-red-500/20 transition-all duration-200'
+                      title='刪除聊天'
+                    >
+                      <TrashIcon className='w-4 h-4' />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
 
-        <div className='mt-auto border-t border-gray-700 pt-4'>
-          <button
-            onClick={() => setViewMode('settings')}
-            className='w-full flex items-center p-2 text-gray-400 hover:bg-gray-800 hover:text-white rounded-md text-sm'
-          >
-            <SettingsIcon className='w-5 h-5 mr-2' /> 設定與分享
-          </button>
+        <div className='mt-auto pt-6'>
+          <div className='border-t border-gray-700/30 pt-4'>
+            <button
+              onClick={() => setViewMode('settings')}
+              className='w-full flex items-center p-3 text-gray-300 hover:text-white rounded-lg hover:bg-gray-700/50 transition-all duration-200 border border-transparent hover:border-gray-600/30'
+            >
+              <div className='w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center mr-3 flex-shrink-0'>
+                <SettingsIcon className='w-4 h-4 text-white' />
+              </div>
+              <span className='font-medium'>設定與分享</span>
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Main Content */}
-      <main className='flex-1 bg-gray-800'>
-        {viewMode === 'new_assistant' && (
-          <AssistantEditor
-            assistant={null}
-            onSave={handleSaveAssistant}
-            onCancel={() => {
-              if (assistants.length > 0) {
-                setViewMode('chat');
-              }
-            }}
-          />
+      <main className='flex-1 bg-gradient-to-br from-gray-800 to-gray-900 backdrop-blur-sm flex flex-col min-w-0'>
+        {/* Top Bar with Hamburger Menu */}
+        {isMobile && !isSidebarOpen && (
+          <div className='flex items-center p-4 border-b border-gray-700/50 bg-gray-800/80 backdrop-blur-sm'>
+            <button
+              onClick={() => setIsSidebarOpen(true)}
+              className='p-2 text-gray-400 hover:text-white rounded-lg hover:bg-gray-700/50 transition-colors mr-3'
+            >
+              <svg className='w-6 h-6' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                <path
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  strokeWidth={2}
+                  d='M4 6h16M4 12h16M4 18h16'
+                />
+              </svg>
+            </button>
+            <h2 className='text-lg font-semibold text-white'>
+              {viewMode === 'chat' && currentAssistant
+                ? currentAssistant.name
+                : viewMode === 'new_assistant'
+                  ? '新增助理'
+                  : viewMode === 'edit_assistant'
+                    ? '編輯助理'
+                    : viewMode === 'settings'
+                      ? '設定'
+                      : '專業助理'}
+            </h2>
+          </div>
         )}
-        {viewMode === 'edit_assistant' && currentAssistant && (
-          <AssistantEditor
-            assistant={currentAssistant}
-            onSave={handleSaveAssistant}
-            onCancel={() => setViewMode('chat')}
-          />
-        )}
-        {viewMode === 'chat' && currentAssistant && currentSession && (
-          <ChatWindow
-            session={currentSession}
-            assistantName={currentAssistant.name}
-            systemPrompt={currentAssistant.systemPrompt}
-            assistantId={currentAssistant.id}
-            ragChunks={currentAssistant.ragChunks}
-            onNewMessage={handleNewMessage}
-          />
-        )}
-        {viewMode === 'settings' && (
-          <div className='p-6 bg-gray-800 h-full overflow-y-auto'>
-            <h2 className='text-2xl font-bold mb-6 text-white'>設定</h2>
 
-            {/* API 金鑰設定 */}
-            <div className='mb-6 bg-gray-700 rounded-lg p-4'>
-              <h3 className='text-lg font-semibold text-white mb-4'>API 金鑰配置</h3>
-              <div className='grid grid-cols-1 md:grid-cols-2 gap-4 mb-4'>
-                <div
-                  className={`p-3 rounded-md border-2 ${
-                    isGeminiAvailable()
-                      ? 'border-green-500 bg-green-800 bg-opacity-20'
-                      : 'border-yellow-500 bg-yellow-800 bg-opacity-20'
-                  }`}
-                >
-                  <div className='flex items-center mb-2'>
-                    <span className='text-lg mr-2'>{isGeminiAvailable() ? '✅' : '⚠️'}</span>
-                    <span className='font-medium text-white'>Gemini AI</span>
-                  </div>
-                  <p
-                    className={`text-sm ${
-                      isGeminiAvailable() ? 'text-green-200' : 'text-yellow-200'
+        {/* Content Area */}
+        <div className='flex-1 overflow-hidden'>
+          {viewMode === 'new_assistant' && (
+            <AssistantEditor
+              assistant={null}
+              onSave={handleSaveAssistant}
+              onCancel={() => {
+                if (assistants.length > 0) {
+                  setViewMode('chat');
+                }
+              }}
+            />
+          )}
+          {viewMode === 'edit_assistant' && currentAssistant && (
+            <AssistantEditor
+              assistant={currentAssistant}
+              onSave={handleSaveAssistant}
+              onCancel={() => setViewMode('chat')}
+            />
+          )}
+          {viewMode === 'chat' && currentAssistant && currentSession && (
+            <ChatWindow
+              session={currentSession}
+              assistantName={currentAssistant.name}
+              systemPrompt={currentAssistant.systemPrompt}
+              assistantId={currentAssistant.id}
+              ragChunks={currentAssistant.ragChunks}
+              onNewMessage={handleNewMessage}
+            />
+          )}
+          {viewMode === 'settings' && (
+            <div className='p-6 bg-gray-800 h-full overflow-y-auto'>
+              <h2 className='text-2xl font-bold mb-6 text-white'>設定</h2>
+
+              {/* API 金鑰設定 */}
+              <div className='mb-6 bg-gray-700 rounded-lg p-4'>
+                <h3 className='text-lg font-semibold text-white mb-4'>API 金鑰配置</h3>
+                <div className='grid grid-cols-1 md:grid-cols-2 gap-4 mb-4'>
+                  <div
+                    className={`p-3 rounded-md border-2 ${
+                      isGeminiAvailable()
+                        ? 'border-green-500 bg-green-800 bg-opacity-20'
+                        : 'border-yellow-500 bg-yellow-800 bg-opacity-20'
                     }`}
                   >
-                    {isGeminiAvailable() ? '可以使用聊天功能' : '需要配置才能聊天'}
-                  </p>
-                </div>
-                <div
-                  className={`p-3 rounded-md border-2 ${
-                    canWriteToTurso()
-                      ? 'border-green-500 bg-green-800 bg-opacity-20'
-                      : 'border-yellow-500 bg-yellow-800 bg-opacity-20'
-                  }`}
-                >
-                  <div className='flex items-center mb-2'>
-                    <span className='text-lg mr-2'>{canWriteToTurso() ? '✅' : '⚠️'}</span>
-                    <span className='font-medium text-white'>Turso 資料庫</span>
+                    <div className='flex items-center mb-2'>
+                      <span className='text-lg mr-2'>{isGeminiAvailable() ? '✅' : '⚠️'}</span>
+                      <span className='font-medium text-white'>Gemini AI</span>
+                    </div>
+                    <p
+                      className={`text-sm ${
+                        isGeminiAvailable() ? 'text-green-200' : 'text-yellow-200'
+                      }`}
+                    >
+                      {isGeminiAvailable() ? '可以使用聊天功能' : '需要配置才能聊天'}
+                    </p>
                   </div>
-                  <p
-                    className={`text-sm ${
-                      canWriteToTurso() ? 'text-green-200' : 'text-yellow-200'
+                  <div
+                    className={`p-3 rounded-md border-2 ${
+                      canWriteToTurso()
+                        ? 'border-green-500 bg-green-800 bg-opacity-20'
+                        : 'border-yellow-500 bg-yellow-800 bg-opacity-20'
                     }`}
                   >
-                    {canWriteToTurso() ? '可以保存助理和 RAG' : '需要配置才能保存'}
-                  </p>
+                    <div className='flex items-center mb-2'>
+                      <span className='text-lg mr-2'>{canWriteToTurso() ? '✅' : '⚠️'}</span>
+                      <span className='font-medium text-white'>Turso 資料庫</span>
+                    </div>
+                    <p
+                      className={`text-sm ${
+                        canWriteToTurso() ? 'text-green-200' : 'text-yellow-200'
+                      }`}
+                    >
+                      {canWriteToTurso() ? '可以保存助理和 RAG' : '需要配置才能保存'}
+                    </p>
+                  </div>
                 </div>
+                <button
+                  onClick={() => setViewMode('api_setup')}
+                  className='px-6 py-3 bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 text-white rounded-xl font-medium shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5'
+                >
+                  配置 API 金鑰
+                </button>
               </div>
+
+              {/* Turso Migration Panel */}
+              <div className='mb-6'>
+                <MigrationPanel />
+              </div>
+            </div>
+          )}
+          {viewMode === 'api_setup' && (
+            <div className='p-6 bg-gray-800 h-full overflow-y-auto'>
+              <ApiKeySetup
+                onComplete={() => setViewMode('settings')}
+                onCancel={() => setViewMode('settings')}
+              />
+            </div>
+          )}
+          {isLoading && (
+            <div className='flex flex-col items-center justify-center h-full text-gray-400 p-8'>
+              <div className='w-16 h-16 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mb-4'></div>
+              <p className='text-lg font-medium'>載入助理中...</p>
+              <p className='text-sm text-gray-500 mt-2'>正在從資料庫讀取您的助理資料</p>
+            </div>
+          )}
+          {!currentAssistant && !isLoading && viewMode !== 'new_assistant' && (
+            <div className='flex flex-col items-center justify-center h-full text-gray-400 p-8'>
+              <div className='w-20 h-20 bg-gray-700 rounded-full flex items-center justify-center mb-6'>
+                <svg
+                  className='w-10 h-10 text-gray-500'
+                  fill='none'
+                  stroke='currentColor'
+                  viewBox='0 0 24 24'
+                >
+                  <path
+                    strokeLinecap='round'
+                    strokeLinejoin='round'
+                    strokeWidth={2}
+                    d='M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z'
+                  />
+                </svg>
+              </div>
+              <h3 className='text-xl font-semibold text-white mb-2'>歡迎使用專業助理</h3>
+              <p className='text-gray-400 mb-6 text-center max-w-md'>
+                還沒有任何助理。創建您的第一個 AI 助理開始聊天吧！
+              </p>
               <button
-                onClick={() => setViewMode('api_setup')}
-                className='px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-md transition-colors'
+                onClick={() => setViewMode('new_assistant')}
+                className='px-6 py-3 bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5'
               >
-                配置 API 金鑰
+                新增您的第一個助理
               </button>
             </div>
-
-            {/* Turso Migration Panel */}
-            <div className='mb-6'>
-              <MigrationPanel />
-            </div>
-          </div>
-        )}
-        {viewMode === 'api_setup' && (
-          <div className='p-6 bg-gray-800 h-full overflow-y-auto'>
-            <ApiKeySetup
-              onComplete={() => setViewMode('settings')}
-              onCancel={() => setViewMode('settings')}
-            />
-          </div>
-        )}
-        {isLoading && (
-          <div className='flex items-center justify-center h-full text-gray-400'>載入助理中...</div>
-        )}
-        {!currentAssistant && !isLoading && viewMode !== 'new_assistant' && (
-          <div className='flex items-center justify-center h-full text-gray-400'>
-            選擇一個助理或新增一個以開始使用。
-          </div>
-        )}
+          )}
+        </div>
       </main>
     </div>
   );

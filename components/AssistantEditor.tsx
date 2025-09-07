@@ -318,11 +318,13 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
   const fileNames: string[] = [...new Set<string>(ragChunks.map((c: RagChunk) => c.fileName))];
 
   return (
-    <div className='flex flex-col h-full bg-gray-800 p-6 overflow-y-auto'>
-      <h2 className='text-2xl font-bold mb-6 text-white'>{assistant ? '編輯助理' : '新增助理'}</h2>
+    <div className='flex flex-col h-full bg-gradient-to-br from-gray-800 to-gray-900 p-8 overflow-y-auto'>
+      <h2 className='text-3xl font-bold mb-8 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent'>
+        {assistant ? '編輯助理' : '新增助理'}
+      </h2>
 
-      <div className='mb-4'>
-        <label htmlFor='name' className='block text-sm font-medium text-gray-400 mb-1'>
+      <div className='mb-6'>
+        <label htmlFor='name' className='block text-sm font-semibold text-gray-300 mb-2'>
           助理名稱
         </label>
         <input
@@ -330,13 +332,13 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
           id='name'
           value={name}
           onChange={e => setName(e.target.value)}
-          className='w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-white focus:ring-cyan-500 focus:border-cyan-500'
+          className='w-full bg-gray-700/80 border-2 border-gray-600/50 rounded-xl px-4 py-3 text-white placeholder-gray-400 focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 focus:bg-gray-700 transition-all duration-200 shadow-inner'
           placeholder='例如：行銷文案寫手'
         />
       </div>
 
-      <div className='mb-4'>
-        <label htmlFor='description' className='block text-sm font-medium text-gray-400 mb-1'>
+      <div className='mb-6'>
+        <label htmlFor='description' className='block text-sm font-semibold text-gray-300 mb-2'>
           公開描述
           <span className='text-xs text-gray-500 ml-2'>(分享時顯示給用戶)</span>
         </label>
@@ -345,13 +347,13 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
           value={description}
           onChange={e => setDescription(e.target.value)}
           rows={3}
-          className='w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-white focus:ring-cyan-500 focus:border-cyan-500'
+          className='w-full bg-gray-700/80 border-2 border-gray-600/50 rounded-xl px-4 py-3 text-white placeholder-gray-400 focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 focus:bg-gray-700 transition-all duration-200 shadow-inner resize-none'
           placeholder='簡單描述這個助理能幫助什麼...'
         />
       </div>
 
-      <div className='mb-4'>
-        <label htmlFor='systemPrompt' className='block text-sm font-medium text-gray-400 mb-1'>
+      <div className='mb-6'>
+        <label htmlFor='systemPrompt' className='block text-sm font-semibold text-gray-300 mb-2'>
           系統提示
         </label>
         <textarea
@@ -359,34 +361,37 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
           value={systemPrompt}
           onChange={e => setSystemPrompt(e.target.value)}
           rows={8}
-          className='w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-white focus:ring-cyan-500 focus:border-cyan-500'
+          className='w-full bg-gray-700/80 border-2 border-gray-600/50 rounded-xl px-4 py-3 text-white placeholder-gray-400 focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 focus:bg-gray-700 transition-all duration-200 shadow-inner resize-none'
           placeholder='定義助理的角色、個性和指導。'
         />
       </div>
 
-      <div className='mb-6'>
-        <label className='block text-sm font-medium text-gray-400 mb-2'>
+      <div className='mb-8'>
+        <label className='block text-sm font-semibold text-gray-300 mb-2'>
           知識檔案 (RAG)
           {ragChunkCount > 0 && (
-            <span className='ml-2 px-2 py-1 bg-cyan-600 text-white text-xs rounded-full'>
+            <span className='ml-2 px-3 py-1 bg-gradient-to-r from-cyan-600 to-cyan-500 text-white text-xs rounded-full shadow-md'>
               {ragChunkCount} 區塊在 Turso
             </span>
           )}
         </label>
-        <p className='text-xs text-gray-500 mb-2'>
+        <p className='text-sm text-gray-400 mb-4 leading-relaxed'>
           上傳 .txt 檔案以建立可搜尋的知識庫。檔案會自動儲存到 Turso 雲端，以提供高效能向量搜尋。
         </p>
-        <div className='bg-gray-700 border-2 border-dashed border-gray-600 rounded-md p-4 text-center'>
+        <div className='bg-gray-700/50 border-2 border-dashed border-gray-600/70 rounded-xl p-6 text-center hover:border-cyan-500/50 transition-all duration-300'>
           <input
             type='file'
             multiple
             accept='.txt'
             onChange={handleFileChange}
-            className='block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-cyan-600 file:text-white hover:file:bg-cyan-700 cursor-pointer'
+            className='block w-full text-sm text-gray-300 file:mr-4 file:py-3 file:px-6 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-gradient-to-r file:from-cyan-600 file:to-cyan-500 file:text-white hover:file:from-cyan-500 hover:file:to-cyan-400 file:shadow-lg hover:file:shadow-xl file:transition-all file:duration-300 cursor-pointer'
             disabled={!!processingStatus}
           />
           {processingStatus && (
-            <p className='text-sm text-cyan-400 mt-2 animate-pulse'>{processingStatus}</p>
+            <p className='text-sm text-cyan-400 mt-3 animate-pulse flex items-center justify-center gap-2'>
+              <div className='w-2 h-2 bg-cyan-400 rounded-full animate-bounce'></div>
+              {processingStatus}
+            </p>
           )}
         </div>
 
@@ -529,16 +534,23 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
         <div className='flex space-x-4'>
           <button
             onClick={onCancel}
-            className='px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white font-semibold'
+            className='px-6 py-3 rounded-xl bg-gray-600/80 hover:bg-gray-500 text-white font-semibold transition-all duration-300 hover:shadow-lg hover:transform hover:-translate-y-0.5'
           >
             取消
           </button>
           <button
             onClick={handleSave}
-            className='px-6 py-2 rounded-md bg-cyan-600 hover:bg-cyan-500 text-white font-bold'
+            className='px-8 py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 text-white font-bold transition-all duration-300 hover:shadow-xl hover:transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:transform-none'
             disabled={!!processingStatus}
           >
-            {processingStatus ? '處理中...' : '保存助理'}
+            {processingStatus ? (
+              <span className='flex items-center gap-2'>
+                <div className='w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin'></div>
+                處理中...
+              </span>
+            ) : (
+              '保存助理'
+            )}
           </button>
         </div>
       </div>
