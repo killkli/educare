@@ -1,0 +1,59 @@
+/* 自定義滾動條樣式 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(45, 45, 45, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(45deg, #0891b2, #06b6d4);
+  border-radius: 4px;
+  transition: background 0.3s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(45deg, #0e7490, #0891b2);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* 細版滾動條適用於聊天記錄區域 */
+.chat-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-scroll::-webkit-scrollbar-thumb {
+  background: rgba(8, 145, 178, 0.6);
+  border-radius: 3px;
+}
+
+.chat-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(8, 145, 178, 0.8);
+}
+
+/* 針對 Firefox 的滾動條樣式 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #0891b2 rgba(45, 45, 45, 0.3);
+}
+
+/* 平滑滾動 */
+html {
+  scroll-behavior: smooth;
+}
+
+/* 隱藏部分元素的滾動條但保持滾動功能 */
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
