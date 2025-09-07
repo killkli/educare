@@ -255,7 +255,7 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({
   const fileNames: string[] = [...new Set<string>(ragChunks.map((c: RagChunk) => c.fileName))];
 
   return (
-    <div className='flex flex-col h-full bg-gradient-to-br from-gray-800 to-gray-900 p-8 overflow-y-auto'>
+    <div className='flex flex-col h-full bg-gradient-to-br from-gray-800 to-gray-900 p-8 overflow-y-auto chat-scroll'>
       <h2 className='text-3xl font-bold mb-8 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent'>
         {assistant ? '編輯助理' : '新增助理'}
       </h2>

@@ -337,7 +337,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       )}
 
       {/* Messages Area */}
-      <div className='flex-1 overflow-y-auto'>
+      <div className='flex-1 overflow-y-auto chat-scroll'>
         <div className='max-w-4xl mx-auto px-4 py-6'>
           {/* Welcome Message for Empty Chat */}
           {currentSession.messages.length === 0 && !streamingResponse && !isThinking && (

@@ -250,7 +250,7 @@ const App: React.FC = () => {
         </button>
 
         {/* Assistants List */}
-        <div className='flex-1 overflow-y-auto'>
+        <div className='flex-1 overflow-y-auto chat-scroll'>
           <div className='mb-6'>
             <h2 className='text-sm font-bold text-gray-300 uppercase tracking-wider mb-4 px-2'>
               助理
