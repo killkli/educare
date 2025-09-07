@@ -37,9 +37,12 @@ You are a linting and type fixing specialist focused on automated code quality r
 
 - `pnpm run lint` - ESLint analysis
 - `pnpm run lint:fix` - Auto-fix ESLint issues
-- `pnpm run typecheck` - TypeScript compilation check
+- `pnpm run typecheck` - TypeScript compilation check (uses project tsconfig.json)
 - `pnpm run format` - Prettier formatting
-- `pnpm run quality` - Full quality gate (all checks)
+- `pnpm run format:check` - Check formatting without changes
+- `pnpm run quality` - Full quality gate (typecheck + lint + format:check + test)
+
+**IMPORTANT**: Always use the predefined npm scripts from package.json. Never run `tsc` directly - use `pnpm run typecheck` which uses the project's tsconfig.json configuration.
 
 ## Fix Strategies
 
