@@ -29,6 +29,8 @@ This is a Gemini Professional Assistant application - a React-based web app that
 - **Run tests with UI**: `pnpm run test:ui`
 - **Generate coverage report**: `pnpm run test:coverage`
 
+**IMPORTANT**: For all testing-related tasks including writing tests, test automation, TDD workflow, and test coverage analysis, always delegate to the `test-automator` agent using the Task tool. This agent is specialized for comprehensive test suite creation with Vitest and React Testing Library following TDD methodology.
+
 ## Architecture
 
 ### Core Components
@@ -92,6 +94,8 @@ This is a Gemini Professional Assistant application - a React-based web app that
 - TypeScript compilation must succeed
 - All tests must pass
 - Pre-commit hooks enforce these standards
+
+**IMPORTANT**: For all linting, syntax checking, type checking, and code quality issues, always delegate to the `linting-specialist` agent using the Task tool. This agent is specialized for automated detection and resolution of ESLint violations, TypeScript errors, formatting issues, and code quality problems.
 
 ## Important Notes
 
