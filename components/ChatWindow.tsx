@@ -372,17 +372,46 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               >
                 {msg.role === 'user' ? (
                   /* User Message - Right Side */
-                  <div className='flex flex-row-reverse gap-3 max-w-3xl'>
+                  <div className='flex flex-row-reverse gap-3 max-w-4xl'>
                     <div className='flex-shrink-0'>
-                      <div className='w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-full flex items-center justify-center shadow-lg'>
+                      <div className='w-10 h-10 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full flex items-center justify-center shadow-lg ring-2 ring-cyan-400/20'>
                         <UserIcon className='w-5 h-5 text-white' />
                       </div>
                     </div>
-                    <div className='flex flex-col items-end'>
-                      <div className='bg-gradient-to-br from-blue-500 to-cyan-600 text-white px-4 py-3 rounded-2xl rounded-br-md shadow-lg max-w-md'>
+                    <div className='flex flex-col items-end group'>
+                      <div className='bg-gradient-to-br from-cyan-500 to-blue-600 text-white px-5 py-3 rounded-2xl rounded-br-md shadow-lg max-w-lg relative'>
                         <div className='text-sm leading-relaxed'>
                           {renderMessageContent(msg.content)}
                         </div>
+                        {/* Message actions */}
+                        <div className='absolute -left-12 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200'>
+                          <button
+                            onClick={() => navigator.clipboard.writeText(msg.content)}
+                            className='p-2 text-gray-400 hover:text-gray-600 bg-white/90 rounded-lg shadow-md hover:shadow-lg transition-all duration-200'
+                            title='複製訊息'
+                          >
+                            <svg
+                              className='w-4 h-4'
+                              fill='none'
+                              stroke='currentColor'
+                              viewBox='0 0 24 24'
+                            >
+                              <path
+                                strokeLinecap='round'
+                                strokeLinejoin='round'
+                                strokeWidth={2}
+                                d='M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z'
+                              />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      {/* Timestamp */}
+                      <div className='text-xs text-gray-400 mt-1 px-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200'>
+                        {new Date().toLocaleTimeString('zh-TW', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
                       </div>
                     </div>
                   </div>
@@ -390,15 +419,44 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                   /* Assistant Message - Left Side */
                   <div className='flex gap-3 max-w-4xl'>
                     <div className='flex-shrink-0'>
-                      <div className='w-10 h-10 bg-gradient-to-br from-gray-700 to-gray-600 rounded-full flex items-center justify-center shadow-lg border-2 border-gray-600'>
+                      <div className='w-10 h-10 bg-gradient-to-br from-gray-700 to-gray-600 rounded-full flex items-center justify-center shadow-lg ring-2 ring-gray-600/30'>
                         <GeminiIcon className='w-5 h-5 text-cyan-400' />
                       </div>
                     </div>
-                    <div className='flex flex-col'>
-                      <div className='bg-gray-800 text-gray-100 px-4 py-3 rounded-2xl rounded-bl-md shadow-lg'>
+                    <div className='flex flex-col group'>
+                      <div className='bg-gray-800/80 backdrop-blur-sm text-gray-100 px-5 py-3 rounded-2xl rounded-bl-md shadow-lg border border-gray-700/50 relative'>
                         <div className='text-sm leading-relaxed'>
                           {renderMessageContent(msg.content)}
                         </div>
+                        {/* Message actions */}
+                        <div className='absolute -right-12 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200'>
+                          <button
+                            onClick={() => navigator.clipboard.writeText(msg.content)}
+                            className='p-2 text-gray-400 hover:text-gray-600 bg-white/90 rounded-lg shadow-md hover:shadow-lg transition-all duration-200'
+                            title='複製回應'
+                          >
+                            <svg
+                              className='w-4 h-4'
+                              fill='none'
+                              stroke='currentColor'
+                              viewBox='0 0 24 24'
+                            >
+                              <path
+                                strokeLinecap='round'
+                                strokeLinejoin='round'
+                                strokeWidth={2}
+                                d='M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z'
+                              />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      {/* Timestamp */}
+                      <div className='text-xs text-gray-400 mt-1 px-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200'>
+                        {new Date().toLocaleTimeString('zh-TW', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
                       </div>
                     </div>
                   </div>
@@ -411,13 +469,13 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               <div className='flex justify-start'>
                 <div className='flex gap-3 max-w-4xl'>
                   <div className='flex-shrink-0'>
-                    <div className='w-10 h-10 bg-gradient-to-br from-gray-700 to-gray-600 rounded-full flex items-center justify-center shadow-lg border-2 border-gray-600'>
-                      <GeminiIcon className='w-5 h-5 text-cyan-400' />
+                    <div className='w-10 h-10 bg-gradient-to-br from-gray-700 to-gray-600 rounded-full flex items-center justify-center shadow-lg ring-2 ring-gray-600/30'>
+                      <GeminiIcon className='w-5 h-5 text-cyan-400 animate-pulse' />
                     </div>
                   </div>
                   <div className='flex flex-col'>
-                    <div className='bg-gray-800 text-gray-100 px-4 py-3 rounded-2xl rounded-bl-md shadow-lg'>
-                      <div className='flex items-center space-x-2'>
+                    <div className='bg-gray-800/80 backdrop-blur-sm text-gray-100 px-5 py-4 rounded-2xl rounded-bl-md shadow-lg border border-gray-700/50'>
+                      <div className='flex items-center space-x-3'>
                         <div className='flex space-x-1'>
                           <div
                             className='w-2 h-2 bg-cyan-400 rounded-full animate-bounce'
@@ -432,7 +490,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                             style={{ animationDelay: '300ms' }}
                           ></div>
                         </div>
-                        <span className='text-gray-400 text-sm'>思考中...</span>
+                        <span className='text-gray-300 text-sm font-medium'>AI 正在思考...</span>
                       </div>
                     </div>
                   </div>
@@ -445,17 +503,21 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               <div className='flex justify-start'>
                 <div className='flex gap-3 max-w-4xl'>
                   <div className='flex-shrink-0'>
-                    <div className='w-10 h-10 bg-gradient-to-br from-gray-700 to-gray-600 rounded-full flex items-center justify-center shadow-lg border-2 border-gray-600'>
+                    <div className='w-10 h-10 bg-gradient-to-br from-gray-700 to-gray-600 rounded-full flex items-center justify-center shadow-lg ring-2 ring-cyan-400/30'>
                       <GeminiIcon className='w-5 h-5 text-cyan-400' />
                     </div>
                   </div>
-                  <div className='flex flex-col'>
-                    <div className='bg-gray-800 text-gray-100 px-4 py-3 rounded-2xl rounded-bl-md shadow-lg'>
+                  <div className='flex flex-col group'>
+                    <div className='bg-gray-800/80 backdrop-blur-sm text-gray-100 px-5 py-3 rounded-2xl rounded-bl-md shadow-lg border border-gray-700/50 relative'>
                       <div className='text-sm leading-relaxed'>
                         {renderMessageContent(streamingResponse)}
-                        <span className='inline-block w-1 h-4 bg-cyan-400 ml-1 animate-pulse'></span>
+                        <span className='inline-block w-0.5 h-4 bg-cyan-400 ml-1 animate-pulse'></span>
                       </div>
+                      {/* Streaming indicator */}
+                      <div className='absolute -top-2 -right-2 w-4 h-4 bg-cyan-500 rounded-full animate-pulse shadow-lg ring-2 ring-cyan-400/30'></div>
                     </div>
+                    {/* Real-time timestamp */}
+                    <div className='text-xs text-gray-400 mt-1 px-2 opacity-60'>正在輸入...</div>
                   </div>
                 </div>
               </div>
@@ -466,13 +528,18 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       </div>
 
       {/* Input Area */}
-      <div className='border-t border-gray-700/50 bg-gradient-to-r from-gray-800 to-gray-850 p-6'>
+      <div className='border-t border-gray-700/30 bg-gradient-to-r from-gray-800/90 to-gray-850/90 backdrop-blur-sm p-6'>
         <div className='max-w-4xl mx-auto'>
           {/* Status Text */}
           {statusText && (
-            <div className='mb-3 text-sm text-cyan-400 animate-pulse flex items-center gap-2'>
-              <div className='w-2 h-2 bg-cyan-400 rounded-full animate-pulse'></div>
-              {statusText}
+            <div className='mb-4 p-3 bg-gray-700/30 rounded-lg border border-gray-600/30 backdrop-blur-sm'>
+              <div className='flex items-center gap-3'>
+                <div className='relative'>
+                  <div className='w-3 h-3 bg-cyan-400 rounded-full animate-pulse'></div>
+                  <div className='absolute inset-0 w-3 h-3 bg-cyan-400 rounded-full animate-ping opacity-75'></div>
+                </div>
+                <span className='text-sm text-cyan-300 font-medium'>{statusText}</span>
+              </div>
             </div>
           )}
 
@@ -487,44 +554,88 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                 onCompositionEnd={handleCompositionEnd}
                 placeholder='輸入您的訊息...'
                 rows={1}
-                className='w-full bg-gray-700/80 border border-gray-600/50 rounded-3xl px-5 py-4 resize-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 focus:bg-gray-700 text-white placeholder-gray-400 max-h-32 shadow-inner backdrop-blur-sm transition-all duration-200'
+                className='w-full bg-gray-700/60 border-2 border-gray-600/40 rounded-2xl px-6 py-4 resize-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/60 focus:bg-gray-700/80 text-white placeholder-gray-400 max-h-32 shadow-lg backdrop-blur-sm transition-all duration-300 hover:border-gray-500/60'
                 disabled={isLoading}
                 style={{
                   minHeight: '56px',
                   height: Math.min(input.split('\n').length * 24 + 32, 128) + 'px',
                 }}
               />
+              {/* Character counter for long messages */}
+              {input.length > 100 && (
+                <div className='absolute bottom-2 right-4 text-xs text-gray-500 bg-gray-800/80 px-2 py-1 rounded-full'>
+                  {input.length}
+                </div>
+              )}
             </div>
             <button
               onClick={handleSend}
               disabled={isLoading || !input.trim()}
-              className={`${
+              className={`relative ${
                 isLoading || !input.trim()
-                  ? 'bg-gray-600 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 hover:scale-105 hover:shadow-lg hover:shadow-cyan-500/25'
-              } text-white rounded-full px-8 py-4 font-semibold transition-all duration-200 flex items-center justify-center min-w-[100px] shadow-lg`}
+                  ? 'bg-gray-600/50 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 hover:scale-105 hover:shadow-xl hover:shadow-cyan-500/30'
+              } text-white rounded-2xl px-8 py-4 font-semibold transition-all duration-300 flex items-center justify-center min-w-[100px] shadow-lg border border-gray-600/30`}
             >
               {isLoading ? (
-                <div className='w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin' />
+                <>
+                  <div className='w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin' />
+                  <div className='absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full animate-pulse'></div>
+                </>
               ) : (
-                <span>傳送</span>
+                <>
+                  <svg
+                    className='w-5 h-5 mr-2'
+                    fill='none'
+                    stroke='currentColor'
+                    viewBox='0 0 24 24'
+                  >
+                    <path
+                      strokeLinecap='round'
+                      strokeLinejoin='round'
+                      strokeWidth={2}
+                      d='M12 19l9 2-9-18-9 18 9-2zm0 0v-8'
+                    />
+                  </svg>
+                  <span>傳送</span>
+                </>
               )}
             </button>
           </div>
 
           {/* Footer Info */}
-          <div className='flex justify-between items-center text-xs text-gray-400 mt-4'>
-            <span className='flex items-center gap-2'>
-              <kbd className='px-2 py-1 bg-gray-700 rounded text-xs'>Enter</kbd>
-              <span>傳送</span>
-              <span className='text-gray-500'>•</span>
-              <kbd className='px-2 py-1 bg-gray-700 rounded text-xs'>Shift + Enter</kbd>
-              <span>換行</span>
-            </span>
+          <div className='flex justify-between items-center mt-4'>
+            <div className='flex items-center gap-3 text-xs text-gray-400'>
+              <div className='flex items-center gap-2 bg-gray-700/30 px-3 py-1.5 rounded-full border border-gray-600/30'>
+                <kbd className='px-2 py-1 bg-gray-600/50 rounded text-xs font-medium'>Enter</kbd>
+                <span>傳送</span>
+              </div>
+              <div className='flex items-center gap-2 bg-gray-700/30 px-3 py-1.5 rounded-full border border-gray-600/30'>
+                <kbd className='px-2 py-1 bg-gray-600/50 rounded text-xs font-medium'>
+                  Shift + Enter
+                </kbd>
+                <span>換行</span>
+              </div>
+            </div>
             {currentSession.tokenCount > 0 && (
-              <span className='bg-gray-700/50 px-3 py-1 rounded-full'>
-                {currentSession.tokenCount} 代幣
-              </span>
+              <div className='flex items-center gap-2 bg-gradient-to-r from-gray-700/50 to-gray-600/50 px-4 py-2 rounded-full border border-gray-600/30 backdrop-blur-sm'>
+                <svg
+                  className='w-4 h-4 text-cyan-400'
+                  fill='none'
+                  stroke='currentColor'
+                  viewBox='0 0 24 24'
+                >
+                  <path
+                    strokeLinecap='round'
+                    strokeLinejoin='round'
+                    strokeWidth={2}
+                    d='M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z'
+                  />
+                </svg>
+                <span className='text-sm text-gray-300 font-medium'>
+                  {currentSession.tokenCount} 代幣
+                </span>
+              </div>
             )}
           </div>
         </div>
