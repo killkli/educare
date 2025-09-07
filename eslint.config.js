@@ -136,6 +136,7 @@ export default [
       '*.config.ts',
       'coverage/**',
       '.vite/**',
+      'public/js/pdf.worker.js',
     ],
   },
 ]

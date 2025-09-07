@@ -112,7 +112,7 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
     updatedSession: ChatSession,
     _userMessage: string,
     _modelResponse: string,
-    _tokenInfo: { promptTokenCount: number; candidatesTokenCount: number }
+    _tokenInfo: { promptTokenCount: number; candidatesTokenCount: number },
   ) => {
     // ChatWindow 現在會傳遞已經更新好的 session，我們只需要設置它
     setCurrentSession({

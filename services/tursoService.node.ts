@@ -111,7 +111,7 @@ export const saveAssistantToTurso = async (assistant: TursoAssistant): Promise<v
 // 儲存 RAG chunk 含向量到 Turso
 export const saveRagChunkToTurso = async (
   chunk: TursoRagChunk,
-  embedding: number[]
+  embedding: number[],
 ): Promise<void> => {
   try {
     const vectorString = `[${embedding.join(',')}]`;
@@ -138,7 +138,7 @@ export const saveRagChunkToTurso = async (
 export const searchSimilarChunks = async (
   assistantId: string,
   queryEmbedding: number[],
-  topK = 3
+  topK = 3,
 ): Promise<SimilarChunk[]> => {
   try {
     const vectorString = `[${queryEmbedding.join(',')}]`;

@@ -36,7 +36,7 @@ async function addDescriptionField() {
 
     if (assistants.rows.length > 0) {
       console.log(
-        `📝 Found ${assistants.rows.length} existing assistants, setting default descriptions...`
+        `📝 Found ${assistants.rows.length} existing assistants, setting default descriptions...`,
       );
 
       for (const row of assistants.rows) {

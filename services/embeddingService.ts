@@ -28,7 +28,7 @@ class EmbeddingSingleton {
   }
 
   private static async createPipelineWithFallback(
-    progress_callback?: (progress: unknown) => void
+    progress_callback?: (progress: unknown) => void,
   ): Promise<FeatureExtractionPipeline> {
     // Try WebGPU first with q4 quantization
     try {
@@ -56,7 +56,7 @@ class EmbeddingSingleton {
       } catch (cpuError) {
         console.error('❌ Both WebGPU and CPU initialization failed:', cpuError);
         throw new Error(
-          `Failed to initialize embedding model. WebGPU error: ${webgpuError}. CPU error: ${cpuError}`
+          `Failed to initialize embedding model. WebGPU error: ${webgpuError}. CPU error: ${cpuError}`,
         );
       }
     }
@@ -73,7 +73,7 @@ class EmbeddingSingleton {
 export const generateEmbedding = async (
   text: string,
   type: 'query' | 'document',
-  progress_callback?: (progress: unknown) => void
+  progress_callback?: (progress: unknown) => void,
 ): Promise<number[]> => {
   // Get the singleton instance of the pipeline
   const extractor = await EmbeddingSingleton.getInstance(progress_callback);
@@ -94,7 +94,7 @@ export const generateEmbedding = async (
  * @returns Promise that resolves when the model is loaded and ready.
  */
 export const preloadEmbeddingModel = async (
-  progress_callback?: (progress: { status: string; progress: number; name?: string }) => void
+  progress_callback?: (progress: { status: string; progress: number; name?: string }) => void,
 ): Promise<void> => {
   try {
     console.log('🔄 Starting embedding model preload...');

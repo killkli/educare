@@ -8,6 +8,7 @@ import {
 } from '../services/tursoService';
 import { CryptoService } from '../services/cryptoService';
 import { ApiKeyManager } from '../services/apiKeyManager';
+import { DocumentParserService } from '../services/documentParserService';
 
 interface AssistantEditorProps {
   assistant: Assistant | null;
@@ -117,70 +118,80 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
     const failedChunks: { file: string; chunk: number; error: string }[] = [];
 
     for (const file of files) {
-      if (file.type === 'text/plain') {
-        try {
-          setProcessingStatus(`讀取 ${file.name}...`);
-          const content = await file.text();
-          const textChunks = chunkText(content);
+      // 檢查文件是否為支援的格式
+      if (!DocumentParserService.isSupportedFile(file)) {
+        console.warn(`不支援的文件格式: ${file.name}`);
+        setProcessingStatus(`跳過不支援的文件: ${file.name}`);
+        continue;
+      }
 
-          for (let i = 0; i < textChunks.length; i++) {
-            setProcessingStatus(`嵌入 ${file.name} 的 ${i + 1}/${textChunks.length} 區塊...`);
-            const vector = await generateEmbedding(
-              textChunks[i],
-              'document',
-              (progress: unknown) => {
-                if (
-                  typeof progress === 'object' &&
-                  progress !== null &&
-                  'status' in progress &&
-                  'progress' in progress
-                ) {
-                  const progressObj = progress as { status: string; progress: number };
-                  if (progressObj.status === 'progress') {
-                    setProcessingStatus(`下載嵌入模型... ${Math.round(progressObj.progress)}%`);
-                  }
-                }
+      try {
+        const fileTypeName = DocumentParserService.getFileTypeName(file);
+        setProcessingStatus(`解析 ${fileTypeName}: ${file.name}...`);
+
+        // 使用新的文件解析服務
+        const parsedDocument = await DocumentParserService.parseDocument(file);
+        const textChunks = chunkText(parsedDocument.content);
+
+        setProcessingStatus(`✅ ${fileTypeName} 解析完成，共 ${textChunks.length} 個區塊`);
+
+        for (let i = 0; i < textChunks.length; i++) {
+          setProcessingStatus(`嵌入 ${file.name} 的 ${i + 1}/${textChunks.length} 區塊...`);
+          const vector = await generateEmbedding(textChunks[i], 'document', (progress: unknown) => {
+            if (
+              typeof progress === 'object' &&
+              progress !== null &&
+              'status' in progress &&
+              'progress' in progress
+            ) {
+              const progressObj = progress as { status: string; progress: number };
+              if (progressObj.status === 'progress') {
+                setProcessingStatus(`下載嵌入模型... ${Math.round(progressObj.progress)}%`);
               }
+            }
+          });
+
+          // 優先儲存到 Turso 雲端
+          try {
+            setProcessingStatus(`保存 ${i + 1}/${textChunks.length} 區塊到 Turso 雲端...`);
+            await saveRagChunkToTurso(
+              {
+                id: `chunk_${Date.now()}_${i}_${Math.random().toString(36).slice(2)}`,
+                assistantId: assistantId,
+                fileName: file.name,
+                content: textChunks[i],
+                createdAt: Date.now(),
+              },
+              vector,
             );
 
-            // 優先儲存到 Turso 雲端
-            try {
-              setProcessingStatus(`保存 ${i + 1}/${textChunks.length} 區塊到 Turso 雲端...`);
-              await saveRagChunkToTurso(
-                {
-                  id: `chunk_${Date.now()}_${i}_${Math.random().toString(36).slice(2)}`,
-                  assistantId: assistantId,
-                  fileName: file.name,
-                  content: textChunks[i],
-                  createdAt: Date.now(),
-                },
-                vector
-              );
+            // 只有成功上傳到 Turso 後才加到本地顯示
+            const ragChunk = { fileName: file.name, content: textChunks[i], vector };
+            successfulChunks.push(ragChunk);
+            setRagChunkCount(prevCount => prevCount + 1);
 
-              // 只有成功上傳到 Turso 後才加到本地顯示
-              const ragChunk = { fileName: file.name, content: textChunks[i], vector };
-              successfulChunks.push(ragChunk);
-              setRagChunkCount(prevCount => prevCount + 1);
+            setProcessingStatus(`✅ 區塊 ${i + 1}/${textChunks.length} 已保存到雲端`);
+          } catch (tursoError) {
+            console.error('Failed to save chunk to Turso:', tursoError);
+            failedChunks.push({
+              file: file.name,
+              chunk: i + 1,
+              error: tursoError instanceof Error ? tursoError.message : String(tursoError),
+            });
 
-              setProcessingStatus(`✅ 區塊 ${i + 1}/${textChunks.length} 已保存到雲端`);
-            } catch (tursoError) {
-              console.error('Failed to save chunk to Turso:', tursoError);
-              failedChunks.push({
-                file: file.name,
-                chunk: i + 1,
-                error: tursoError instanceof Error ? tursoError.message : String(tursoError),
-              });
-
-              // 嘗試作為後備儲存到本地
-              setProcessingStatus(`⚠️ 雲端失敗，本地保存區塊 ${i + 1}...`);
-              const ragChunk = { fileName: file.name, content: textChunks[i], vector };
-              successfulChunks.push(ragChunk);
-            }
+            // 嘗試作為後備儲存到本地
+            setProcessingStatus(`⚠️ 雲端失敗，本地保存區塊 ${i + 1}...`);
+            const ragChunk = { fileName: file.name, content: textChunks[i], vector };
+            successfulChunks.push(ragChunk);
           }
-        } catch (err) {
-          console.error(`Error processing file ${file.name}:`, err);
-          setProcessingStatus(`處理 ${file.name} 時發生錯誤。`);
         }
+      } catch (err) {
+        console.error(`Error processing file ${file.name}:`, err);
+        const errorMessage = err instanceof Error ? err.message : '未知錯誤';
+        setProcessingStatus(`❌ ${file.name} 處理失敗: ${errorMessage}`);
+
+        // 等待一下讓用戶看到錯誤信息
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
     }
 
@@ -376,19 +387,39 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
           )}
         </label>
         <p className='text-sm text-gray-400 mb-4 leading-relaxed'>
-          上傳 .txt 檔案以建立可搜尋的知識庫。檔案會自動儲存到 Turso 雲端，以提供高效能向量搜尋。
+          上傳文件以建立可搜尋的知識庫。支援格式：
+          <span className='text-cyan-400 font-medium'>.txt, .md, .pdf, .docx</span>
+          <br />
+          檔案會自動儲存到 Turso 雲端，以提供高效能向量搜尋。
         </p>
         <div className='bg-gray-700/50 border-2 border-dashed border-gray-600/70 rounded-xl p-6 text-center hover:border-cyan-500/50 transition-all duration-300'>
           <input
             type='file'
             multiple
-            accept='.txt'
+            accept='.txt,.md,.markdown,.pdf,.docx'
             onChange={handleFileChange}
             className='block w-full text-sm text-gray-300 file:mr-4 file:py-3 file:px-6 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-gradient-to-r file:from-cyan-600 file:to-cyan-500 file:text-white hover:file:from-cyan-500 hover:file:to-cyan-400 file:shadow-lg hover:file:shadow-xl file:transition-all file:duration-300 cursor-pointer'
             disabled={!!processingStatus}
           />
+
+          {/* 支援格式指示器 */}
+          <div className='mt-4 flex flex-wrap gap-2 justify-center'>
+            <span className='px-3 py-1 bg-blue-600/20 border border-blue-500/30 text-blue-300 text-xs rounded-full flex items-center gap-1'>
+              📄 TXT
+            </span>
+            <span className='px-3 py-1 bg-green-600/20 border border-green-500/30 text-green-300 text-xs rounded-full flex items-center gap-1'>
+              📝 MD
+            </span>
+            <span className='px-3 py-1 bg-red-600/20 border border-red-500/30 text-red-300 text-xs rounded-full flex items-center gap-1'>
+              📕 PDF
+            </span>
+            <span className='px-3 py-1 bg-purple-600/20 border border-purple-500/30 text-purple-300 text-xs rounded-full flex items-center gap-1'>
+              📘 DOCX
+            </span>
+          </div>
+
           {processingStatus && (
-            <p className='text-sm text-cyan-400 mt-3 animate-pulse flex items-center justify-center gap-2'>
+            <p className='text-sm text-cyan-400 mt-4 animate-pulse flex items-center justify-center gap-2'>
               <div className='w-2 h-2 bg-cyan-400 rounded-full animate-bounce'></div>
               {processingStatus}
             </p>
