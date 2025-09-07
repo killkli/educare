@@ -29,7 +29,7 @@ describe('Database Service', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     const { openDB } = await import('idb');
-    vi.mocked(openDB).mockResolvedValue(mockDB as IDBPDatabase<unknown>);
+    vi.mocked(openDB).mockResolvedValue(mockDB as unknown as IDBPDatabase<unknown>);
   });
 
   afterEach(() => {

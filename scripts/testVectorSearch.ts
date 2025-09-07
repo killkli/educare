@@ -16,6 +16,7 @@ async function testVectorSearch() {
     await saveAssistantToTurso({
       id: testAssistantId,
       name: 'Test Vector Search Assistant',
+      description: 'A test assistant for vector search functionality',
       systemPrompt: 'This is a test assistant for vector search.',
       createdAt: Date.now(),
     });

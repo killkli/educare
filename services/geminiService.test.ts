@@ -48,7 +48,7 @@ describe('Gemini Service', () => {
         chats: {
           create: vi.fn().mockReturnValue(mockChat),
         },
-      } as { chats: { create: () => typeof mockChat } });
+      } as unknown as InstanceType<typeof GoogleGenAI>);
 
       const chunks: string[] = [];
       const onChunk = vi.fn((chunk: string) => chunks.push(chunk));
@@ -59,6 +59,7 @@ describe('Gemini Service', () => {
         history: mockMessages,
         message: 'Test message',
         onChunk,
+        onComplete: vi.fn(),
       });
 
       expect(mockChat.sendMessageStream).toHaveBeenCalled();
@@ -75,7 +76,7 @@ describe('Gemini Service', () => {
         chats: {
           create: vi.fn().mockReturnValue(mockChat),
         },
-      } as { chats: { create: () => typeof mockChat } });
+      } as unknown as InstanceType<typeof GoogleGenAI>);
 
       const onChunk = vi.fn();
 
@@ -86,6 +87,7 @@ describe('Gemini Service', () => {
           history: mockMessages,
           message: 'Test message',
           onChunk,
+          onComplete: vi.fn(),
         })
       ).rejects.toThrow('API Error');
     });

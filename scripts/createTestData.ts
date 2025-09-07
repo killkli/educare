@@ -10,6 +10,7 @@ const createTestAssistants = async () => {
     const testAssistant: Assistant = {
       id: 'test_assistant_1',
       name: 'Test Marketing Assistant',
+      description: 'A marketing assistant specialized in content creation and strategy',
       systemPrompt:
         'You are a helpful marketing assistant specializing in content creation and strategy.',
       ragChunks: [
@@ -32,6 +33,8 @@ const createTestAssistants = async () => {
     const testAssistant2: Assistant = {
       id: 'test_assistant_2',
       name: 'Code Review Assistant',
+      description:
+        'A code review assistant specialized in analyzing code quality and best practices',
       systemPrompt:
         'You are a senior software engineer who helps with code reviews and best practices.',
       ragChunks: [

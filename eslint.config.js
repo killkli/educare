@@ -42,11 +42,23 @@ export default [
         setInterval: 'readonly',
         clearInterval: 'readonly',
         URLSearchParams: 'readonly',
+        URL: 'readonly',
         File: 'readonly',
         HTMLInputElement: 'readonly',
         HTMLDivElement: 'readonly',
         HTMLTextAreaElement: 'readonly',
         alert: 'readonly',
+        // Web Crypto API globals
+        crypto: 'readonly',
+        Crypto: 'readonly',
+        CryptoKey: 'readonly',
+        SubtleCrypto: 'readonly',
+        // Text encoding/decoding
+        TextEncoder: 'readonly',
+        TextDecoder: 'readonly',
+        // Base64 encoding/decoding
+        btoa: 'readonly',
+        atob: 'readonly',
       },
     },
     plugins: {
