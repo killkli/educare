@@ -25,3 +25,9 @@ dist-ssr
 
 # Backup files
 *.backup
+
+# Playwright
+.playwright-mcp/
+
+# Plan
+IMPLEMENTATION_PLAN.md
