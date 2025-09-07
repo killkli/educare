@@ -9,6 +9,8 @@ import ApiKeySetup from './components/ApiKeySetup';
 import { PlusIcon, ChatIcon, TrashIcon, EditIcon, SettingsIcon } from './components/Icons';
 import { isGeminiAvailable } from './services/geminiService';
 import { canWriteToTurso } from './services/tursoService';
+import { preloadEmbeddingModel, isEmbeddingModelLoaded } from './services/embeddingService';
+import { ModelLoadingOverlay } from './components/ModelLoadingOverlay';
 
 type ViewMode = 'chat' | 'edit_assistant' | 'new_assistant' | 'settings' | 'api_setup';
 
@@ -24,6 +26,12 @@ const App: React.FC = () => {
   const [sharedAssistantId, setSharedAssistantId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+  const [isModelLoading, setIsModelLoading] = useState(false);
+  const [modelLoadingProgress, setModelLoadingProgress] = useState<{
+    status: string;
+    progress: number;
+    name?: string;
+  } | null>(null);
 
   const handleNewSession = useCallback(async (assistantId: string) => {
     const newSession: ChatSession = {
@@ -62,6 +70,23 @@ const App: React.FC = () => {
     try {
       const storedAssistants = await db.getAllAssistants();
       setAssistants(storedAssistants.sort((a, b) => b.createdAt - a.createdAt));
+
+      // Check if embedding model is loaded, if not, preload it
+      if (!isEmbeddingModelLoaded()) {
+        setIsModelLoading(true);
+        try {
+          await preloadEmbeddingModel(progress => {
+            setModelLoadingProgress(progress);
+          });
+          console.log('✅ Embedding model preloaded successfully');
+        } catch (error) {
+          console.error('❌ Failed to preload embedding model:', error);
+          // Continue anyway - model will load when needed
+        } finally {
+          setIsModelLoading(false);
+          setModelLoadingProgress(null);
+        }
+      }
 
       if (storedAssistants.length > 0) {
         handleSelectAssistant(storedAssistants[0].id);
@@ -517,6 +542,12 @@ const App: React.FC = () => {
           )}
         </div>
       </main>
+
+      {/* Model Loading Overlay */}
+      <ModelLoadingOverlay
+        isVisible={isModelLoading}
+        progress={modelLoadingProgress || undefined}
+      />
     </div>
   );
 };

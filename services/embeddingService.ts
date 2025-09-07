@@ -87,6 +87,33 @@ export const generateEmbedding = async (
   return Array.from(output.data);
 };
 
+/**
+ * Preloads the embedding model without generating any embeddings.
+ * This allows the model to be loaded in the background during app startup.
+ * @param progress_callback Optional callback to report model loading progress.
+ * @returns Promise that resolves when the model is loaded and ready.
+ */
+export const preloadEmbeddingModel = async (
+  progress_callback?: (progress: { status: string; progress: number; name?: string }) => void
+): Promise<void> => {
+  try {
+    console.log('🔄 Starting embedding model preload...');
+    await EmbeddingSingleton.getInstance(progress_callback);
+    console.log('✅ Embedding model preloaded successfully');
+  } catch (error) {
+    console.error('❌ Failed to preload embedding model:', error);
+    throw error;
+  }
+};
+
+/**
+ * Checks if the embedding model is already loaded and ready to use.
+ * @returns True if the model is loaded, false otherwise.
+ */
+export const isEmbeddingModelLoaded = (): boolean => {
+  return EmbeddingSingleton.instance !== null;
+};
+
 export const cosineSimilarity = (vecA: number[], vecB: number[]): number => {
   if (!vecA || !vecB || vecA.length !== vecB.length) {
     return 0;
