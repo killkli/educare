@@ -43,6 +43,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [statusText, setStatusText] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [currentSession, setCurrentSession] = useState(session);
+  const [isComposing, setIsComposing] = useState(false); // 追蹤輸入法組合狀態
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -199,11 +200,23 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // 檢查是否正在輸入法組合狀態（如中文拼音輸入）
+    // 使用雙重檢查：React 事件的 isComposing 和我們自己的狀態追蹤
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && !isComposing) {
       e.preventDefault();
       handleSend();
     }
+  };
+
+  // 輸入法組合開始事件
+  const handleCompositionStart = () => {
+    setIsComposing(true);
+  };
+
+  // 輸入法組合結束事件
+  const handleCompositionEnd = () => {
+    setIsComposing(false);
   };
 
   const renderMessageContent = (content: string) => {
@@ -469,7 +482,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               <textarea
                 value={input}
                 onChange={e => setInput(e.target.value)}
-                onKeyDown={handleKeyPress}
+                onKeyDown={handleKeyDown}
+                onCompositionStart={handleCompositionStart}
+                onCompositionEnd={handleCompositionEnd}
                 placeholder='輸入您的訊息...'
                 rows={1}
                 className='w-full bg-gray-700/80 border border-gray-600/50 rounded-3xl px-5 py-4 resize-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 focus:bg-gray-700 text-white placeholder-gray-400 max-h-32 shadow-inner backdrop-blur-sm transition-all duration-200'
