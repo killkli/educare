@@ -5,9 +5,12 @@ import AssistantEditor from './components/AssistantEditor';
 import ChatWindow from './components/ChatWindow';
 import MigrationPanel from './components/MigrationPanel';
 import SharedAssistant from './components/SharedAssistant';
+import ApiKeySetup from './components/ApiKeySetup';
 import { PlusIcon, ChatIcon, TrashIcon, EditIcon, SettingsIcon } from './components/Icons';
+import { isGeminiAvailable } from './services/geminiService';
+import { canWriteToTurso } from './services/tursoService';
 
-type ViewMode = 'chat' | 'edit_assistant' | 'new_assistant' | 'settings';
+type ViewMode = 'chat' | 'edit_assistant' | 'new_assistant' | 'settings' | 'api_setup';
 
 const App: React.FC = () => {
   const [assistants, setAssistants] = useState<Assistant[]>([]);
@@ -64,7 +67,7 @@ const App: React.FC = () => {
         setViewMode('new_assistant');
       }
     } catch (e) {
-      setError('Failed to load data from the database.');
+      setError('無法從資料庫載入資料。');
       console.error(e);
     } finally {
       setIsLoading(false);
@@ -102,7 +105,7 @@ const App: React.FC = () => {
   };
 
   const handleDeleteAssistant = async (assistantId: string) => {
-    if (window.confirm('Are you sure you want to delete this assistant and all its chats?')) {
+    if (window.confirm('確定要刪除此助理和所有聊天記錄嗎？')) {
       await db.deleteAssistant(assistantId);
       const updatedAssistants = assistants.filter(a => a.id !== assistantId);
       setAssistants(updatedAssistants);
@@ -123,7 +126,7 @@ const App: React.FC = () => {
     if (!currentAssistant) {
       return;
     }
-    if (window.confirm('Are you sure you want to delete this chat session?')) {
+    if (window.confirm('確定要刪除此聊天會話嗎？')) {
       await db.deleteSession(sessionId);
       const asstSessions = await db.getSessionsForAssistant(currentAssistant.id);
       setSessions(asstSessions.sort((a, b) => b.createdAt - a.createdAt));
@@ -164,19 +167,17 @@ const App: React.FC = () => {
     <div className='flex h-screen font-sans'>
       {/* Sidebar */}
       <div className='w-80 bg-gray-900 flex flex-col p-4 border-r border-gray-700'>
-        <h1 className='text-xl font-bold text-white mb-4'>Pro Assistant</h1>
+        <h1 className='text-xl font-bold text-white mb-4'>專業助理</h1>
         <button
           onClick={() => setViewMode('new_assistant')}
           className='w-full flex items-center justify-center p-2 mb-4 bg-cyan-600 hover:bg-cyan-500 text-white rounded-md font-semibold'
         >
-          <PlusIcon className='w-5 h-5 mr-2' /> New Assistant
+          <PlusIcon className='w-5 h-5 mr-2' /> 新增助理
         </button>
 
         {/* Assistants List */}
         <div className='flex-1 overflow-y-auto pr-2'>
-          <h2 className='text-xs font-bold text-gray-400 uppercase tracking-wider mb-2'>
-            Assistants
-          </h2>
+          <h2 className='text-xs font-bold text-gray-400 uppercase tracking-wider mb-2'>助理</h2>
           {assistants.map(asst => (
             <div
               key={asst.id}
@@ -209,13 +210,13 @@ const App: React.FC = () => {
           {currentAssistant && (
             <div className='mt-6'>
               <h2 className='text-xs font-bold text-gray-400 uppercase tracking-wider mb-2'>
-                Chat History
+                聊天記錄
               </h2>
               <button
                 onClick={() => handleNewSession(currentAssistant.id)}
                 className='w-full flex items-center p-2 mb-2 bg-gray-700 hover:bg-gray-600 text-white rounded-md text-sm'
               >
-                <PlusIcon className='w-4 h-4 mr-2' /> New Chat
+                <PlusIcon className='w-4 h-4 mr-2' /> 新增聊天
               </button>
               {sessions.map(sess => (
                 <div
@@ -245,7 +246,7 @@ const App: React.FC = () => {
             onClick={() => setViewMode('settings')}
             className='w-full flex items-center p-2 text-gray-400 hover:bg-gray-800 hover:text-white rounded-md text-sm'
           >
-            <SettingsIcon className='w-5 h-5 mr-2' /> Settings & Sharing
+            <SettingsIcon className='w-5 h-5 mr-2' /> 設定與分享
           </button>
         </div>
       </div>
@@ -282,7 +283,58 @@ const App: React.FC = () => {
         )}
         {viewMode === 'settings' && (
           <div className='p-6 bg-gray-800 h-full overflow-y-auto'>
-            <h2 className='text-2xl font-bold mb-6 text-white'>Settings</h2>
+            <h2 className='text-2xl font-bold mb-6 text-white'>設定</h2>
+
+            {/* API 金鑰設定 */}
+            <div className='mb-6 bg-gray-700 rounded-lg p-4'>
+              <h3 className='text-lg font-semibold text-white mb-4'>API 金鑰配置</h3>
+              <div className='grid grid-cols-1 md:grid-cols-2 gap-4 mb-4'>
+                <div
+                  className={`p-3 rounded-md border-2 ${
+                    isGeminiAvailable()
+                      ? 'border-green-500 bg-green-800 bg-opacity-20'
+                      : 'border-yellow-500 bg-yellow-800 bg-opacity-20'
+                  }`}
+                >
+                  <div className='flex items-center mb-2'>
+                    <span className='text-lg mr-2'>{isGeminiAvailable() ? '✅' : '⚠️'}</span>
+                    <span className='font-medium text-white'>Gemini AI</span>
+                  </div>
+                  <p
+                    className={`text-sm ${
+                      isGeminiAvailable() ? 'text-green-200' : 'text-yellow-200'
+                    }`}
+                  >
+                    {isGeminiAvailable() ? '可以使用聊天功能' : '需要配置才能聊天'}
+                  </p>
+                </div>
+                <div
+                  className={`p-3 rounded-md border-2 ${
+                    canWriteToTurso()
+                      ? 'border-green-500 bg-green-800 bg-opacity-20'
+                      : 'border-yellow-500 bg-yellow-800 bg-opacity-20'
+                  }`}
+                >
+                  <div className='flex items-center mb-2'>
+                    <span className='text-lg mr-2'>{canWriteToTurso() ? '✅' : '⚠️'}</span>
+                    <span className='font-medium text-white'>Turso 資料庫</span>
+                  </div>
+                  <p
+                    className={`text-sm ${
+                      canWriteToTurso() ? 'text-green-200' : 'text-yellow-200'
+                    }`}
+                  >
+                    {canWriteToTurso() ? '可以保存助理和 RAG' : '需要配置才能保存'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setViewMode('api_setup')}
+                className='px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-md transition-colors'
+              >
+                配置 API 金鑰
+              </button>
+            </div>
 
             {/* Turso Migration Panel */}
             <div className='mb-6'>
@@ -290,14 +342,20 @@ const App: React.FC = () => {
             </div>
           </div>
         )}
-        {isLoading && (
-          <div className='flex items-center justify-center h-full text-gray-400'>
-            Loading Assistants...
+        {viewMode === 'api_setup' && (
+          <div className='p-6 bg-gray-800 h-full overflow-y-auto'>
+            <ApiKeySetup
+              onComplete={() => setViewMode('settings')}
+              onCancel={() => setViewMode('settings')}
+            />
           </div>
+        )}
+        {isLoading && (
+          <div className='flex items-center justify-center h-full text-gray-400'>載入助理中...</div>
         )}
         {!currentAssistant && !isLoading && viewMode !== 'new_assistant' && (
           <div className='flex items-center justify-center h-full text-gray-400'>
-            Select an assistant or create a new one to begin.
+            選擇一個助理或新增一個以開始使用。
           </div>
         )}
       </main>

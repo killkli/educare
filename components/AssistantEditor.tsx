@@ -69,7 +69,7 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
     } else {
       setName('');
       setDescription('');
-      setSystemPrompt('You are a helpful and professional AI assistant.');
+      setSystemPrompt('您是一個有用且專業的 AI 助理。');
       setRagChunks([]);
       setRagChunkCount(0);
     }
@@ -91,36 +91,34 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
     // 如果是新助手，需要先確保助手基本資料存在於 Turso
     if (!assistant) {
       try {
-        setProcessingStatus('Creating assistant in Turso...');
+        setProcessingStatus('在 Turso 中建立助理...');
         await saveAssistantToTurso({
           id: assistantId,
-          name: name.trim() || 'New Assistant',
-          description: description.trim() || 'A helpful AI assistant',
-          systemPrompt: systemPrompt.trim() || 'You are a helpful AI assistant.',
+          name: name.trim() || '新助理',
+          description: description.trim() || '一個有用的 AI 助理',
+          systemPrompt: systemPrompt.trim() || '您是一個有用的 AI 助理。',
           createdAt: Date.now(),
         });
       } catch (error) {
         console.error('Failed to create assistant in Turso:', error);
-        setProcessingStatus(
-          '⚠️ Failed to create assistant in cloud, continuing with local storage...'
-        );
+        setProcessingStatus('⚠️ 無法在雲端建立助理，繼續使用本地儲存...');
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
     }
 
-    setProcessingStatus('Starting file processing...');
+    setProcessingStatus('開始處理檔案...');
     const successfulChunks: RagChunk[] = [];
     const failedChunks: { file: string; chunk: number; error: string }[] = [];
 
     for (const file of files) {
       if (file.type === 'text/plain') {
         try {
-          setProcessingStatus(`Reading ${file.name}...`);
+          setProcessingStatus(`讀取 ${file.name}...`);
           const content = await file.text();
           const textChunks = chunkText(content);
 
           for (let i = 0; i < textChunks.length; i++) {
-            setProcessingStatus(`Embedding chunk ${i + 1}/${textChunks.length} of ${file.name}...`);
+            setProcessingStatus(`嵌入 ${file.name} 的 ${i + 1}/${textChunks.length} 區塊...`);
             const vector = await generateEmbedding(
               textChunks[i],
               'document',
@@ -133,9 +131,7 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
                 ) {
                   const progressObj = progress as { status: string; progress: number };
                   if (progressObj.status === 'progress') {
-                    setProcessingStatus(
-                      `Downloading embedding model... ${Math.round(progressObj.progress)}%`
-                    );
+                    setProcessingStatus(`下載嵌入模型... ${Math.round(progressObj.progress)}%`);
                   }
                 }
               }
@@ -143,7 +139,7 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
 
             // 優先儲存到 Turso 雲端
             try {
-              setProcessingStatus(`Saving chunk ${i + 1}/${textChunks.length} to Turso cloud...`);
+              setProcessingStatus(`保存 ${i + 1}/${textChunks.length} 區塊到 Turso 雲端...`);
               await saveRagChunkToTurso(
                 {
                   id: `chunk_${Date.now()}_${i}_${Math.random().toString(36).slice(2)}`,
@@ -160,7 +156,7 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
               successfulChunks.push(ragChunk);
               setRagChunkCount(prevCount => prevCount + 1);
 
-              setProcessingStatus(`✅ Chunk ${i + 1}/${textChunks.length} saved to cloud`);
+              setProcessingStatus(`✅ 區塊 ${i + 1}/${textChunks.length} 已保存到雲端`);
             } catch (tursoError) {
               console.error('Failed to save chunk to Turso:', tursoError);
               failedChunks.push({
@@ -170,14 +166,14 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
               });
 
               // 嘗試作為後備儲存到本地
-              setProcessingStatus(`⚠️ Cloud failed, saving chunk ${i + 1} locally...`);
+              setProcessingStatus(`⚠️ 雲端失敗，本地保存區塊 ${i + 1}...`);
               const ragChunk = { fileName: file.name, content: textChunks[i], vector };
               successfulChunks.push(ragChunk);
             }
           }
         } catch (err) {
           console.error(`Error processing file ${file.name}:`, err);
-          setProcessingStatus(`Error with ${file.name}.`);
+          setProcessingStatus(`處理 ${file.name} 時發生錯誤。`);
         }
       }
     }
@@ -189,14 +185,14 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
     if (failedChunks.length > 0) {
       setTursoSyncStatus({
         type: 'warning',
-        message: `${successfulChunks.length} chunks processed, ${failedChunks.length} failed to sync to cloud. Some data is only stored locally.`,
+        message: `已處理 ${successfulChunks.length} 個區塊，${failedChunks.length} 個無法同步到雲端。部分資料僅儲存在本地。`,
       });
       setProcessingStatus(null);
       setTimeout(() => setTursoSyncStatus(null), 8000);
     } else if (successfulChunks.length > 0) {
       setTursoSyncStatus({
         type: 'success',
-        message: `All ${successfulChunks.length} chunks successfully saved to Turso cloud!`,
+        message: `所有 ${successfulChunks.length} 個區塊已成功保存到 Turso 雲端！`,
       });
       setProcessingStatus(null);
       setTimeout(() => setTursoSyncStatus(null), 5000);
@@ -213,7 +209,7 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
     if (!assistant) {
       setShareStatus({
         type: 'info',
-        message: 'Please save the assistant first before generating a share link.',
+        message: '請先保存助理再生成分享連結。',
       });
       setTimeout(() => setShareStatus(null), 3000);
       return;
@@ -228,7 +224,7 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
 
       setShareStatus({
         type: 'success',
-        message: `Share link copied to clipboard! Anyone with this link can chat with ${assistant.name}.`,
+        message: `分享連結已複製到剪貼簿！任何有此連結的人都可以與 ${assistant.name} 聊天。`,
       });
 
       // 5秒後自動清除狀態
@@ -237,7 +233,7 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
       // 如果剪貼板 API 失敗，顯示 URL 讓用戶手動複製
       setShareStatus({
         type: 'info',
-        message: `Share link: ${shareUrl}`,
+        message: `分享連結：${shareUrl}`,
       });
 
       // 10秒後清除，給用戶足夠時間複製
@@ -247,7 +243,7 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
 
   const handleSave = async () => {
     if (!name.trim()) {
-      alert('Assistant name is required.');
+      alert('助理名稱為必填。');
       return;
     }
 
@@ -273,7 +269,7 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
     } catch (error) {
       console.error('Failed to save assistant to Turso:', error);
       // 繼續儲存到本地，但警告用戶
-      alert('Warning: Assistant saved locally but failed to sync to Turso database');
+      alert('警告：助理已本地保存，但無法同步到 Turso 資料庫');
     }
 
     onSave(newAssistant);
@@ -283,13 +279,11 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
 
   return (
     <div className='flex flex-col h-full bg-gray-800 p-6 overflow-y-auto'>
-      <h2 className='text-2xl font-bold mb-6 text-white'>
-        {assistant ? 'Edit Assistant' : 'Create New Assistant'}
-      </h2>
+      <h2 className='text-2xl font-bold mb-6 text-white'>{assistant ? '編輯助理' : '新增助理'}</h2>
 
       <div className='mb-4'>
         <label htmlFor='name' className='block text-sm font-medium text-gray-400 mb-1'>
-          Assistant Name
+          助理名稱
         </label>
         <input
           type='text'
@@ -297,14 +291,14 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
           value={name}
           onChange={e => setName(e.target.value)}
           className='w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-white focus:ring-cyan-500 focus:border-cyan-500'
-          placeholder='e.g., Marketing Copywriter'
+          placeholder='例如：行銷文案寫手'
         />
       </div>
 
       <div className='mb-4'>
         <label htmlFor='description' className='block text-sm font-medium text-gray-400 mb-1'>
-          Public Description
-          <span className='text-xs text-gray-500 ml-2'>(shown to users when shared)</span>
+          公開描述
+          <span className='text-xs text-gray-500 ml-2'>(分享時顯示給用戶)</span>
         </label>
         <textarea
           id='description'
@@ -312,13 +306,13 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
           onChange={e => setDescription(e.target.value)}
           rows={3}
           className='w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-white focus:ring-cyan-500 focus:border-cyan-500'
-          placeholder='Brief description of what this assistant can help with...'
+          placeholder='簡單描述這個助理能幫助什麼...'
         />
       </div>
 
       <div className='mb-4'>
         <label htmlFor='systemPrompt' className='block text-sm font-medium text-gray-400 mb-1'>
-          System Prompt
+          系統提示
         </label>
         <textarea
           id='systemPrompt'
@@ -326,22 +320,21 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
           onChange={e => setSystemPrompt(e.target.value)}
           rows={8}
           className='w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-white focus:ring-cyan-500 focus:border-cyan-500'
-          placeholder="Define the assistant's role, personality, and instructions."
+          placeholder='定義助理的角色、個性和指導。'
         />
       </div>
 
       <div className='mb-6'>
         <label className='block text-sm font-medium text-gray-400 mb-2'>
-          Knowledge Files (RAG)
+          知識檔案 (RAG)
           {ragChunkCount > 0 && (
             <span className='ml-2 px-2 py-1 bg-cyan-600 text-white text-xs rounded-full'>
-              {ragChunkCount} chunks in Turso
+              {ragChunkCount} 區塊在 Turso
             </span>
           )}
         </label>
         <p className='text-xs text-gray-500 mb-2'>
-          Upload .txt files to create a searchable knowledge base. Files are automatically saved to
-          Turso cloud for high-performance vector search.
+          上傳 .txt 檔案以建立可搜尋的知識庫。檔案會自動儲存到 Turso 雲端，以提供高效能向量搜尋。
         </p>
         <div className='bg-gray-700 border-2 border-dashed border-gray-600 rounded-md p-4 text-center'>
           <input
@@ -425,7 +418,7 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
               className='px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white font-semibold flex items-center space-x-2'
             >
               <span>🔗</span>
-              <span>Generate Share Link</span>
+              <span>生成分享連結</span>
             </button>
           )}
         </div>
@@ -436,14 +429,14 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
             onClick={onCancel}
             className='px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white font-semibold'
           >
-            Cancel
+            取消
           </button>
           <button
             onClick={handleSave}
             className='px-6 py-2 rounded-md bg-cyan-600 hover:bg-cyan-500 text-white font-bold'
             disabled={!!processingStatus}
           >
-            {processingStatus ? 'Processing...' : 'Save Assistant'}
+            {processingStatus ? '處理中...' : '保存助理'}
           </button>
         </div>
       </div>

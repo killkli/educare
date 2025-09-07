@@ -1,26 +1,49 @@
 import { GoogleGenAI, Chat, GenerateContentResponse } from '@google/genai';
 import { ChatMessage } from '../types';
+import { ApiKeyManager } from './apiKeyManager';
 
 let ai: GoogleGenAI | null = null;
 let initializationAttempted = false;
 
 /**
- * Lazily initializes and returns the GoogleGenAI client instance.
- * Returns null if initialization fails (e.g., missing API key).
+ * 懶惰初始化並返回 GoogleGenAI 客戶端實例。
+ * 優先使用用戶設定的 API KEY，其次使用內建的。
+ * 如果初始化失敗（例如缺少 API 金鑰），返回 null。
  */
 const getAi = (): GoogleGenAI | null => {
   if (!initializationAttempted) {
     initializationAttempted = true;
-    // Safely access the API key from the environment
-    const apiKey = typeof process !== 'undefined' && process.env ? process.env.API_KEY : undefined;
+    // 優先使用用戶設定的 API KEY
+    const userApiKey = ApiKeyManager.getGeminiApiKey();
+    // 其次使用內建的 API KEY（應該是空的）
+    const builtInApiKey =
+      typeof process !== 'undefined' && process.env ? process.env.API_KEY : undefined;
+    const apiKey = userApiKey || builtInApiKey;
 
     if (apiKey) {
       ai = new GoogleGenAI({ apiKey });
     } else {
-      console.warn('API_KEY environment variable not set. Gemini features will be unavailable.');
+      console.warn('No Gemini API key available. Please configure one in settings.');
     }
   }
   return ai;
+};
+
+/**
+ * 檢查是否可以使用 Gemini 服務
+ */
+export const isGeminiAvailable = (): boolean => {
+  return (
+    ApiKeyManager.hasGeminiApiKey() || !!(typeof process !== 'undefined' && process.env?.API_KEY)
+  );
+};
+
+/**
+ * 重新初始化 Gemini 服務（當用戶更新 API KEY 時使用）
+ */
+export const reinitializeGemini = (): void => {
+  ai = null;
+  initializationAttempted = false;
 };
 
 export const streamChat = async ({
@@ -44,9 +67,12 @@ export const streamChat = async ({
   const genAI = getAi();
 
   if (!genAI) {
-    throw new Error(
-      'Gemini AI client is not initialized. Please ensure the API_KEY is correctly configured in the environment.'
-    );
+    throw new Error('請先在設定中配置 Gemini API KEY 才能使用聊天功能。');
+  }
+
+  // 再次檢查是否有可用的 API KEY
+  if (!isGeminiAvailable()) {
+    throw new Error('請先在設定中配置 Gemini API KEY 才能使用聊天功能。');
   }
 
   const MAX_HISTORY_MESSAGES = 20;

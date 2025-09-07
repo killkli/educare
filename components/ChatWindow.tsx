@@ -60,17 +60,17 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const findRelevantContext = async (message: string): Promise<string> => {
     try {
       console.log(`🎯 [RAG QUERY] Starting context search for query: "${message}"`);
-      setStatusText('🔍 Generating query embeddings...');
+      setStatusText('🔍 生成查詢嵌入...');
       const queryVector = await generateEmbedding(message, 'query');
 
       // 優先使用 Turso 向量搜尋
-      setStatusText('🌐 Searching knowledge base (Turso)...');
+      setStatusText('🌐 搜尋知識庫 (Turso)...');
       console.log('🔍 [RAG QUERY] Attempting Turso vector search first...');
       const tursoResults = await searchSimilarChunks(assistantId, queryVector, 5);
 
       if (tursoResults.length > 0) {
         // 使用 Turso 搜尋結果
-        setStatusText(`✅ Processing ${tursoResults.length} relevant documents...`);
+        setStatusText(`✅ 處理 ${tursoResults.length} 個相關文件...`);
         console.log(`✅ [RAG QUERY] Using TURSO results - Found ${tursoResults.length} chunks`);
         const relevantChunks = tursoResults.filter(chunk => chunk.similarity > 0.5);
         console.log(
@@ -86,10 +86,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       }
 
       // 後備：如果 Turso 搜尋失敗，使用本地 ragChunks
-      setStatusText('🗄️ Searching local knowledge base...');
+      setStatusText('🗄️ 搜尋本地知識庫...');
       console.log('⚠️ [RAG QUERY] Turso search returned no results, falling back to IndexedDB...');
       if (ragChunks.length > 0) {
-        setStatusText(`📊 Analyzing ${ragChunks.length} local documents...`);
+        setStatusText(`📊 分析 ${ragChunks.length} 個本地文件...`);
         console.log(
           `🔍 [RAG QUERY] Using INDEXEDDB fallback - Processing ${ragChunks.length} local chunks`
         );
@@ -121,7 +121,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       return '';
     } catch (error) {
       console.error('❌ [RAG QUERY] Error finding relevant context:', error);
-      setStatusText('❌ Error searching knowledge base');
+      setStatusText('❌ 搜尋知識庫時發生錯誤');
       return ''; // Return empty context on error
     }
   };
@@ -149,9 +149,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       ragContext = await findRelevantContext(userMessage);
 
       if (ragContext) {
-        setStatusText('🧠 Knowledge retrieved. Generating contextualized response...');
+        setStatusText('🧠 已擷取知識。生成上下文化回答...');
       } else {
-        setStatusText('🤖 Generating response...');
+        setStatusText('🤖 生成回答...');
       }
 
       await streamChat({
@@ -194,7 +194,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       setIsThinking(false);
       setStatusText('');
       setStreamingResponse(
-        `Sorry, an error occurred. The API returned the following error:\n\n${(error as Error).message}\n\nPlease check your API key and the console for more details.`
+        `抱歉，發生錯誤。API 返回以下錯誤：\n\n${(error as Error).message}\n\n請檢查您的 API 密鑰和控制檯以取得更多細節。`
       );
     }
   };
@@ -227,7 +227,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                       onClick={() => navigator.clipboard.writeText(String(children))}
                       className='text-gray-400 hover:text-white transition-colors'
                     >
-                      Copy
+                      複製
                     </button>
                   </div>
                   <pre className='p-4 text-sm overflow-x-auto'>
@@ -331,13 +331,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               {sharedMode && (
                 <div className='inline-flex items-center gap-2 bg-gray-800 px-4 py-2 rounded-full text-sm text-gray-400 mb-6'>
                   <span>💡</span>
-                  <span>Shared AI Assistant - Your conversations are not saved permanently</span>
+                  <span>分享的 AI 助理 - 您的對話不會永久儲存</span>
                 </div>
               )}
               <p className='text-gray-400 text-lg'>
-                {assistantDescription
-                  ? "Let's start chatting!"
-                  : "Ask me anything and I'll help you out!"}
+                {assistantDescription ? '讓我們開始聊天吧！' : '問我任何問題，我會幫助您！'}
               </p>
             </div>
           )}
@@ -411,7 +409,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                             style={{ animationDelay: '300ms' }}
                           ></div>
                         </div>
-                        <span className='text-gray-400 text-sm'>Thinking...</span>
+                        <span className='text-gray-400 text-sm'>思考中...</span>
                       </div>
                     </div>
                   </div>
@@ -462,7 +460,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKeyPress}
-                placeholder='Type your message...'
+                placeholder='輸入您的訊息...'
                 rows={1}
                 className='w-full bg-gray-700/80 border border-gray-600/50 rounded-3xl px-5 py-4 resize-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 focus:bg-gray-700 text-white placeholder-gray-400 max-h-32 shadow-inner backdrop-blur-sm transition-all duration-200'
                 disabled={isLoading}
@@ -484,7 +482,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               {isLoading ? (
                 <div className='w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin' />
               ) : (
-                <span>Send</span>
+                <span>傳送</span>
               )}
             </button>
           </div>
@@ -493,14 +491,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           <div className='flex justify-between items-center text-xs text-gray-400 mt-4'>
             <span className='flex items-center gap-2'>
               <kbd className='px-2 py-1 bg-gray-700 rounded text-xs'>Enter</kbd>
-              <span>to send</span>
+              <span>傳送</span>
               <span className='text-gray-500'>•</span>
               <kbd className='px-2 py-1 bg-gray-700 rounded text-xs'>Shift + Enter</kbd>
-              <span>for new line</span>
+              <span>換行</span>
             </span>
             {currentSession.tokenCount > 0 && (
               <span className='bg-gray-700/50 px-3 py-1 rounded-full'>
-                {currentSession.tokenCount} tokens
+                {currentSession.tokenCount} 代幣
               </span>
             )}
           </div>

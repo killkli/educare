@@ -21,7 +21,7 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
         const tursoAssistant = await getAssistantFromTurso(assistantId);
 
         if (!tursoAssistant) {
-          setError('Assistant not found or not available for sharing.');
+          setError('找不到助理或無法分享。');
           return;
         }
 
@@ -50,7 +50,7 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
         setCurrentSession(tempSession);
       } catch (err) {
         console.error('Failed to load shared assistant:', err);
-        setError('Failed to load the shared assistant. Please check the link.');
+        setError('無法載入分享的助理。請檢查連結。');
       } finally {
         setIsLoading(false);
       }
@@ -77,7 +77,7 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
       <div className='flex items-center justify-center h-screen bg-gray-900'>
         <div className='text-center'>
           <div className='animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-500 mx-auto mb-4'></div>
-          <p className='text-gray-400'>Loading shared assistant...</p>
+          <p className='text-gray-400'>載入分享的助理...</p>
         </div>
       </div>
     );
@@ -88,11 +88,9 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
       <div className='flex items-center justify-center h-screen bg-gray-900'>
         <div className='text-center max-w-md mx-auto px-6'>
           <div className='text-red-500 text-6xl mb-4'>⚠️</div>
-          <h2 className='text-2xl font-bold text-white mb-4'>Assistant Not Found</h2>
+          <h2 className='text-2xl font-bold text-white mb-4'>找不到助理</h2>
           <p className='text-gray-400 mb-6'>{error}</p>
-          <p className='text-sm text-gray-500'>
-            Please check the sharing link or contact the person who shared this assistant with you.
-          </p>
+          <p className='text-sm text-gray-500'>請檢查分享連結或聯繫與您分享此助理的人員。</p>
         </div>
       </div>
     );
@@ -102,7 +100,7 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
     return (
       <div className='flex items-center justify-center h-screen bg-gray-900'>
         <div className='text-center'>
-          <p className='text-gray-400'>Unable to load assistant data.</p>
+          <p className='text-gray-400'>無法載入助理資料。</p>
         </div>
       </div>
     );
