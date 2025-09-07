@@ -1,0 +1,51 @@
+import '@testing-library/jest-dom';
+import { expect, vi } from 'vitest';
+
+// Mock window.indexedDB for testing
+Object.defineProperty(window, 'indexedDB', {
+  value: {
+    open: vi.fn(),
+    deleteDatabase: vi.fn(),
+    databases: vi.fn(),
+  },
+  writable: true,
+});
+
+// Mock localStorage
+Object.defineProperty(window, 'localStorage', {
+  value: {
+    getItem: vi.fn(),
+    setItem: vi.fn(),
+    removeItem: vi.fn(),
+    clear: vi.fn(),
+  },
+  writable: true,
+});
+
+// Mock sessionStorage
+Object.defineProperty(window, 'sessionStorage', {
+  value: {
+    getItem: vi.fn(),
+    setItem: vi.fn(),
+    removeItem: vi.fn(),
+    clear: vi.fn(),
+  },
+  writable: true,
+});
+
+// Mock fetch for API calls
+global.fetch = vi.fn();
+
+// Mock environment variables
+vi.mock('vite', () => ({
+  loadEnv: vi.fn(() => ({
+    GEMINI_API_KEY: 'test-api-key',
+    TURSO_URL: 'test-turso-url',
+    TURSOAPI_KEY: 'test-turso-api-key',
+  })),
+}));
+
+// Global test utilities
+expect.extend({
+  toBeInTheDocument: expect.any(Function),
+});

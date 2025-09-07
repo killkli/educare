@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Assistant, ChatMessage, ChatSession } from '../types';
+import { Assistant, ChatSession } from '../types';
 import ChatWindow from './ChatWindow';
 import { getAssistantFromTurso } from '../services/tursoService';
-import { GeminiIcon } from './Icons';
 
 interface SharedAssistantProps {
   assistantId: string;
@@ -20,7 +19,7 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
       try {
         // 從 Turso 載入分享的 Assistant
         const tursoAssistant = await getAssistantFromTurso(assistantId);
-        
+
         if (!tursoAssistant) {
           setError('Assistant not found or not available for sharing.');
           return;
@@ -33,7 +32,7 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
           description: tursoAssistant.description,
           systemPrompt: tursoAssistant.systemPrompt,
           ragChunks: [], // 空陣列，因為會直接使用 Turso 向量搜尋
-          createdAt: tursoAssistant.createdAt
+          createdAt: tursoAssistant.createdAt,
         };
 
         setAssistant(sharedAssistant);
@@ -45,7 +44,7 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
           messages: [],
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          totalTokenCount: 0
+          totalTokenCount: 0,
         };
 
         setCurrentSession(tempSession);
@@ -61,10 +60,10 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
   }, [assistantId]);
 
   const handleNewMessage = async (
-    updatedSession: ChatSession, 
-    userMessage: string, 
-    modelResponse: string, 
-    tokenInfo: { promptTokenCount: number; candidatesTokenCount: number }
+    updatedSession: ChatSession,
+    _userMessage: string,
+    _modelResponse: string,
+    _tokenInfo: { promptTokenCount: number; candidatesTokenCount: number }
   ) => {
     // ChatWindow 現在會傳遞已經更新好的 session，我們只需要設置它
     setCurrentSession({
@@ -75,10 +74,10 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-900">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-500 mx-auto mb-4"></div>
-          <p className="text-gray-400">Loading shared assistant...</p>
+      <div className='flex items-center justify-center h-screen bg-gray-900'>
+        <div className='text-center'>
+          <div className='animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-500 mx-auto mb-4'></div>
+          <p className='text-gray-400'>Loading shared assistant...</p>
         </div>
       </div>
     );
@@ -86,12 +85,14 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-900">
-        <div className="text-center max-w-md mx-auto px-6">
-          <div className="text-red-500 text-6xl mb-4">⚠️</div>
-          <h2 className="text-2xl font-bold text-white mb-4">Assistant Not Found</h2>
-          <p className="text-gray-400 mb-6">{error}</p>
-          <p className="text-sm text-gray-500">Please check the sharing link or contact the person who shared this assistant with you.</p>
+      <div className='flex items-center justify-center h-screen bg-gray-900'>
+        <div className='text-center max-w-md mx-auto px-6'>
+          <div className='text-red-500 text-6xl mb-4'>⚠️</div>
+          <h2 className='text-2xl font-bold text-white mb-4'>Assistant Not Found</h2>
+          <p className='text-gray-400 mb-6'>{error}</p>
+          <p className='text-sm text-gray-500'>
+            Please check the sharing link or contact the person who shared this assistant with you.
+          </p>
         </div>
       </div>
     );
@@ -99,16 +100,16 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
 
   if (!assistant || !currentSession) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-900">
-        <div className="text-center">
-          <p className="text-gray-400">Unable to load assistant data.</p>
+      <div className='flex items-center justify-center h-screen bg-gray-900'>
+        <div className='text-center'>
+          <p className='text-gray-400'>Unable to load assistant data.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen bg-gray-900 flex flex-col">
+    <div className='h-screen bg-gray-900 flex flex-col'>
       {/* Integrated Header + Chat */}
       <ChatWindow
         session={currentSession}

@@ -1,4 +1,3 @@
-
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { Assistant, ChatSession } from '../types';
 
@@ -76,6 +75,6 @@ export const saveSession = async (session: ChatSession): Promise<void> => {
 };
 
 export const deleteSession = async (id: string): Promise<void> => {
-    const db = await getDb();
-    await db.delete(SESSIONS_STORE, id);
+  const db = await getDb();
+  await db.delete(SESSIONS_STORE, id);
 };

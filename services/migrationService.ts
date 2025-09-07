@@ -23,47 +23,47 @@ export const migrateIndexedDBToTurso = async (
       step: 'Loading assistants from IndexedDB...',
       current: 0,
       total: 0,
-      completed: false
+      completed: false,
     });
 
     // 取得所有助手
     const assistants = await getAllAssistants();
-    
+
     if (assistants.length === 0) {
       return {
         success: true,
-        summary: 'No assistants found to migrate.'
+        summary: 'No assistants found to migrate.',
       };
     }
 
-    let totalChunks = assistants.reduce((sum, assistant) => sum + assistant.ragChunks.length, 0);
+    const totalChunks = assistants.reduce((sum, assistant) => sum + assistant.ragChunks.length, 0);
     let processedAssistants = 0;
     let processedChunks = 0;
     let migratedAssistants = 0;
     let migratedChunks = 0;
-    let errors: string[] = [];
+    const errors: string[] = [];
 
     onProgress?.({
       step: `Found ${assistants.length} assistants with ${totalChunks} RAG chunks`,
       current: 0,
       total: assistants.length,
-      completed: false
+      completed: false,
     });
 
     for (const assistant of assistants) {
       try {
         processedAssistants++;
-        
+
         onProgress?.({
           step: `Migrating assistant: ${assistant.name}`,
           current: processedAssistants,
           total: assistants.length,
-          completed: false
+          completed: false,
         });
 
         // 檢查助手是否已存在於 Turso
         const existingChunkCount = await getRagChunkCount(assistant.id);
-        let shouldMigrateAssistant = true;
+        const shouldMigrateAssistant = true;
         let shouldMigrateChunks = true;
 
         if (existingChunkCount > 0) {
@@ -71,7 +71,7 @@ export const migrateIndexedDBToTurso = async (
             step: `Assistant "${assistant.name}" already has ${existingChunkCount} chunks in Turso. Skipping...`,
             current: processedAssistants,
             total: assistants.length,
-            completed: false
+            completed: false,
           });
           shouldMigrateChunks = false;
           processedChunks += assistant.ragChunks.length;
@@ -86,7 +86,7 @@ export const migrateIndexedDBToTurso = async (
               name: assistant.name,
               description: assistant.description || '', // 提供預設值
               systemPrompt: assistant.systemPrompt,
-              createdAt: assistant.createdAt
+              createdAt: assistant.createdAt,
             });
             migratedAssistants++;
           } catch (error) {
@@ -103,23 +103,26 @@ export const migrateIndexedDBToTurso = async (
           for (let i = 0; i < assistant.ragChunks.length; i++) {
             const chunk = assistant.ragChunks[i];
             processedChunks++;
-            
+
             onProgress?.({
               step: `Migrating chunk ${i + 1}/${assistant.ragChunks.length} for "${assistant.name}"`,
               current: processedChunks,
               total: totalChunks,
-              completed: false
+              completed: false,
             });
 
             try {
-              await saveRagChunkToTurso({
-                id: `migrated_${assistant.id}_${i}_${Date.now()}`,
-                assistantId: assistant.id,
-                fileName: chunk.fileName,
-                content: chunk.content,
-                createdAt: Date.now()
-              }, chunk.vector);
-              
+              await saveRagChunkToTurso(
+                {
+                  id: `migrated_${assistant.id}_${i}_${Date.now()}`,
+                  assistantId: assistant.id,
+                  fileName: chunk.fileName,
+                  content: chunk.content,
+                  createdAt: Date.now(),
+                },
+                chunk.vector
+              );
+
               migratedChunks++;
             } catch (error) {
               const errorMsg = `Failed to migrate chunk ${i + 1} for "${assistant.name}": ${error}`;
@@ -128,7 +131,6 @@ export const migrateIndexedDBToTurso = async (
             }
           }
         }
-
       } catch (error) {
         const errorMsg = `Failed to process assistant "${assistant.name}": ${error}`;
         errors.push(errorMsg);
@@ -136,7 +138,8 @@ export const migrateIndexedDBToTurso = async (
       }
     }
 
-    const summary = `Migration completed!\n` +
+    const summary =
+      'Migration completed!\n' +
       `• Assistants: ${migratedAssistants}/${assistants.length}\n` +
       `• RAG chunks: ${migratedChunks}/${totalChunks}\n` +
       `• Success rate: ${((migratedChunks / totalChunks) * 100).toFixed(1)}%` +
@@ -146,30 +149,29 @@ export const migrateIndexedDBToTurso = async (
       step: 'Migration completed!',
       current: assistants.length,
       total: assistants.length,
-      completed: true
+      completed: true,
     });
 
     return {
       success: errors.length < assistants.length, // 至少成功一半才算成功
       summary,
-      error: errors.length > 0 ? errors.join('\n') : undefined
+      error: errors.length > 0 ? errors.join('\n') : undefined,
     };
-
   } catch (error) {
     const errorMessage = `Migration failed: ${error}`;
     console.error(errorMessage);
-    
+
     onProgress?.({
       step: 'Migration failed',
       current: 0,
       total: 0,
       completed: true,
-      error: errorMessage
+      error: errorMessage,
     });
 
     return {
       success: false,
-      error: errorMessage
+      error: errorMessage,
     };
   }
 };
@@ -185,18 +187,18 @@ export const checkMigrationStatus = async (): Promise<{
   try {
     const assistants = await getAllAssistants();
     const totalChunks = assistants.reduce((sum, assistant) => sum + assistant.ragChunks.length, 0);
-    
+
     return {
       hasIndexedDBData: assistants.length > 0,
       assistantCount: assistants.length,
-      totalChunks
+      totalChunks,
     };
   } catch (error) {
     console.error('Failed to check migration status:', error);
     return {
       hasIndexedDBData: false,
       assistantCount: 0,
-      totalChunks: 0
+      totalChunks: 0,
     };
   }
 };
