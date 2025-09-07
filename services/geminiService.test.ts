@@ -88,7 +88,7 @@ describe('Gemini Service', () => {
           message: 'Test message',
           onChunk,
           onComplete: vi.fn(),
-        })
+        }),
       ).rejects.toThrow('API Error');
     });
   });

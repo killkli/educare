@@ -28,7 +28,7 @@ export class CryptoService {
       passwordBuffer,
       { name: 'PBKDF2' },
       false,
-      ['deriveKey']
+      ['deriveKey'],
     );
 
     // 使用 PBKDF2 派生實際的加密金鑰
@@ -42,7 +42,7 @@ export class CryptoService {
       keyMaterial,
       { name: this.ALGORITHM, length: this.KEY_LENGTH },
       false,
-      ['encrypt', 'decrypt']
+      ['encrypt', 'decrypt'],
     );
   }
 
@@ -51,7 +51,7 @@ export class CryptoService {
    */
   static async encryptApiKeys(
     apiKeys: { geminiApiKey?: string; tursoWriteApiKey?: string },
-    password: string
+    password: string,
   ): Promise<string> {
     try {
       // 生成隨機 salt 和 IV
@@ -73,7 +73,7 @@ export class CryptoService {
           iv: iv,
         },
         key,
-        data
+        data,
       );
 
       // 將結果編碼為 base64 URL-safe 字符串
@@ -95,7 +95,7 @@ export class CryptoService {
    */
   static async decryptApiKeys(
     encryptedString: string,
-    password: string
+    password: string,
   ): Promise<{ geminiApiKey?: string; tursoWriteApiKey?: string }> {
     try {
       // 解析加密數據
@@ -117,7 +117,7 @@ export class CryptoService {
           iv: iv,
         },
         key,
-        data
+        data,
       );
 
       // 解析解密後的數據

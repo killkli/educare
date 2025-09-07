@@ -61,7 +61,7 @@ export const streamChat = async ({
   onChunk: (text: string) => void;
   onComplete: (
     metadata: { promptTokenCount: number; candidatesTokenCount: number },
-    fullText: string
+    fullText: string,
   ) => void;
 }) => {
   const genAI = getAi();
@@ -116,7 +116,7 @@ export const streamChat = async ({
         promptTokenCount: aggregatedResponse.usageMetadata.promptTokenCount ?? 0,
         candidatesTokenCount: aggregatedResponse.usageMetadata.candidatesTokenCount ?? 0,
       },
-      fullResponseText
+      fullResponseText,
     );
   } else {
     onComplete({ promptTokenCount: 0, candidatesTokenCount: 0 }, fullResponseText);

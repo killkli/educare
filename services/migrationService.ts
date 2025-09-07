@@ -16,7 +16,7 @@ export type MigrationProgressCallback = (progress: MigrationProgress) => void;
  * 注意：只遷移助手設定和 RAG 資料，聊天記錄保留在本地 IndexedDB 以保護隱私
  */
 export const migrateIndexedDBToTurso = async (
-  onProgress?: MigrationProgressCallback
+  onProgress?: MigrationProgressCallback,
 ): Promise<{ success: boolean; error?: string; summary?: string }> => {
   try {
     onProgress?.({
@@ -120,7 +120,7 @@ export const migrateIndexedDBToTurso = async (
                   content: chunk.content,
                   createdAt: Date.now(),
                 },
-                chunk.vector
+                chunk.vector,
               );
 
               migratedChunks++;

@@ -31,3 +31,9 @@ dist-ssr
 
 # Plan
 IMPLEMENTATION_PLAN.md
+
+# Test files
+/test-documents/
+
+# Public assets
+/public/

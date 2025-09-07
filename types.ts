@@ -24,5 +24,6 @@ export interface ChatSession {
   title: string;
   messages: ChatMessage[];
   createdAt: number;
+  updatedAt?: number;
   tokenCount: number;
 }

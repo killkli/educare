@@ -19,7 +19,7 @@ interface ChatWindowProps {
     session: ChatSession,
     userMessage: string,
     modelResponse: string,
-    tokenInfo: { promptTokenCount: number; candidatesTokenCount: number }
+    tokenInfo: { promptTokenCount: number; candidatesTokenCount: number },
   ) => Promise<void>;
   hideHeader?: boolean; // 新增選項，在分享模式下隱藏標題
   sharedMode?: boolean; // 分享模式
@@ -75,7 +75,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         console.log(`✅ [RAG QUERY] Using TURSO results - Found ${tursoResults.length} chunks`);
         const relevantChunks = tursoResults.filter(chunk => chunk.similarity > 0.5);
         console.log(
-          `📊 [RAG QUERY] Filtered to ${relevantChunks.length} chunks with similarity > 0.5`
+          `📊 [RAG QUERY] Filtered to ${relevantChunks.length} chunks with similarity > 0.5`,
         );
 
         const contextString = relevantChunks
@@ -92,7 +92,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       if (ragChunks.length > 0) {
         setStatusText(`📊 分析 ${ragChunks.length} 個本地文件...`);
         console.log(
-          `🔍 [RAG QUERY] Using INDEXEDDB fallback - Processing ${ragChunks.length} local chunks`
+          `🔍 [RAG QUERY] Using INDEXEDDB fallback - Processing ${ragChunks.length} local chunks`,
         );
 
         const scoredChunks = ragChunks.map(chunk => ({
@@ -105,7 +105,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         const relevantChunks = topChunks.filter(chunk => chunk.similarity > 0.5);
 
         console.log(
-          `📊 [RAG QUERY] IndexedDB filtered to ${relevantChunks.length} chunks with similarity > 0.5`
+          `📊 [RAG QUERY] IndexedDB filtered to ${relevantChunks.length} chunks with similarity > 0.5`,
         );
 
         const contextString = relevantChunks
@@ -117,7 +117,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       }
 
       console.log(
-        '❌ [RAG QUERY] No context found - neither Turso nor IndexedDB had relevant data'
+        '❌ [RAG QUERY] No context found - neither Turso nor IndexedDB had relevant data',
       );
       return '';
     } catch (error) {
@@ -195,7 +195,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       setIsThinking(false);
       setStatusText('');
       setStreamingResponse(
-        `抱歉，發生錯誤。API 返回以下錯誤：\n\n${(error as Error).message}\n\n請檢查您的 API 密鑰和控制檯以取得更多細節。`
+        `抱歉，發生錯誤。API 返回以下錯誤：\n\n${(error as Error).message}\n\n請檢查您的 API 密鑰和控制檯以取得更多細節。`,
       );
     }
   };

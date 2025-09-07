@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Assistant, ChatSession, ChatMessage } from './types';
+import { Assistant, ChatSession } from './types';
 import * as db from './services/db';
 import AssistantEditor from './components/AssistantEditor';
 import ChatWindow from './components/ChatWindow';
@@ -62,7 +62,7 @@ const App: React.FC = () => {
         setViewMode('chat');
       }
     },
-    [handleNewSession]
+    [handleNewSession],
   );
 
   const loadData = useCallback(async () => {
@@ -182,20 +182,15 @@ const App: React.FC = () => {
   const handleNewMessage = async (
     session: ChatSession,
     userMessage: string,
-    modelResponse: string,
-    tokenInfo: { promptTokenCount: number; candidatesTokenCount: number }
+    _modelResponse: string,
+    _tokenInfo: { promptTokenCount: number; candidatesTokenCount: number },
   ) => {
-    const newMessages: ChatMessage[] = [
-      ...session.messages,
-      { role: 'user', content: userMessage },
-      { role: 'model', content: modelResponse },
-    ];
-
+    // ChatWindow 已經包含了完整的訊息，我們只需要更新標題（如果是第一則訊息）
     const updatedSession: ChatSession = {
       ...session,
-      messages: newMessages,
-      title: session.messages.length === 0 ? userMessage.substring(0, 40) : session.title,
-      tokenCount: session.tokenCount + tokenInfo.promptTokenCount + tokenInfo.candidatesTokenCount,
+      title:
+        session.title === 'New Chat' && userMessage ? userMessage.substring(0, 40) : session.title,
+      updatedAt: Date.now(),
     };
 
     await db.saveSession(updatedSession);

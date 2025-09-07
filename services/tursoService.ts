@@ -155,7 +155,7 @@ export const saveAssistantToTurso = async (assistant: TursoAssistant): Promise<v
 // 儲存 RAG chunk 含向量到 Turso
 export const saveRagChunkToTurso = async (
   chunk: TursoRagChunk,
-  embedding: number[]
+  embedding: number[],
 ): Promise<void> => {
   const client = getWriteClient(); // 需要寫入權限
 
@@ -184,13 +184,13 @@ export const saveRagChunkToTurso = async (
 export const searchSimilarChunks = async (
   assistantId: string,
   queryEmbedding: number[],
-  topK = 3
+  topK = 3,
 ): Promise<SimilarChunk[]> => {
   try {
     const client = getReadClient(); // 只需要讀取權限
 
     console.log(
-      `🔍 [TURSO VECTOR SEARCH] Starting search for assistant: ${assistantId}, topK: ${topK}`
+      `🔍 [TURSO VECTOR SEARCH] Starting search for assistant: ${assistantId}, topK: ${topK}`,
     );
 
     const vectorString = `[${queryEmbedding.join(',')}]`;
@@ -218,7 +218,7 @@ export const searchSimilarChunks = async (
         fileName: c.fileName,
         similarity: c.similarity.toFixed(4),
         contentLength: c.content.length,
-      }))
+      })),
     );
 
     return chunks;

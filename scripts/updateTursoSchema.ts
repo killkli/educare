@@ -39,7 +39,7 @@ async function updateSchema() {
       console.log('⚠️  WARNING: Found existing data with incorrect dimensions!');
       console.log('This data will be incompatible with the new 768-dimension schema.');
       console.log(
-        'Recommendation: Clear existing data or manually migrate with correct embeddings.'
+        'Recommendation: Clear existing data or manually migrate with correct embeddings.',
       );
 
       // 詢問是否要繼續（在腳本環境中，我們直接繼續並清除舊資料）

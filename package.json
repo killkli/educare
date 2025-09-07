@@ -43,6 +43,8 @@
     "@libsql/client": "^0.15.14",
     "highlight.js": "^11.11.1",
     "idb": "^8.0.3",
+    "mammoth": "^1.10.0",
+    "pdfjs-dist": "^5.4.149",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-markdown": "^10.1.0",

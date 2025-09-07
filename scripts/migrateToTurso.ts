@@ -49,7 +49,7 @@ export const migrateData = async () => {
               content: chunk.content,
               createdAt: Date.now(),
             },
-            chunk.vector
+            chunk.vector,
           );
 
           migratedChunks++;
@@ -67,7 +67,7 @@ export const migrateData = async () => {
     console.log(`  - Assistants: ${migratedAssistants}/${assistants.length}`);
     console.log(`  - RAG chunks: ${migratedChunks}/${totalChunks}`);
     console.log(
-      `  - Success rate: ${totalChunks > 0 ? ((migratedChunks / totalChunks) * 100).toFixed(1) : '100.0'}%`
+      `  - Success rate: ${totalChunks > 0 ? ((migratedChunks / totalChunks) * 100).toFixed(1) : '100.0'}%`,
     );
     console.log(`  - Errors: ${assistantErrors.length}`);
 

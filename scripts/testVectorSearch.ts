@@ -56,7 +56,7 @@ async function testVectorSearch() {
           content: chunk.content,
           createdAt: Date.now(),
         },
-        chunk.vector
+        chunk.vector,
       );
     }
 
@@ -80,7 +80,7 @@ async function testVectorSearch() {
       console.log('✅ Vector search test PASSED!');
       console.log(`   - Found ${searchResults.length} results`);
       console.log(
-        `   - Similarity scores: ${searchResults.map(r => r.similarity.toFixed(4)).join(', ')}`
+        `   - Similarity scores: ${searchResults.map(r => r.similarity.toFixed(4)).join(', ')}`,
       );
     } else {
       console.log('❌ Vector search test FAILED - No results returned');
