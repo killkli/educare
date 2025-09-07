@@ -66,7 +66,6 @@ export const initializeDatabase = async (): Promise<void> => {
       ON rag_chunks (libsql_vector_idx(embedding, 'metric=cosine'))
     `);
 
-
     console.log('Turso database initialized successfully');
   } catch (error) {
     console.error('Failed to initialize Turso database:', error);
@@ -79,8 +78,8 @@ export const saveAssistantToTurso = async (assistant: TursoAssistant): Promise<v
   try {
     // 首先檢查助手是否已存在
     const existingResult = await client.execute({
-      sql: `SELECT id FROM assistants WHERE id = ?`,
-      args: [assistant.id]
+      sql: 'SELECT id FROM assistants WHERE id = ?',
+      args: [assistant.id],
     });
 
     if (existingResult.rows.length > 0) {
@@ -89,14 +88,20 @@ export const saveAssistantToTurso = async (assistant: TursoAssistant): Promise<v
         sql: `UPDATE assistants 
               SET name = ?, description = ?, system_prompt = ?
               WHERE id = ?`,
-        args: [assistant.name, assistant.description, assistant.systemPrompt, assistant.id]
+        args: [assistant.name, assistant.description, assistant.systemPrompt, assistant.id],
       });
     } else {
       // 如果不存在，插入新記錄
       await client.execute({
         sql: `INSERT INTO assistants (id, name, description, system_prompt, created_at) 
               VALUES (?, ?, ?, ?, ?)`,
-        args: [assistant.id, assistant.name, assistant.description, assistant.systemPrompt, assistant.createdAt]
+        args: [
+          assistant.id,
+          assistant.name,
+          assistant.description,
+          assistant.systemPrompt,
+          assistant.createdAt,
+        ],
       });
     }
   } catch (error) {
@@ -112,7 +117,7 @@ export const saveRagChunkToTurso = async (
 ): Promise<void> => {
   try {
     const vectorString = `[${embedding.join(',')}]`;
-    
+
     await client.execute({
       sql: `INSERT OR REPLACE INTO rag_chunks (id, assistant_id, file_name, content, embedding, created_at) 
             VALUES (?, ?, ?, ?, vector(?), ?)`,
@@ -122,8 +127,8 @@ export const saveRagChunkToTurso = async (
         chunk.fileName,
         chunk.content,
         vectorString,
-        chunk.createdAt
-      ]
+        chunk.createdAt,
+      ],
     });
   } catch (error) {
     console.error('Failed to save RAG chunk to Turso:', error);
@@ -135,13 +140,15 @@ export const saveRagChunkToTurso = async (
 export const searchSimilarChunks = async (
   assistantId: string,
   queryEmbedding: number[],
-  topK: number = 3
+  topK = 3
 ): Promise<SimilarChunk[]> => {
   try {
-    console.log(`🔍 [TURSO VECTOR SEARCH] Starting search for assistant: ${assistantId}, topK: ${topK}`);
-    
+    console.log(
+      `🔍 [TURSO VECTOR SEARCH] Starting search for assistant: ${assistantId}, topK: ${topK}`
+    );
+
     const vectorString = `[${queryEmbedding.join(',')}]`;
-    
+
     // 使用 vector_distance_cos 函數取得實際的相似度分數
     const result = await client.execute({
       sql: `SELECT file_name, content, 
@@ -150,20 +157,23 @@ export const searchSimilarChunks = async (
             WHERE assistant_id = ?
             ORDER BY similarity DESC 
             LIMIT ?`,
-      args: [vectorString, assistantId, topK]
+      args: [vectorString, assistantId, topK],
     });
 
     const chunks = result.rows.map(row => ({
       fileName: row.file_name as string,
       content: row.content as string,
-      similarity: row.similarity as number
+      similarity: row.similarity as number,
     }));
 
-    console.log(`✅ [TURSO VECTOR SEARCH] Found ${chunks.length} chunks:`, chunks.map(c => ({
-      fileName: c.fileName,
-      similarity: c.similarity.toFixed(4),
-      contentLength: c.content.length
-    })));
+    console.log(
+      `✅ [TURSO VECTOR SEARCH] Found ${chunks.length} chunks:`,
+      chunks.map(c => ({
+        fileName: c.fileName,
+        similarity: c.similarity.toFixed(4),
+        contentLength: c.content.length,
+      }))
+    );
 
     return chunks;
   } catch (error) {
@@ -176,11 +186,13 @@ export const searchSimilarChunks = async (
 export const getAssistantFromTurso = async (id: string): Promise<TursoAssistant | null> => {
   try {
     const result = await client.execute({
-      sql: `SELECT * FROM assistants WHERE id = ?`,
-      args: [id]
+      sql: 'SELECT * FROM assistants WHERE id = ?',
+      args: [id],
     });
 
-    if (result.rows.length === 0) return null;
+    if (result.rows.length === 0) {
+      return null;
+    }
 
     const row = result.rows[0];
     return {
@@ -199,7 +211,7 @@ export const getAssistantFromTurso = async (id: string): Promise<TursoAssistant 
 // 取得所有助手
 export const getAllAssistantsFromTurso = async (): Promise<TursoAssistant[]> => {
   try {
-    const result = await client.execute(`SELECT * FROM assistants ORDER BY created_at DESC`);
+    const result = await client.execute('SELECT * FROM assistants ORDER BY created_at DESC');
 
     return result.rows.map(row => ({
       id: row.id as string,
@@ -219,8 +231,8 @@ export const deleteAssistantFromTurso = async (id: string): Promise<void> => {
   try {
     // 由於設定了 FOREIGN KEY ON DELETE CASCADE，刪除助手會自動刪除相關的 RAG chunks 和對話記錄
     await client.execute({
-      sql: `DELETE FROM assistants WHERE id = ?`,
-      args: [id]
+      sql: 'DELETE FROM assistants WHERE id = ?',
+      args: [id],
     });
   } catch (error) {
     console.error('Failed to delete assistant from Turso:', error);
@@ -232,10 +244,10 @@ export const deleteAssistantFromTurso = async (id: string): Promise<void> => {
 export const getRagChunkCount = async (assistantId: string): Promise<number> => {
   try {
     const result = await client.execute({
-      sql: `SELECT COUNT(*) as count FROM rag_chunks WHERE assistant_id = ?`,
-      args: [assistantId]
+      sql: 'SELECT COUNT(*) as count FROM rag_chunks WHERE assistant_id = ?',
+      args: [assistantId],
     });
-    
+
     return result.rows[0].count as number;
   } catch (error) {
     console.error('Failed to get RAG chunk count:', error);
@@ -247,8 +259,8 @@ export const getRagChunkCount = async (assistantId: string): Promise<number> => 
 export const clearAssistantRagChunks = async (assistantId: string): Promise<void> => {
   try {
     await client.execute({
-      sql: `DELETE FROM rag_chunks WHERE assistant_id = ?`,
-      args: [assistantId]
+      sql: 'DELETE FROM rag_chunks WHERE assistant_id = ?',
+      args: [assistantId],
     });
   } catch (error) {
     console.error('Failed to clear assistant RAG chunks:', error);

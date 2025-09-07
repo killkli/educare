@@ -1,0 +1,13 @@
+node_modules/
+dist/
+build/
+coverage/
+.vite/
+*.config.js
+*.config.ts
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+.git/
+*.min.js
+*.min.css

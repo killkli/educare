@@ -1,4 +1,4 @@
-import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, Chat, GenerateContentResponse } from '@google/genai';
 import { ChatMessage } from '../types';
 
 let ai: GoogleGenAI | null = null;
@@ -17,7 +17,7 @@ const getAi = (): GoogleGenAI | null => {
     if (apiKey) {
       ai = new GoogleGenAI({ apiKey });
     } else {
-      console.warn("API_KEY environment variable not set. Gemini features will be unavailable.");
+      console.warn('API_KEY environment variable not set. Gemini features will be unavailable.');
     }
   }
   return ai;
@@ -29,25 +29,29 @@ export const streamChat = async ({
   history,
   message,
   onChunk,
-  onComplete
+  onComplete,
 }: {
   systemPrompt: string;
   ragContext?: string;
   history: ChatMessage[];
   message: string;
   onChunk: (text: string) => void;
-  onComplete: (metadata: { promptTokenCount: number, candidatesTokenCount: number }, fullText: string) => void;
+  onComplete: (
+    metadata: { promptTokenCount: number; candidatesTokenCount: number },
+    fullText: string
+  ) => void;
 }) => {
   const genAI = getAi();
 
   if (!genAI) {
-    throw new Error("Gemini AI client is not initialized. Please ensure the API_KEY is correctly configured in the environment.");
+    throw new Error(
+      'Gemini AI client is not initialized. Please ensure the API_KEY is correctly configured in the environment.'
+    );
   }
 
   const MAX_HISTORY_MESSAGES = 20;
-  const truncatedHistory = history.length > MAX_HISTORY_MESSAGES
-    ? history.slice(-MAX_HISTORY_MESSAGES)
-    : history;
+  const truncatedHistory =
+    history.length > MAX_HISTORY_MESSAGES ? history.slice(-MAX_HISTORY_MESSAGES) : history;
 
   let finalSystemPrompt = systemPrompt;
   if (ragContext) {
@@ -62,7 +66,7 @@ export const streamChat = async ({
     },
     history: truncatedHistory.map(msg => ({
       role: msg.role,
-      parts: [{ text: msg.content }]
+      parts: [{ text: msg.content }],
     })),
   });
 
@@ -81,10 +85,13 @@ export const streamChat = async ({
   }
 
   if (aggregatedResponse && aggregatedResponse.usageMetadata) {
-    onComplete({
-      promptTokenCount: aggregatedResponse.usageMetadata.promptTokenCount ?? 0,
-      candidatesTokenCount: aggregatedResponse.usageMetadata.candidatesTokenCount ?? 0,
-    }, fullResponseText);
+    onComplete(
+      {
+        promptTokenCount: aggregatedResponse.usageMetadata.promptTokenCount ?? 0,
+        candidatesTokenCount: aggregatedResponse.usageMetadata.candidatesTokenCount ?? 0,
+      },
+      fullResponseText
+    );
   } else {
     onComplete({ promptTokenCount: 0, candidatesTokenCount: 0 }, fullResponseText);
   }
