@@ -70,9 +70,9 @@ const MigrationPanel: React.FC = () => {
   if (isLoading) {
     return (
       <div className='bg-gray-700 p-6 rounded-lg'>
-        <h3 className='text-lg font-semibold text-white mb-4'>Data Migration</h3>
+        <h3 className='text-lg font-semibold text-white mb-4'>資料遷移</h3>
         <div className='text-gray-400'>
-          <div className='animate-pulse'>Checking migration status...</div>
+          <div className='animate-pulse'>檢查遷移狀態...</div>
         </div>
       </div>
     );
@@ -81,10 +81,10 @@ const MigrationPanel: React.FC = () => {
   if (!migrationStatus?.hasIndexedDBData) {
     return (
       <div className='bg-gray-700 p-6 rounded-lg'>
-        <h3 className='text-lg font-semibold text-white mb-4'>Data Migration</h3>
+        <h3 className='text-lg font-semibold text-white mb-4'>資料遷移</h3>
         <div className='text-gray-400'>
-          <p>✅ No IndexedDB data found to migrate.</p>
-          <p className='text-sm mt-2'>Your data is already stored in Turso cloud database.</p>
+          <p>✅ 沒有找到需要遷移的 IndexedDB 資料。</p>
+          <p className='text-sm mt-2'>您的資料已儲存在 Turso 雲端資料庫中。</p>
         </div>
       </div>
     );
@@ -95,16 +95,16 @@ const MigrationPanel: React.FC = () => {
       <h3 className='text-lg font-semibold text-white mb-4'>Data Migration</h3>
 
       <div className='mb-4'>
-        <p className='text-gray-300 mb-2'>📊 Data to Migrate to Turso Cloud:</p>
+        <p className='text-gray-300 mb-2'>📊 要遷移到 Turso 雲端的資料：</p>
         <ul className='text-sm text-gray-400 space-y-1'>
-          <li>• {migrationStatus.assistantCount} assistant settings</li>
-          <li>• {migrationStatus.totalChunks} RAG knowledge chunks</li>
+          <li>• {migrationStatus.assistantCount} 個助理設定</li>
+          <li>• {migrationStatus.totalChunks} 個 RAG 知識區塊</li>
         </ul>
 
         <div className='mt-3 p-3 bg-blue-800 bg-opacity-30 rounded-md border border-blue-600'>
           <p className='text-blue-200 text-sm'>
-            🔒 <strong>Privacy Note:</strong> Only assistant settings and RAG data will be migrated.
-            Your chat history remains private on your device.
+            🔒 <strong>隱私說明：</strong>僅會遷移助理設定和 RAG 資料。
+            您的聊天記錄仍在您的裝置上保持私密。
           </p>
         </div>
       </div>
@@ -112,14 +112,13 @@ const MigrationPanel: React.FC = () => {
       {!isMigrating && !migrationResult && (
         <div className='mb-4'>
           <p className='text-yellow-400 text-sm mb-3'>
-            💡 Migrate assistant settings and RAG data to Turso for better vector search performance
-            and cross-device sync.
+            💡 將助理設定和 RAG 資料遷移到 Turso，以獲得更好的向量搜尋效能 和跨裝置同步。
           </p>
           <button
             onClick={handleMigration}
             className='px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-semibold rounded-md transition-colors'
           >
-            Start Migration to Turso
+            開始遷移到 Turso
           </button>
         </div>
       )}
@@ -168,7 +167,7 @@ const MigrationPanel: React.FC = () => {
                   migrationResult.success ? 'text-green-200' : 'text-red-200'
                 }`}
               >
-                {migrationResult.success ? 'Migration Completed!' : 'Migration Failed'}
+                {migrationResult.success ? '遷移完成！' : '遷移失敗'}
               </p>
 
               {migrationResult.summary && (
@@ -188,7 +187,7 @@ const MigrationPanel: React.FC = () => {
                       migrationResult.success ? 'text-green-300' : 'text-red-300'
                     }`}
                   >
-                    View Error Details
+                    查看錯誤詳細資訊
                   </summary>
                   <pre
                     className={`text-xs mt-1 p-2 bg-gray-900 rounded whitespace-pre-wrap ${
@@ -202,7 +201,7 @@ const MigrationPanel: React.FC = () => {
 
               {migrationResult.success && (
                 <p className='text-green-300 text-sm mt-2'>
-                  🎉 Your data is now stored in Turso cloud database with native vector search!
+                  🎉 您的資料現在儲存在 Turso 雲端資料庫中，具有原生向量搜尋功能！
                 </p>
               )}
             </div>
@@ -211,10 +210,8 @@ const MigrationPanel: React.FC = () => {
       )}
 
       <div className='text-xs text-gray-500'>
-        <p>ℹ️ This migration copies assistant settings and RAG data to Turso cloud database.</p>
-        <p>
-          Chat history stays private on your device. Your local data remains unchanged for safety.
-        </p>
+        <p>ℹ️ 此遷移會將助理設定和 RAG 資料複製到 Turso 雲端資料庫。</p>
+        <p>聊天記錄仍在您的裝置上保持私密。為了安全起見，您的本地資料保持不變。</p>
       </div>
     </div>
   );

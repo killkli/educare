@@ -1,15 +1,53 @@
 import { createClient } from '@libsql/client';
+import { ApiKeyManager } from './apiKeyManager';
 
-// 建立客戶端實例的工廠函數
-const createTursoClient = () => {
-  // 在瀏覽器環境中，process.env 會被 Vite 替換為編譯時的值
+// 建立客戶端實例的工廠函數 - 支援動態配置
+const createTursoClient = (mode: 'read' | 'write') => {
+  let config;
+
+  if (mode === 'write') {
+    // 寫入模式：使用用戶提供的配置
+    const writeConfig = ApiKeyManager.getTursoWriteConfig();
+    if (!writeConfig) {
+      throw new Error('請先在設定中配置 Turso 寫入權限才能儲存資料。');
+    }
+    config = writeConfig;
+  } else {
+    // 讀取模式：優先使用用戶配置，否則使用內建只讀配置
+    const userConfig = ApiKeyManager.getTursoWriteConfig();
+    const readConfig = ApiKeyManager.getTursoReadConfig();
+    config = userConfig || readConfig;
+
+    if (!config) {
+      throw new Error('無法連接到 Turso 資料庫，請檢查配置。');
+    }
+  }
+
   return createClient({
-    url: process.env.TURSO_URL!,
-    authToken: process.env.TURSOAPI_KEY!,
+    url: config.url,
+    authToken: config.authToken,
   });
 };
 
-const client = createTursoClient();
+// 獲取讀取客戶端（優先用戶配置，後備內建只讀）
+const getReadClient = () => createTursoClient('read');
+
+// 獲取寫入客戶端（必須用戶配置）
+const getWriteClient = () => createTursoClient('write');
+
+/**
+ * 檢查是否可以寫入 Turso
+ */
+export const canWriteToTurso = (): boolean => {
+  return ApiKeyManager.hasTursoWriteAccess();
+};
+
+/**
+ * 檢查是否可以從 Turso 讀取
+ */
+export const canReadFromTurso = (): boolean => {
+  return ApiKeyManager.hasTursoWriteAccess() || !!ApiKeyManager.getTursoReadConfig();
+};
 
 export interface TursoAssistant {
   id: string;
@@ -36,6 +74,8 @@ export interface SimilarChunk {
 // 初始化資料庫結構
 export const initializeDatabase = async (): Promise<void> => {
   try {
+    const client = getWriteClient(); // 需要寫入權限來建立表格
+
     // 建立助手資料表
     await client.execute(`
       CREATE TABLE IF NOT EXISTS assistants (
@@ -75,6 +115,8 @@ export const initializeDatabase = async (): Promise<void> => {
 
 // 儲存助手到 Turso - 避免使用 INSERT OR REPLACE 防止觸發 CASCADE 刪除 RAG chunks
 export const saveAssistantToTurso = async (assistant: TursoAssistant): Promise<void> => {
+  const client = getWriteClient(); // 需要寫入權限
+
   try {
     // 首先檢查助手是否已存在
     const existingResult = await client.execute({
@@ -115,6 +157,8 @@ export const saveRagChunkToTurso = async (
   chunk: TursoRagChunk,
   embedding: number[]
 ): Promise<void> => {
+  const client = getWriteClient(); // 需要寫入權限
+
   try {
     const vectorString = `[${embedding.join(',')}]`;
 
@@ -143,6 +187,8 @@ export const searchSimilarChunks = async (
   topK = 3
 ): Promise<SimilarChunk[]> => {
   try {
+    const client = getReadClient(); // 只需要讀取權限
+
     console.log(
       `🔍 [TURSO VECTOR SEARCH] Starting search for assistant: ${assistantId}, topK: ${topK}`
     );
@@ -185,6 +231,8 @@ export const searchSimilarChunks = async (
 // 取得助手資料
 export const getAssistantFromTurso = async (id: string): Promise<TursoAssistant | null> => {
   try {
+    const client = getReadClient(); // 只需要讀取權限
+
     const result = await client.execute({
       sql: 'SELECT * FROM assistants WHERE id = ?',
       args: [id],
@@ -211,6 +259,8 @@ export const getAssistantFromTurso = async (id: string): Promise<TursoAssistant 
 // 取得所有助手
 export const getAllAssistantsFromTurso = async (): Promise<TursoAssistant[]> => {
   try {
+    const client = getReadClient(); // 只需要讀取權限
+
     const result = await client.execute('SELECT * FROM assistants ORDER BY created_at DESC');
 
     return result.rows.map(row => ({
@@ -228,6 +278,8 @@ export const getAllAssistantsFromTurso = async (): Promise<TursoAssistant[]> => 
 
 // 刪除助手及其相關資料
 export const deleteAssistantFromTurso = async (id: string): Promise<void> => {
+  const client = getWriteClient(); // 需要寫入權限
+
   try {
     // 由於設定了 FOREIGN KEY ON DELETE CASCADE，刪除助手會自動刪除相關的 RAG chunks 和對話記錄
     await client.execute({
@@ -243,6 +295,8 @@ export const deleteAssistantFromTurso = async (id: string): Promise<void> => {
 // 取得助手的 RAG chunks 數量
 export const getRagChunkCount = async (assistantId: string): Promise<number> => {
   try {
+    const client = getReadClient(); // 只需要讀取權限
+
     const result = await client.execute({
       sql: 'SELECT COUNT(*) as count FROM rag_chunks WHERE assistant_id = ?',
       args: [assistantId],
@@ -257,6 +311,8 @@ export const getRagChunkCount = async (assistantId: string): Promise<number> => 
 
 // 清除助手的所有 RAG chunks
 export const clearAssistantRagChunks = async (assistantId: string): Promise<void> => {
+  const client = getWriteClient(); // 需要寫入權限
+
   try {
     await client.execute({
       sql: 'DELETE FROM rag_chunks WHERE assistant_id = ?',
