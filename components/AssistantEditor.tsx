@@ -6,6 +6,8 @@ import {
   getRagChunkCount,
   saveAssistantToTurso,
 } from '../services/tursoService';
+import { CryptoService } from '../services/cryptoService';
+import { ApiKeyManager } from '../services/apiKeyManager';
 
 interface AssistantEditorProps {
   assistant: Assistant | null;
@@ -57,6 +59,10 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
     type: 'success' | 'info';
     message: string;
   } | null>(null);
+  const [showAdvancedShare, setShowAdvancedShare] = useState(false);
+  const [shareWithApiKeys, setShareWithApiKeys] = useState(false);
+  const [sharePassword, setSharePassword] = useState('');
+  const [isGeneratingShare, setIsGeneratingShare] = useState(false);
 
   useEffect(() => {
     if (assistant) {
@@ -215,29 +221,63 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
       return;
     }
 
-    // 生成分享連結 URL
-    const shareUrl = `${window.location.origin}${window.location.pathname}?share=${assistant.id}`;
+    if (shareWithApiKeys && !sharePassword.trim()) {
+      setShareStatus({
+        type: 'info',
+        message: '分享 API 金鑰時需要設定密碼。',
+      });
+      setTimeout(() => setShareStatus(null), 3000);
+      return;
+    }
+
+    setIsGeneratingShare(true);
 
     try {
+      let shareUrl = `${window.location.origin}${window.location.pathname}?share=${assistant.id}`;
+
+      if (shareWithApiKeys) {
+        // 獲取當前用戶的 API 金鑰
+        const userApiKeys = ApiKeyManager.getUserApiKeys();
+
+        if (!userApiKeys.geminiApiKey && !userApiKeys.tursoWriteApiKey) {
+          setShareStatus({
+            type: 'info',
+            message: '沒有可分享的 API 金鑰。請先在設定中配置您的 API 金鑰。',
+          });
+          setTimeout(() => setShareStatus(null), 3000);
+          return;
+        }
+
+        // 加密 API 金鑰
+        const encryptedApiKeys = await CryptoService.encryptApiKeys(userApiKeys, sharePassword);
+        shareUrl += `&keys=${encryptedApiKeys}`;
+      }
+
       // 複製到剪貼板
       await navigator.clipboard.writeText(shareUrl);
 
+      let successMessage = `分享連結已複製到剪貼簿！任何有此連結的人都可以與 ${assistant.name} 聊天。`;
+
+      if (shareWithApiKeys) {
+        successMessage += `\n\n🔐 此連結包含加密的 API 金鑰，請將密碼 "${sharePassword}" 分別傳送給接收者。`;
+      }
+
       setShareStatus({
         type: 'success',
-        message: `分享連結已複製到剪貼簿！任何有此連結的人都可以與 ${assistant.name} 聊天。`,
+        message: successMessage,
       });
 
-      // 5秒後自動清除狀態
-      setTimeout(() => setShareStatus(null), 5000);
-    } catch {
-      // 如果剪貼板 API 失敗，顯示 URL 讓用戶手動複製
+      // 10秒後自動清除狀態
+      setTimeout(() => setShareStatus(null), 10000);
+    } catch (error) {
+      console.error('生成分享連結失敗:', error);
       setShareStatus({
         type: 'info',
-        message: `分享連結：${shareUrl}`,
+        message: '生成分享連結失敗，請稍後再試。',
       });
-
-      // 10秒後清除，給用戶足夠時間複製
-      setTimeout(() => setShareStatus(null), 10000);
+      setTimeout(() => setShareStatus(null), 5000);
+    } finally {
+      setIsGeneratingShare(false);
     }
   };
 
@@ -275,7 +315,7 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
     onSave(newAssistant);
   };
 
-  const fileNames = [...new Set(ragChunks.map(c => c.fileName))];
+  const fileNames: string[] = [...new Set<string>(ragChunks.map((c: RagChunk) => c.fileName))];
 
   return (
     <div className='flex flex-col h-full bg-gray-800 p-6 overflow-y-auto'>
@@ -410,16 +450,78 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({ assistant, onSave, on
       </div>
 
       <div className='mt-auto flex justify-between items-center'>
-        {/* Left side - Share button (only show for existing assistants) */}
+        {/* Left side - Share section (only show for existing assistants) */}
         <div className='flex-1'>
           {assistant && (
-            <button
-              onClick={generateShareLink}
-              className='px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white font-semibold flex items-center space-x-2'
-            >
-              <span>🔗</span>
-              <span>生成分享連結</span>
-            </button>
+            <div className='space-y-2'>
+              <div className='flex items-center space-x-2'>
+                <button
+                  onClick={generateShareLink}
+                  disabled={isGeneratingShare}
+                  className='px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white font-semibold flex items-center space-x-2 disabled:opacity-50'
+                >
+                  <span>🔗</span>
+                  <span>{isGeneratingShare ? '生成中...' : '生成分享連結'}</span>
+                </button>
+                <button
+                  onClick={() => setShowAdvancedShare(!showAdvancedShare)}
+                  className='px-2 py-2 text-gray-400 hover:text-white transition-colors'
+                  title='高級分享選項'
+                >
+                  ⚙️
+                </button>
+              </div>
+
+              {showAdvancedShare && (
+                <div className='bg-gray-700 rounded-lg p-3 space-y-3'>
+                  <h4 className='text-sm font-semibold text-white'>高級分享選項</h4>
+
+                  <div className='flex items-center space-x-2'>
+                    <input
+                      type='checkbox'
+                      id='shareWithApiKeys'
+                      checked={shareWithApiKeys}
+                      onChange={e => {
+                        setShareWithApiKeys(e.target.checked);
+                        if (e.target.checked && !sharePassword) {
+                          setSharePassword(CryptoService.generateRandomPassword());
+                        }
+                      }}
+                      className='text-blue-600'
+                    />
+                    <label htmlFor='shareWithApiKeys' className='text-sm text-gray-300'>
+                      包含我的 API 金鑰（讓接收者無需配置即可使用）
+                    </label>
+                  </div>
+
+                  {shareWithApiKeys && (
+                    <div className='space-y-2'>
+                      <label className='block text-xs text-gray-400'>
+                        分享密碼（用於加密 API 金鑰）
+                      </label>
+                      <div className='flex space-x-2'>
+                        <input
+                          type='text'
+                          value={sharePassword}
+                          onChange={e => setSharePassword(e.target.value)}
+                          className='flex-1 bg-gray-600 border border-gray-500 rounded px-2 py-1 text-white text-sm'
+                          placeholder='輸入密碼'
+                        />
+                        <button
+                          onClick={() => setSharePassword(CryptoService.generateRandomPassword())}
+                          className='px-2 py-1 bg-gray-500 hover:bg-gray-400 text-white rounded text-xs'
+                        >
+                          重新生成
+                        </button>
+                      </div>
+                      <p className='text-xs text-yellow-400'>
+                        ⚠️ 請將此密碼與分享連結分開傳送給接收者
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </div>
 

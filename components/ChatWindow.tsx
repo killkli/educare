@@ -213,7 +213,17 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         rehypePlugins={[rehypeHighlight]}
         components={{
           // 自定義 code 區塊樣式
-          code({ inline, className, children, ...props }) {
+          code({
+            inline,
+            className,
+            children,
+            ...props
+          }: {
+            inline?: boolean;
+            className?: string;
+            children: React.ReactNode;
+            [key: string]: unknown;
+          }) {
             const match = /language-(\w+)/.exec(className || '');
             const language = match ? match[1] : '';
 
