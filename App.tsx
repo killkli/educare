@@ -11,6 +11,7 @@ import { isGeminiAvailable } from './services/geminiService';
 import { canWriteToTurso } from './services/tursoService';
 import { preloadEmbeddingModel, isEmbeddingModelLoaded } from './services/embeddingService';
 import { ModelLoadingOverlay } from './components/ModelLoadingOverlay';
+import { ShareModal } from './components/ShareModal';
 
 type ViewMode = 'chat' | 'edit_assistant' | 'new_assistant' | 'settings' | 'api_setup';
 
@@ -32,6 +33,8 @@ const App: React.FC = () => {
     progress: number;
     name?: string;
   } | null>(null);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [assistantToShare, setAssistantToShare] = useState<Assistant | null>(null);
 
   const handleNewSession = useCallback(async (assistantId: string) => {
     const newSession: ChatSession = {
@@ -198,6 +201,11 @@ const App: React.FC = () => {
     setSessions(prev => prev.map(s => (s.id === updatedSession.id ? updatedSession : s)));
   };
 
+  const handleQuickShare = (assistant: Assistant) => {
+    setAssistantToShare(assistant);
+    setShareModalOpen(true);
+  };
+
   return (
     <div className='flex h-screen font-sans bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 relative'>
       {/* Mobile Sidebar Overlay */}
@@ -282,6 +290,28 @@ const App: React.FC = () => {
                     <button
                       onClick={e => {
                         e.stopPropagation();
+                        handleQuickShare(asst);
+                      }}
+                      className='p-1.5 text-gray-400 hover:text-blue-400 rounded-md hover:bg-blue-500/20 transition-colors'
+                      title='快速分享'
+                    >
+                      <svg
+                        className='w-4 h-4'
+                        fill='none'
+                        stroke='currentColor'
+                        viewBox='0 0 24 24'
+                      >
+                        <path
+                          strokeLinecap='round'
+                          strokeLinejoin='round'
+                          strokeWidth={2}
+                          d='M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z'
+                        />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
                         setViewMode('edit_assistant');
                         setCurrentAssistant(asst);
                       }}
@@ -335,13 +365,23 @@ const App: React.FC = () => {
                     >
                       <ChatIcon className='w-4 h-4 text-white' />
                     </div>
-                    <span className='flex-1 truncate font-medium'>{sess.title}</span>
+                    <div className='flex-1 min-w-0'>
+                      <div className='truncate font-medium text-white'>{sess.title}</div>
+                      <div className='text-xs text-gray-400 mt-1'>
+                        {new Date(sess.updatedAt || sess.createdAt).toLocaleString('zh-TW', {
+                          month: 'numeric',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </div>
+                    </div>
                     <button
                       onClick={e => {
                         e.stopPropagation();
                         handleDeleteSession(sess.id);
                       }}
-                      className='opacity-0 group-hover:opacity-100 p-1.5 text-gray-400 hover:text-red-400 rounded-md hover:bg-red-500/20 transition-all duration-200'
+                      className='opacity-0 group-hover:opacity-100 p-1.5 text-gray-400 hover:text-red-400 rounded-md hover:bg-red-500/20 transition-all duration-200 ml-2'
                       title='刪除聊天'
                     >
                       <TrashIcon className='w-4 h-4' />
@@ -411,6 +451,7 @@ const App: React.FC = () => {
                   setViewMode('chat');
                 }
               }}
+              onShare={handleQuickShare}
             />
           )}
           {viewMode === 'edit_assistant' && currentAssistant && (
@@ -418,6 +459,7 @@ const App: React.FC = () => {
               assistant={currentAssistant}
               onSave={handleSaveAssistant}
               onCancel={() => setViewMode('chat')}
+              onShare={handleQuickShare}
             />
           )}
           {viewMode === 'chat' && currentAssistant && currentSession && (
@@ -543,6 +585,18 @@ const App: React.FC = () => {
         isVisible={isModelLoading}
         progress={modelLoadingProgress || undefined}
       />
+
+      {/* Share Modal */}
+      {assistantToShare && (
+        <ShareModal
+          isOpen={shareModalOpen}
+          onClose={() => {
+            setShareModalOpen(false);
+            setAssistantToShare(null);
+          }}
+          assistant={assistantToShare}
+        />
+      )}
     </div>
   );
 };
