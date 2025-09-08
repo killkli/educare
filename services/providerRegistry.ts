@@ -26,14 +26,10 @@ export async function initializeProviders(): Promise<void> {
   try {
     // Dynamic imports to avoid circular dependencies
     // Load safe providers first
-    const [{ GeminiProvider }, { TestProvider }] = await Promise.all([
-      import('./providers/geminiProvider'),
-      import('./providers/testProvider'),
-    ]);
+    const [{ GeminiProvider }] = await Promise.all([import('./providers/geminiProvider')]);
 
     // Register safe providers first
     providerManagerInstance.registerProvider('gemini', new GeminiProvider());
-    providerManagerInstance.registerProvider('test', new TestProvider());
 
     // Load native providers (no LLM.js dependencies)
     const nativeProviders = [
@@ -54,7 +50,6 @@ export async function initializeProviders(): Promise<void> {
         className: 'OllamaNativeProvider',
       },
       { name: 'groq', module: './providers/groqNativeProvider', className: 'GroqNativeProvider' },
-      { name: 'grok', module: './providers/grokProvider', className: 'GrokProvider' },
     ];
 
     for (const { name, module, className } of nativeProviders) {
