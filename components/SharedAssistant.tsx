@@ -201,7 +201,7 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
     <div className='h-screen bg-gray-900 flex flex-col'>
       {/* API 金鑰解密模態對話框 */}
       {showApiKeyInput && (
-        <div className='fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4'>
+        <div className='fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto max-h-[70vh]'>
           <div className='bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl p-8 max-w-lg w-full shadow-2xl border border-gray-700/50'>
             <div className='text-center mb-6'>
               <div className='w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full flex items-center justify-center'>

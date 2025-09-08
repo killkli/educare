@@ -26,6 +26,7 @@
     "test-sharing": "tsx scripts/testSharing.ts",
     "add-description-field": "tsx scripts/addDescriptionField.ts",
     "prepare": "husky",
+    "deploy": "pnpm run build && gh-pages -d dist -r https://github.com/killkli/chatbot-test.git",
     "lint-staged": "lint-staged"
   },
   "lint-staged": {
