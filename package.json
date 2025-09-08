@@ -42,6 +42,7 @@
     "@google/genai": "^1.17.0",
     "@huggingface/transformers": "latest",
     "@libsql/client": "^0.15.14",
+    "@themaximalist/llm.js": "^1.0.1",
     "@types/qrcode": "^1.5.5",
     "highlight.js": "^11.11.1",
     "idb": "^8.0.3",
