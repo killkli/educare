@@ -1,5 +1,5 @@
 import { ChatMessage } from '../types';
-import { providerManager } from './providerRegistry';
+import { providerManager, initializeProviders } from './providerRegistry';
 
 export interface StreamChatParams {
   systemPrompt: string;
@@ -17,7 +17,6 @@ export const streamChat = async (params: StreamChatParams) => {
   const { systemPrompt, ragContext, history, message, onChunk, onComplete } = params;
 
   // Ensure providers are initialized
-  const { initializeProviders } = await import('./providerRegistry');
   await initializeProviders();
 
   const activeProvider = providerManager.getActiveProvider();
