@@ -7,13 +7,20 @@ import MigrationPanel from './components/MigrationPanel';
 import SharedAssistant from './components/SharedAssistant';
 import ApiKeySetup from './components/ApiKeySetup';
 import { PlusIcon, ChatIcon, TrashIcon, EditIcon, SettingsIcon } from './components/Icons';
-import { isGeminiAvailable } from './services/geminiService';
 import { canWriteToTurso } from './services/tursoService';
+import { providerManager, initializeProviders } from './services/providerRegistry';
+import ProviderSettings from './components/ProviderSettings';
 import { preloadEmbeddingModel, isEmbeddingModelLoaded } from './services/embeddingService';
 import { ModelLoadingOverlay } from './components/ModelLoadingOverlay';
 import { ShareModal } from './components/ShareModal';
 
-type ViewMode = 'chat' | 'edit_assistant' | 'new_assistant' | 'settings' | 'api_setup';
+type ViewMode =
+  | 'chat'
+  | 'edit_assistant'
+  | 'new_assistant'
+  | 'settings'
+  | 'api_setup'
+  | 'provider_settings';
 
 const App: React.FC = () => {
   const [assistants, setAssistants] = useState<Assistant[]>([]);
@@ -75,6 +82,11 @@ const App: React.FC = () => {
       setAssistants(storedAssistants.sort((a, b) => b.createdAt - a.createdAt));
 
       // Check if embedding model is loaded, if not, preload it
+      // Initialize providers asynchronously
+      initializeProviders().catch(error => {
+        console.error('❌ Failed to initialize providers:', error);
+      });
+
       if (!isEmbeddingModelLoaded()) {
         setIsModelLoading(true);
         try {
@@ -409,7 +421,7 @@ const App: React.FC = () => {
       </div>
 
       {/* Main Content */}
-      <main className='flex-1 bg-gradient-to-br from-gray-800 to-gray-900 backdrop-blur-sm flex flex-col min-w-0'>
+      <main className='flex-1 bg-gradient-to-br from-gray-800 to-gray-900 backdrop-blur-sm flex flex-col min-w-0 relative'>
         {/* Top Bar with Hamburger Menu */}
         {isMobile && !isSidebarOpen && (
           <div className='flex items-center p-4 border-b border-gray-700/50 bg-gray-800/80 backdrop-blur-sm'>
@@ -435,13 +447,15 @@ const App: React.FC = () => {
                     ? '編輯助理'
                     : viewMode === 'settings'
                       ? '設定'
-                      : '專業助理'}
+                      : viewMode === 'provider_settings'
+                        ? 'AI 服務商'
+                        : '專業助理'}
             </h2>
           </div>
         )}
 
         {/* Content Area */}
-        <div className='flex-1 overflow-hidden'>
+        <div className='flex-1'>
           {viewMode === 'new_assistant' && (
             <AssistantEditor
               assistant={null}
@@ -476,27 +490,33 @@ const App: React.FC = () => {
             <div className='p-6 bg-gray-800 h-full overflow-y-auto'>
               <h2 className='text-2xl font-bold mb-6 text-white'>設定</h2>
 
-              {/* API 金鑰設定 */}
+              {/* 服務狀態 */}
               <div className='mb-6 bg-gray-700 rounded-lg p-4'>
-                <h3 className='text-lg font-semibold text-white mb-4'>API 金鑰配置</h3>
+                <h3 className='text-lg font-semibold text-white mb-4'>服務狀態</h3>
                 <div className='grid grid-cols-1 md:grid-cols-2 gap-4 mb-4'>
                   <div
                     className={`p-3 rounded-md border-2 ${
-                      isGeminiAvailable()
+                      providerManager.getAvailableProviders().length > 0
                         ? 'border-green-500 bg-green-800 bg-opacity-20'
                         : 'border-yellow-500 bg-yellow-800 bg-opacity-20'
                     }`}
                   >
                     <div className='flex items-center mb-2'>
-                      <span className='text-lg mr-2'>{isGeminiAvailable() ? '✅' : '⚠️'}</span>
-                      <span className='font-medium text-white'>Gemini AI</span>
+                      <span className='text-lg mr-2'>
+                        {providerManager.getAvailableProviders().length > 0 ? '✅' : '⚠️'}
+                      </span>
+                      <span className='font-medium text-white'>AI 服務商</span>
                     </div>
                     <p
                       className={`text-sm ${
-                        isGeminiAvailable() ? 'text-green-200' : 'text-yellow-200'
+                        providerManager.getAvailableProviders().length > 0
+                          ? 'text-green-200'
+                          : 'text-yellow-200'
                       }`}
                     >
-                      {isGeminiAvailable() ? '可以使用聊天功能' : '需要配置才能聊天'}
+                      {providerManager.getAvailableProviders().length > 0
+                        ? `${providerManager.getAvailableProviders().length} 個服務商可用`
+                        : '需要配置 AI 服務商'}
                     </p>
                   </div>
                   <div
@@ -519,12 +539,20 @@ const App: React.FC = () => {
                     </p>
                   </div>
                 </div>
-                <button
-                  onClick={() => setViewMode('api_setup')}
-                  className='px-6 py-3 bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 text-white rounded-xl font-medium shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5'
-                >
-                  配置 API 金鑰
-                </button>
+                <div className='flex gap-3'>
+                  <button
+                    onClick={() => setViewMode('provider_settings')}
+                    className='flex-1 px-6 py-3 bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 text-white rounded-xl font-medium shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5'
+                  >
+                    AI 服務商設定
+                  </button>
+                  <button
+                    onClick={() => setViewMode('api_setup')}
+                    className='flex-1 px-6 py-3 bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 text-white rounded-xl font-medium shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5'
+                  >
+                    資料庫設定
+                  </button>
+                </div>
               </div>
 
               {/* Turso Migration Panel */}
@@ -541,6 +569,11 @@ const App: React.FC = () => {
               />
             </div>
           )}
+          {viewMode === 'provider_settings' && (
+            <div className='bg-gray-800 absolute inset-0 overflow-y-auto'>
+              <ProviderSettings onClose={() => setViewMode('settings')} />
+            </div>
+          )}
           {isLoading && (
             <div className='flex flex-col items-center justify-center h-full text-gray-400 p-8'>
               <div className='w-16 h-16 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mb-4'></div>
@@ -548,35 +581,39 @@ const App: React.FC = () => {
               <p className='text-sm text-gray-500 mt-2'>正在從資料庫讀取您的助理資料</p>
             </div>
           )}
-          {!currentAssistant && !isLoading && viewMode !== 'new_assistant' && (
-            <div className='flex flex-col items-center justify-center h-full text-gray-400 p-8'>
-              <div className='w-20 h-20 bg-gray-700 rounded-full flex items-center justify-center mb-6'>
-                <svg
-                  className='w-10 h-10 text-gray-500'
-                  fill='none'
-                  stroke='currentColor'
-                  viewBox='0 0 24 24'
+          {!currentAssistant &&
+            !isLoading &&
+            viewMode !== 'new_assistant' &&
+            viewMode !== 'settings' &&
+            viewMode !== 'provider_settings' && (
+              <div className='flex flex-col items-center justify-center h-full text-gray-400 p-8'>
+                <div className='w-20 h-20 bg-gray-700 rounded-full flex items-center justify-center mb-6'>
+                  <svg
+                    className='w-10 h-10 text-gray-500'
+                    fill='none'
+                    stroke='currentColor'
+                    viewBox='0 0 24 24'
+                  >
+                    <path
+                      strokeLinecap='round'
+                      strokeLinejoin='round'
+                      strokeWidth={2}
+                      d='M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z'
+                    />
+                  </svg>
+                </div>
+                <h3 className='text-xl font-semibold text-white mb-2'>歡迎使用專業助理</h3>
+                <p className='text-gray-400 mb-6 text-center max-w-md'>
+                  還沒有任何助理。創建您的第一個 AI 助理開始聊天吧！
+                </p>
+                <button
+                  onClick={() => setViewMode('new_assistant')}
+                  className='px-6 py-3 bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5'
                 >
-                  <path
-                    strokeLinecap='round'
-                    strokeLinejoin='round'
-                    strokeWidth={2}
-                    d='M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z'
-                  />
-                </svg>
+                  新增您的第一個助理
+                </button>
               </div>
-              <h3 className='text-xl font-semibold text-white mb-2'>歡迎使用專業助理</h3>
-              <p className='text-gray-400 mb-6 text-center max-w-md'>
-                還沒有任何助理。創建您的第一個 AI 助理開始聊天吧！
-              </p>
-              <button
-                onClick={() => setViewMode('new_assistant')}
-                className='px-6 py-3 bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5'
-              >
-                新增您的第一個助理
-              </button>
-            </div>
-          )}
+            )}
         </div>
       </main>
 
