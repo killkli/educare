@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import { Assistant } from '../types';
 import { CryptoService } from '../services/cryptoService';
 import { ApiKeyManager } from '../services/apiKeyManager';
+import { saveAssistantToTurso } from '../services/tursoService';
 
 interface ShareModalProps {
   isOpen: boolean;
@@ -27,6 +28,15 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
     setShareStatus(null);
 
     try {
+      // 將助理儲存到 Turso
+      await saveAssistantToTurso({
+        id: assistant.id,
+        name: assistant.name,
+        description: assistant.description || '', // 確保 description 不為 undefined
+        systemPrompt: assistant.systemPrompt,
+        createdAt: assistant.createdAt || Date.now(), // 確保 createdAt 已設定
+      });
+
       let url = `${window.location.origin}${window.location.pathname}?share=${assistant.id}`;
 
       if (shareWithApiKeys) {
@@ -74,15 +84,23 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
         message: '分享連結生成成功！',
       });
     } catch (error) {
-      console.error('生成分享連結失敗:', error);
+      console.error('生成分享連結失敗:', error.message, error);
       setShareStatus({
         type: 'error',
-        message: '生成分享連結失敗，請稍後再試。',
+        message: `生成分享連結失敗，請檢查 Turso 配置並稍後再試。錯誤: ${error.message}`,
       });
     } finally {
       setIsGenerating(false);
     }
-  }, [assistant.id, shareWithApiKeys, sharePassword]);
+  }, [
+    assistant.id,
+    shareWithApiKeys,
+    sharePassword,
+    assistant.name,
+    assistant.description,
+    assistant.systemPrompt,
+    assistant.createdAt,
+  ]);
 
   // 複製到剪貼簿
   const handleCopyLink = async () => {
@@ -113,7 +131,6 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
   useEffect(() => {
     if (isOpen && assistant) {
       generateShareLink();
-      setSharePassword(CryptoService.generateRandomPassword());
     }
   }, [isOpen, assistant, generateShareLink]);
 
