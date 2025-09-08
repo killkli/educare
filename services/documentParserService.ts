@@ -38,9 +38,13 @@ function setupPdfWorker() {
     return;
   }
 
+  // 獲取 Vite 的 base 路徑
+  const base = import.meta.env.BASE_URL || '/';
+  const basePath = base.endsWith('/') ? base : `${base}/`;
+
   // 嘗試本地 worker 文件，然後是 CDN
   const workerUrls = [
-    '/js/pdf.worker.js', // 本地文件
+    `${basePath}js/pdf.worker.js`, // 本地文件，考慮 base path
     'https://unpkg.com/pdfjs-dist@5.4.149/build/pdf.worker.min.js',
     'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.149/build/pdf.worker.min.js',
   ];
