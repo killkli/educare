@@ -1,5 +1,9 @@
 import { LLMProvider, ProviderConfig, ChatParams, StreamingResponse } from '../llmAdapter';
 
+interface LMStudioModel {
+  id: string;
+}
+
 export class LMStudioProvider implements LLMProvider {
   readonly name = 'lmstudio';
   readonly displayName = 'LM Studio';
@@ -41,7 +45,7 @@ export class LMStudioProvider implements LLMProvider {
       }
 
       const data = await response.json();
-      const models = data.data?.map((model: any) => model.id) || [];
+      const models = data.data?.map((model: LMStudioModel) => model.id) || [];
 
       return models.length > 0 ? models : this.supportedModels;
     } catch (error) {

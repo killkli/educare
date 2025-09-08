@@ -1,5 +1,9 @@
 import { LLMProvider, ProviderConfig, ChatParams, StreamingResponse } from '../llmAdapter';
 
+interface OllamaModel {
+  name: string;
+}
+
 export class OllamaNativeProvider implements LLMProvider {
   readonly name = 'ollama';
   readonly displayName = 'Ollama';
@@ -45,7 +49,7 @@ export class OllamaNativeProvider implements LLMProvider {
       }
 
       const data = await response.json();
-      const models = data.models?.map((model: any) => model.name) || [];
+      const models = data.models?.map((model: OllamaModel) => model.name) || [];
 
       return models.length > 0 ? models : this.supportedModels;
     } catch (error) {
