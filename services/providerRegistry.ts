@@ -1,0 +1,94 @@
+import { ProviderManager, ProviderType } from './llmAdapter';
+
+let providerManagerInstance: ProviderManager | null = null;
+let isInitializing = false;
+
+// Simple lazy initialization without immediate execution
+export function getProviderManager(): ProviderManager {
+  if (!providerManagerInstance) {
+    providerManagerInstance = ProviderManager.getInstance();
+
+    // Don't initialize providers immediately to avoid stack overflow
+    // They will be initialized when first accessed
+  }
+
+  return providerManagerInstance;
+}
+
+// Initialize providers asynchronously when needed
+export async function initializeProviders(): Promise<void> {
+  if (isInitializing || !providerManagerInstance) {
+    return;
+  }
+
+  isInitializing = true;
+
+  try {
+    // Dynamic imports to avoid circular dependencies
+    // Load safe providers first
+    const [{ GeminiProvider }, { TestProvider }] = await Promise.all([
+      import('./providers/geminiProvider'),
+      import('./providers/testProvider'),
+    ]);
+
+    // Register safe providers first
+    providerManagerInstance.registerProvider('gemini', new GeminiProvider());
+    providerManagerInstance.registerProvider('test', new TestProvider());
+
+    // Load native providers (no LLM.js dependencies)
+    const nativeProviders = [
+      {
+        name: 'openai',
+        module: './providers/openaiNativeProvider',
+        className: 'OpenAINativeProvider',
+      },
+      {
+        name: 'openrouter',
+        module: './providers/openrouterProvider',
+        className: 'OpenRouterProvider',
+      },
+      { name: 'lmstudio', module: './providers/lmstudioProvider', className: 'LMStudioProvider' },
+      {
+        name: 'ollama',
+        module: './providers/ollamaNativeProvider',
+        className: 'OllamaNativeProvider',
+      },
+      { name: 'groq', module: './providers/groqNativeProvider', className: 'GroqNativeProvider' },
+      { name: 'grok', module: './providers/grokProvider', className: 'GrokProvider' },
+    ];
+
+    for (const { name, module, className } of nativeProviders) {
+      try {
+        const providerModule = await import(module);
+        const ProviderClass = providerModule[className];
+        providerManagerInstance.registerProvider(name as ProviderType, new ProviderClass());
+        console.log(`✅ ${name} provider loaded successfully`);
+      } catch (error) {
+        console.warn(`⚠️ Failed to load ${name} provider:`, error);
+      }
+    }
+
+    // Initialize providers with their configurations
+    const settings = providerManagerInstance.getSettings();
+
+    for (const [providerType, providerSettings] of Object.entries(settings.providers)) {
+      if (providerSettings.enabled) {
+        const provider = providerManagerInstance.getProvider(providerType as ProviderType);
+        if (provider) {
+          await provider.initialize(providerSettings.config).catch(error => {
+            console.warn(`Failed to initialize ${providerType} provider:`, error);
+          });
+        }
+      }
+    }
+
+    console.log('✅ All providers initialized successfully');
+  } catch (error) {
+    console.error('❌ Failed to initialize providers:', error);
+  } finally {
+    isInitializing = false;
+  }
+}
+
+// Export the lazy getter
+export const providerManager = getProviderManager();
