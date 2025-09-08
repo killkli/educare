@@ -1,5 +1,9 @@
 import { LLMProvider, ProviderConfig, ChatParams, StreamingResponse } from '../llmAdapter';
 
+interface OpenRouterModel {
+  id: string;
+}
+
 export class OpenRouterProvider implements LLMProvider {
   readonly name = 'openrouter';
   readonly displayName = 'OpenRouter';
@@ -48,7 +52,7 @@ export class OpenRouterProvider implements LLMProvider {
       }
 
       const data = await response.json();
-      const models = data.data.map((model: any) => model.id).sort();
+      const models = data.data.map((model: OpenRouterModel) => model.id).sort();
 
       return models.length > 0 ? models : this.supportedModels;
     } catch (error) {

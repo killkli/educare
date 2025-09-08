@@ -1,5 +1,10 @@
 import { LLMProvider, ProviderConfig, ChatParams, StreamingResponse } from '../llmAdapter';
 
+interface GroqModel {
+  id: string;
+  active: boolean;
+}
+
 export class GroqNativeProvider implements LLMProvider {
   readonly name = 'groq';
   readonly displayName = 'Groq';
@@ -48,8 +53,8 @@ export class GroqNativeProvider implements LLMProvider {
 
       const data = await response.json();
       const models = data.data
-        .filter((model: any) => model.active)
-        .map((model: any) => model.id)
+        .filter((model: GroqModel) => model.active)
+        .map((model: GroqModel) => model.id)
         .sort();
 
       return models.length > 0 ? models : this.supportedModels;

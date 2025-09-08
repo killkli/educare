@@ -1,5 +1,9 @@
 import { LLMProvider, ProviderConfig, ChatParams, StreamingResponse } from '../llmAdapter';
 
+interface OpenAIModel {
+  id: string;
+}
+
 export class OpenAINativeProvider implements LLMProvider {
   readonly name = 'openai';
   readonly displayName = 'OpenAI';
@@ -40,8 +44,8 @@ export class OpenAINativeProvider implements LLMProvider {
 
       const data = await response.json();
       const models = data.data
-        .filter((model: any) => model.id.startsWith('gpt-'))
-        .map((model: any) => model.id)
+        .filter((model: OpenAIModel) => model.id.startsWith('gpt-'))
+        .map((model: OpenAIModel) => model.id)
         .sort();
 
       return models.length > 0 ? models : this.supportedModels;

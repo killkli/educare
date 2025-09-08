@@ -34,6 +34,7 @@ const App: React.FC = () => {
   const [sharedAssistantId, setSharedAssistantId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+  const [isTablet, setIsTablet] = useState(false);
   const [isModelLoading, setIsModelLoading] = useState(false);
   const [modelLoadingProgress, setModelLoadingProgress] = useState<{
     status: string;
@@ -128,9 +129,15 @@ const App: React.FC = () => {
     // 檢測螢幕尺寸
     const checkScreenSize = () => {
       const mobile = window.innerWidth < 768;
+      const tablet = window.innerWidth >= 768 && window.innerWidth < 1024;
       setIsMobile(mobile);
+      setIsTablet(tablet);
       if (mobile) {
         setIsSidebarOpen(false); // 移動端預設關閉側邊欄
+      } else if (tablet) {
+        setIsSidebarOpen(false); // 平板端預設關閉側邊欄
+      } else {
+        setIsSidebarOpen(true); // 桌面端預設開啟側邊欄
       }
     };
 
@@ -220,10 +227,10 @@ const App: React.FC = () => {
 
   return (
     <div className='flex h-screen font-sans bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 relative'>
-      {/* Mobile Sidebar Overlay */}
-      {isMobile && isSidebarOpen && (
+      {/* Sidebar Overlay for Mobile and Tablet */}
+      {(isMobile || isTablet) && isSidebarOpen && (
         <div
-          className='fixed inset-0 bg-black/50 z-40 md:hidden'
+          className='fixed inset-0 bg-black/50 z-40 lg:hidden'
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
@@ -231,14 +238,16 @@ const App: React.FC = () => {
       {/* Sidebar */}
       <div
         className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} ${
-          isMobile ? 'fixed left-0 top-0 h-full z-50 w-80' : 'relative w-80 flex-shrink-0'
+          isMobile || isTablet
+            ? 'fixed left-0 top-0 h-full z-50 w-80'
+            : 'relative w-72 flex-shrink-0'
         } bg-gray-900/95 backdrop-blur-sm flex flex-col p-6 border-r border-gray-700/50 shadow-2xl transition-transform duration-300 ease-in-out`}
       >
         <div className='flex items-center justify-between mb-6'>
           <h1 className='text-2xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent'>
             專業助理
           </h1>
-          {isMobile && (
+          {(isMobile || isTablet) && (
             <button
               onClick={() => setIsSidebarOpen(false)}
               className='p-2 text-gray-400 hover:text-white rounded-lg hover:bg-gray-800/50 transition-colors'
@@ -256,27 +265,43 @@ const App: React.FC = () => {
         </div>
         <button
           onClick={() => setViewMode('new_assistant')}
-          className='w-full flex items-center justify-center p-3 mb-6 bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5'
+          className='w-full flex items-center justify-center p-3 mb-6 bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-gray-900'
+          aria-label='新增助理'
+          role='button'
+          tabIndex={0}
         >
-          <PlusIcon className='w-5 h-5 mr-2' /> 新增助理
+          <PlusIcon className='w-5 h-5 mr-2' aria-hidden='true' /> 新增助理
         </button>
 
         {/* Assistants List */}
-        <div className='flex-1 overflow-y-auto chat-scroll'>
+        <div className='flex-1 overflow-y-auto chat-scroll' role='navigation' aria-label='助理列表'>
           <div className='mb-6'>
-            <h2 className='text-sm font-bold text-gray-300 uppercase tracking-wider mb-4 px-2'>
+            <h2
+              className='text-sm font-bold text-gray-300 uppercase tracking-wider mb-4 px-2'
+              id='assistants-heading'
+            >
               助理
             </h2>
-            <div className='space-y-2'>
+            <div className='space-y-2' role='list' aria-labelledby='assistants-heading'>
               {assistants.map(asst => (
                 <div
                   key={asst.id}
-                  className={`group flex items-center p-3 rounded-lg cursor-pointer transition-all duration-200 ${
+                  className={`group flex items-center p-3 rounded-lg cursor-pointer transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-gray-900 ${
                     currentAssistant?.id === asst.id
                       ? 'bg-cyan-600/20 border border-cyan-500/30 text-white shadow-md'
                       : 'bg-gray-800/30 hover:bg-gray-700/50 text-gray-200 hover:text-white border border-transparent hover:border-gray-600/30'
                   }`}
                   onClick={() => handleSelectAssistant(asst.id)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleSelectAssistant(asst.id);
+                    }
+                  }}
+                  role='listitem'
+                  tabIndex={0}
+                  aria-label={`選擇助理 ${asst.name}`}
+                  aria-current={currentAssistant?.id === asst.id ? 'page' : undefined}
                 >
                   <div
                     className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 flex-shrink-0 ${
@@ -423,7 +448,7 @@ const App: React.FC = () => {
       {/* Main Content */}
       <main className='flex-1 bg-gradient-to-br from-gray-800 to-gray-900 backdrop-blur-sm flex flex-col min-w-0 relative'>
         {/* Top Bar with Hamburger Menu */}
-        {isMobile && !isSidebarOpen && (
+        {(isMobile || isTablet) && !isSidebarOpen && (
           <div className='flex items-center p-4 border-b border-gray-700/50 bg-gray-800/80 backdrop-blur-sm'>
             <button
               onClick={() => setIsSidebarOpen(true)}
@@ -576,9 +601,42 @@ const App: React.FC = () => {
           )}
           {isLoading && (
             <div className='flex flex-col items-center justify-center h-full text-gray-400 p-8'>
-              <div className='w-16 h-16 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mb-4'></div>
-              <p className='text-lg font-medium'>載入助理中...</p>
-              <p className='text-sm text-gray-500 mt-2'>正在從資料庫讀取您的助理資料</p>
+              <div className='relative mb-6'>
+                <div className='w-16 h-16 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin'></div>
+                <div className='absolute inset-0 w-16 h-16 border-4 border-cyan-300/20 rounded-full'></div>
+              </div>
+              <div className='text-center max-w-md'>
+                <p className='text-lg font-medium text-white mb-2'>載入助理中...</p>
+                <p className='text-sm text-gray-400 mb-4'>正在從資料庫讀取您的助理資料</p>
+                <div className='flex justify-center items-center space-x-1 mb-4'>
+                  <div className='w-2 h-2 bg-cyan-500 rounded-full animate-bounce'></div>
+                  <div
+                    className='w-2 h-2 bg-cyan-500 rounded-full animate-bounce'
+                    style={{ animationDelay: '0.1s' }}
+                  ></div>
+                  <div
+                    className='w-2 h-2 bg-cyan-500 rounded-full animate-bounce'
+                    style={{ animationDelay: '0.2s' }}
+                  ></div>
+                </div>
+                <div className='text-xs text-gray-500'>
+                  <div>正在執行以下步驟：</div>
+                  <div className='mt-2 space-y-1'>
+                    <div className='flex items-center justify-center gap-2'>
+                      <div className='w-1.5 h-1.5 bg-green-500 rounded-full'></div>
+                      <span>連接資料庫</span>
+                    </div>
+                    <div className='flex items-center justify-center gap-2'>
+                      <div className='w-1.5 h-1.5 bg-cyan-500 rounded-full animate-pulse'></div>
+                      <span>載入助理資料</span>
+                    </div>
+                    <div className='flex items-center justify-center gap-2'>
+                      <div className='w-1.5 h-1.5 bg-gray-500 rounded-full'></div>
+                      <span>初始化介面</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
           {!currentAssistant &&
