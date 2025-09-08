@@ -23,11 +23,28 @@ export default defineConfig(({ mode }) => {
         }
       },
       build: {
+        chunkSizeWarningLimit: 1000,
         rollupOptions: {
           external: ['fsevents'],
           output: {
             manualChunks: {
-              'turso': ['@libsql/client']
+              // 數據庫相關
+              'turso': ['@libsql/client'],
+              
+              // AI 相關庫
+              'ai-libs': ['@google/genai', '@themaximalist/llm.js'],
+              
+              // 文件處理庫
+              'file-processing': ['mammoth', 'pdfjs-dist'],
+              
+              // HuggingFace transformers (最大的依賴)
+              'transformers': ['@huggingface/transformers'],
+              
+              // React 生態
+              'react-vendor': ['react', 'react-dom'],
+              
+              // 其他工具庫
+              'utils': ['qrcode', 'highlight.js', 'idb', 'react-markdown', 'rehype-highlight', 'remark-gfm']
             }
           }
         }
