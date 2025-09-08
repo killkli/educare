@@ -1,19 +1,123 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# EduCare - Educational AI Assistant
 
-# Run and deploy your AI Studio app
+**為博幼基金會設計的客製化教學聊天助理工具**
 
-This contains everything you need to run your app locally.
+EduCare 是一個專為偏鄉弱勢兒童教育打造的 AI 教學助理平台。基於博幼基金會「博學幼教，關懷弱勢」的理念，提供個人化學習支援和課後輔導功能。
 
-View your app in AI Studio: https://ai.studio/apps/drive/1v5zPIpo_LiA0qzWgij08I6vuMY0-4F9-
+## 🎯 專案使命
 
-## Run Locally
+博幼基金會自 2002 年起致力於偏鄉弱勢兒童教育，透過課後輔導和教育資源分享，縮短城鄉教育差距。EduCare 承襲這份使命，運用 AI 技術提供：
 
-**Prerequisites:** Node.js
+- 📚 **個人化學習輔導** - 根據學生需求調整教學內容
+- 🤖 **24/7 學習陪伴** - 隨時可用的教學助理
+- 📄 **多元教材支援** - 支援 PDF、Word、Markdown 教材處理
+- 🌐 **跨裝置同步** - 雲端資料儲存，支援多裝置存取
+- 🔗 **教師協作** - 教師可分享和管理教學助理
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## 🚀 快速開始
+
+**系統需求:** Node.js 和 pnpm
+
+1. **安裝相依套件:**
+
+   ```bash
+   pnpm install
+   ```
+
+2. **設定環境變數:**
+   複製 `.env.local` 並設定你的 AI API 金鑰（支援多種 AI 服務）
+
+3. **啟動開發伺服器:**
+   ```bash
+   pnpm run dev
+   ```
+
+## ✨ 核心功能
+
+### 🎓 教學功能
+
+- **智慧問答** - 回答學生課業問題
+- **個人化輔導** - 根據學習進度調整內容
+- **多媒體支援** - 處理文字、圖片、文件教材
+- **學習追蹤** - 記錄學習歷程和進度
+
+### 👩‍🏫 教師工具
+
+- **助理管理** - 建立和客製化教學助理
+- **教材整合** - 上傳和管理教學資源
+- **分享協作** - 與其他教師分享優質助理
+- **使用分析** - 了解學生學習狀況
+
+## 🏗️ 技術架構
+
+- **前端框架**: React 19.1.1 + TypeScript + Vite
+- **資料庫**: Turso DB (雲端 SQLite)
+- **AI 整合**: 模組化 AI Router 設計，支援多種 AI 服務
+- **檔案處理**: PDF、DOCX、MD 文件智能解析
+- **向量檢索**: HuggingFace transformers 實現 RAG 功能
+- **響應式設計**: 支援手機、平板、電腦全裝置
+
+## 🛠️ 開發指令
+
+| 指令               | 說明                                                    |
+| ------------------ | ------------------------------------------------------- |
+| `pnpm run dev`     | 啟動開發伺服器                                          |
+| `pnpm run build`   | 建置正式版本                                            |
+| `pnpm run preview` | 預覽正式版本                                            |
+| `pnpm run quality` | 執行所有品質檢查 (linting, formatting, typecheck, test) |
+| `pnpm run test`    | 執行測試套件                                            |
+| `pnpm run test:ui` | 執行測試 UI 介面                                        |
+
+### 資料庫操作
+
+| 指令                        | 說明                 |
+| --------------------------- | -------------------- |
+| `pnpm run init-turso`       | 初始化 Turso 資料庫  |
+| `pnpm run migrate-to-turso` | 遷移現有資料到 Turso |
+| `pnpm run create-test-data` | 產生測試資料         |
+
+## 📁 專案結構
+
+```
+├── components/          # React UI 元件
+├── services/           # 業務邏輯與外部整合
+│   ├── db.ts          # 資料庫操作
+│   ├── aiService.ts   # AI 服務整合
+│   ├── embeddingService.ts # RAG 向量嵌入
+│   └── tursoService.ts    # Turso DB 服務
+├── scripts/           # 資料庫與工具腳本
+├── App.tsx           # 主應用程式元件
+├── types.ts          # TypeScript 型別定義
+└── CLAUDE.md         # 開發指南
+```
+
+## 🔧 品質保證
+
+- **ESLint + Prettier**: 程式碼格式化與檢查
+- **Vitest + React Testing Library**: 完整測試覆蓋
+- **TypeScript**: 嚴格型別檢查
+- **Husky + lint-staged**: 預提交檢查
+- **品質關卡**: 所有檢查必須通過才能提交
+
+## 🌟 特色功能
+
+- 🎓 **教學助理建立**: 客製化系統提示與教學風格
+- 📚 **智慧文件整合**: 上傳處理教材文件，提供情境回應
+- ☁️ **雲端資料保存**: 安全的 Turso DB 雲端儲存
+- 📱 **跨裝置支援**: 針對手機、平板、電腦最佳化
+- 🔗 **助理分享**: 透過 QR 碼和安全連結分享教學助理
+- 🔐 **API 金鑰管理**: 使用者自主控制 AI 服務設定
+- ⚡ **效能優化**: 預載模型與高效資料處理
+
+## 🤝 貢獻指南
+
+歡迎為 EduCare 專案貢獻！請參考 `CLAUDE.md` 了解開發規範和最佳實務。
+
+## 📄 授權
+
+本專案採用 MIT 授權條款 - 詳見 [LICENSE](LICENSE) 檔案。
+
+---
+
+**為博幼基金會 × 教育科技創新**  
+讓每個孩子都有平等的學習機會 🌟
