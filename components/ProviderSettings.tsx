@@ -10,6 +10,15 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
   const [settings, setSettings] = useState<IProviderSettings>(providerManager.getSettings());
   const [expandedProvider, setExpandedProvider] = useState<ProviderType | null>(null);
   const [testingProvider, setTestingProvider] = useState<ProviderType | null>(null);
+  const [availableModels, setAvailableModels] = useState<Record<ProviderType, string[]>>(
+    {} as Record<ProviderType, string[]>,
+  );
+  const [fetchingModels, setFetchingModels] = useState<Record<ProviderType, boolean>>(
+    {} as Record<ProviderType, boolean>,
+  );
+  const [useCustomModel, setUseCustomModel] = useState<Record<ProviderType, boolean>>(
+    {} as Record<ProviderType, boolean>,
+  );
 
   const providerInfo = {
     gemini: {
@@ -30,15 +39,6 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
       apiKeyPlaceholder: '請輸入您的 OpenAI API Key (sk-...)',
       helpUrl: 'https://platform.openai.com/api-keys',
     },
-    claude: {
-      name: 'Anthropic Claude',
-      description: '安全可靠的 AI 助手，擅長分析和寫作',
-      icon: '🎭',
-      color: 'from-purple-500 to-pink-500',
-      apiKeyLabel: 'Anthropic API Key',
-      apiKeyPlaceholder: '請輸入您的 Anthropic API Key',
-      helpUrl: 'https://console.anthropic.com/',
-    },
     ollama: {
       name: 'Ollama (本地模型)',
       description: '在您的電腦上運行的開源模型，完全私密',
@@ -57,15 +57,6 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
       apiKeyPlaceholder: '請輸入您的 Groq API Key',
       helpUrl: 'https://console.groq.com/keys',
     },
-    deepseek: {
-      name: 'DeepSeek',
-      description: '高性價比的 AI 模型，適合大量使用',
-      icon: '🔍',
-      color: 'from-indigo-500 to-purple-500',
-      apiKeyLabel: 'DeepSeek API Key',
-      apiKeyPlaceholder: '請輸入您的 DeepSeek API Key',
-      helpUrl: 'https://platform.deepseek.com/',
-    },
     openrouter: {
       name: 'OpenRouter',
       description: '統一的 AI 模型路由服務，支持多種前沿模型',
@@ -83,24 +74,6 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
       apiKeyLabel: '服務地址',
       apiKeyPlaceholder: 'http://localhost:1234/v1',
       helpUrl: 'https://lmstudio.ai/',
-    },
-    grok: {
-      name: 'Grok (xAI)',
-      description: 'Elon Musk 的 xAI 開發的新一代 AI 模型',
-      icon: '🚀',
-      color: 'from-violet-500 to-purple-500',
-      apiKeyLabel: 'xAI API Key',
-      apiKeyPlaceholder: '請輸入您的 xAI API Key',
-      helpUrl: 'https://x.ai/',
-    },
-    test: {
-      name: 'Test Provider',
-      description: '測試用的模擬 AI 服務商，用於開發和調試',
-      icon: '🧪',
-      color: 'from-gray-500 to-gray-400',
-      apiKeyLabel: '測試配置',
-      apiKeyPlaceholder: '無需配置',
-      helpUrl: '#',
     },
   };
 
@@ -160,6 +133,24 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
       );
     } finally {
       setTestingProvider(null);
+    }
+  };
+
+  const fetchAvailableModels = async (providerType: ProviderType) => {
+    setFetchingModels(prev => ({ ...prev, [providerType]: true }));
+    try {
+      const provider = providerManager.getProvider(providerType);
+      if (provider && provider.getAvailableModels) {
+        const models = await provider.getAvailableModels();
+        setAvailableModels(prev => ({ ...prev, [providerType]: models }));
+      } else {
+        console.warn(`Provider ${providerType} does not support dynamic model fetching`);
+      }
+    } catch (error) {
+      console.warn(`Failed to fetch models for ${providerType}:`, error);
+      alert(`無法獲取 ${providerInfo[providerType].name} 的模型列表，請確認配置正確`);
+    } finally {
+      setFetchingModels(prev => ({ ...prev, [providerType]: false }));
     }
   };
 
@@ -414,20 +405,96 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
                     {/* Model Selection */}
                     {provider?.supportedModels && provider.supportedModels.length > 0 && (
                       <div>
-                        <label className='block text-sm font-medium text-gray-300 mb-2'>
-                          模型選擇
-                        </label>
-                        <select
-                          value={config.model || provider.supportedModels[0]}
-                          onChange={e => handleConfigUpdate(providerType, 'model', e.target.value)}
-                          className='w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500'
-                        >
-                          {provider.supportedModels.map(model => (
-                            <option key={model} value={model}>
-                              {model}
-                            </option>
-                          ))}
-                        </select>
+                        <div className='flex items-center justify-between mb-2'>
+                          <label className='block text-sm font-medium text-gray-300'>
+                            模型選擇
+                          </label>
+                          <div className='flex items-center space-x-2'>
+                            <button
+                              onClick={() => fetchAvailableModels(providerType)}
+                              disabled={fetchingModels[providerType]}
+                              className='px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white rounded transition-colors flex items-center space-x-1'
+                            >
+                              {fetchingModels[providerType] ? (
+                                <>
+                                  <svg
+                                    className='animate-spin -ml-1 mr-1 h-3 w-3 text-white'
+                                    xmlns='http://www.w3.org/2000/svg'
+                                    fill='none'
+                                    viewBox='0 0 24 24'
+                                  >
+                                    <circle
+                                      className='opacity-25'
+                                      cx='12'
+                                      cy='12'
+                                      r='10'
+                                      stroke='currentColor'
+                                      strokeWidth='4'
+                                    ></circle>
+                                    <path
+                                      className='opacity-75'
+                                      fill='currentColor'
+                                      d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'
+                                    ></path>
+                                  </svg>
+                                  <span>獲取中</span>
+                                </>
+                              ) : (
+                                <span>🔄 獲取模型列表</span>
+                              )}
+                            </button>
+                            <button
+                              onClick={() =>
+                                setUseCustomModel(prev => ({
+                                  ...prev,
+                                  [providerType]: !prev[providerType],
+                                }))
+                              }
+                              className='px-3 py-1 text-xs bg-gray-600 hover:bg-gray-700 text-white rounded transition-colors'
+                            >
+                              {useCustomModel[providerType] ? '📋 使用列表' : '✏️ 自訂輸入'}
+                            </button>
+                          </div>
+                        </div>
+
+                        {useCustomModel[providerType] ? (
+                          <input
+                            type='text'
+                            value={config.model || ''}
+                            onChange={e =>
+                              handleConfigUpdate(providerType, 'model', e.target.value)
+                            }
+                            placeholder='請輸入模型名稱 (例如: gpt-4, llama3.2:latest)'
+                            className='w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500'
+                          />
+                        ) : (
+                          <select
+                            value={
+                              config.model ||
+                              availableModels[providerType]?.[0] ||
+                              provider.supportedModels[0]
+                            }
+                            onChange={e =>
+                              handleConfigUpdate(providerType, 'model', e.target.value)
+                            }
+                            className='w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500'
+                          >
+                            {(availableModels[providerType] || provider.supportedModels).map(
+                              model => (
+                                <option key={model} value={model}>
+                                  {model}
+                                </option>
+                              ),
+                            )}
+                          </select>
+                        )}
+
+                        {availableModels[providerType] &&
+                          availableModels[providerType].length > 0 && (
+                            <p className='text-xs text-gray-400 mt-1'>
+                              已動態獲取 {availableModels[providerType].length} 個可用模型
+                            </p>
+                          )}
                       </div>
                     )}
 

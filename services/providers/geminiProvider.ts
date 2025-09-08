@@ -49,6 +49,11 @@ export class GeminiProvider implements LLMProvider {
     this.initialize(this.config);
   }
 
+  async getAvailableModels(): Promise<string[]> {
+    // Gemini doesn't have a public models list API, so we return the supported models
+    return this.supportedModels;
+  }
+
   private getAi(): GoogleGenAI | null {
     if (!this.initializationAttempted) {
       this.initialize(this.config);

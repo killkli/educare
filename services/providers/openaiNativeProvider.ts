@@ -21,6 +21,36 @@ export class OpenAINativeProvider implements LLMProvider {
     // Nothing specific needed for reinitializing OpenAI
   }
 
+  async getAvailableModels(): Promise<string[]> {
+    if (!this.config.apiKey) {
+      return this.supportedModels;
+    }
+
+    try {
+      const response = await fetch('https://api.openai.com/v1/models', {
+        headers: {
+          Authorization: `Bearer ${this.config.apiKey}`,
+        },
+      });
+
+      if (!response.ok) {
+        console.warn('Failed to fetch OpenAI models, using default list');
+        return this.supportedModels;
+      }
+
+      const data = await response.json();
+      const models = data.data
+        .filter((model: any) => model.id.startsWith('gpt-'))
+        .map((model: any) => model.id)
+        .sort();
+
+      return models.length > 0 ? models : this.supportedModels;
+    } catch (error) {
+      console.warn('Error fetching OpenAI models:', error);
+      return this.supportedModels;
+    }
+  }
+
   async *streamChat(params: ChatParams): AsyncIterable<StreamingResponse> {
     if (!this.config.apiKey) {
       throw new Error('請先在設定中配置 OpenAI API KEY 才能使用聊天功能。');

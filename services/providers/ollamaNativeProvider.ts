@@ -33,6 +33,27 @@ export class OllamaNativeProvider implements LLMProvider {
     // Nothing specific needed for reinitializing Ollama
   }
 
+  async getAvailableModels(): Promise<string[]> {
+    const baseUrl = this.config.baseUrl || 'http://localhost:11434';
+
+    try {
+      const response = await fetch(`${baseUrl}/api/tags`);
+
+      if (!response.ok) {
+        console.warn('Failed to fetch Ollama models, using default list');
+        return this.supportedModels;
+      }
+
+      const data = await response.json();
+      const models = data.models?.map((model: any) => model.name) || [];
+
+      return models.length > 0 ? models : this.supportedModels;
+    } catch (error) {
+      console.warn('Error fetching Ollama models:', error);
+      return this.supportedModels;
+    }
+  }
+
   async *streamChat(params: ChatParams): AsyncIterable<StreamingResponse> {
     const baseUrl = this.config.baseUrl || 'http://localhost:11434';
 

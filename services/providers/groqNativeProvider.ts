@@ -29,6 +29,36 @@ export class GroqNativeProvider implements LLMProvider {
     // Nothing specific needed for reinitializing Groq
   }
 
+  async getAvailableModels(): Promise<string[]> {
+    if (!this.config.apiKey) {
+      return this.supportedModels;
+    }
+
+    try {
+      const response = await fetch('https://api.groq.com/openai/v1/models', {
+        headers: {
+          Authorization: `Bearer ${this.config.apiKey}`,
+        },
+      });
+
+      if (!response.ok) {
+        console.warn('Failed to fetch Groq models, using default list');
+        return this.supportedModels;
+      }
+
+      const data = await response.json();
+      const models = data.data
+        .filter((model: any) => model.active)
+        .map((model: any) => model.id)
+        .sort();
+
+      return models.length > 0 ? models : this.supportedModels;
+    } catch (error) {
+      console.warn('Error fetching Groq models:', error);
+      return this.supportedModels;
+    }
+  }
+
   async *streamChat(params: ChatParams): AsyncIterable<StreamingResponse> {
     if (!this.config.apiKey) {
       throw new Error('請先在設定中配置 Groq API KEY 才能使用聊天功能。');

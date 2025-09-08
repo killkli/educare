@@ -40,20 +40,11 @@ export interface LLMProvider {
   initialize(config: ProviderConfig): Promise<void>;
   isAvailable(): boolean;
   streamChat(params: ChatParams): AsyncIterable<StreamingResponse>;
+  getAvailableModels?(): Promise<string[]>;
   reinitialize?(): void;
 }
 
-export type ProviderType =
-  | 'gemini'
-  | 'openai'
-  | 'claude'
-  | 'ollama'
-  | 'groq'
-  | 'deepseek'
-  | 'openrouter'
-  | 'lmstudio'
-  | 'grok'
-  | 'test';
+export type ProviderType = 'gemini' | 'openai' | 'ollama' | 'groq' | 'openrouter' | 'lmstudio';
 
 export interface ProviderSettings {
   activeProvider: ProviderType;
@@ -84,14 +75,6 @@ export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
         maxTokens: 4096,
       },
     },
-    claude: {
-      enabled: false,
-      config: {
-        model: 'claude-3-5-sonnet-20241022',
-        temperature: 0.7,
-        maxTokens: 4096,
-      },
-    },
     ollama: {
       enabled: false,
       config: {
@@ -109,14 +92,6 @@ export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
         maxTokens: 4096,
       },
     },
-    deepseek: {
-      enabled: false,
-      config: {
-        model: 'deepseek-chat',
-        temperature: 0.7,
-        maxTokens: 4096,
-      },
-    },
     openrouter: {
       enabled: false,
       config: {
@@ -130,22 +105,6 @@ export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
       config: {
         baseUrl: 'http://localhost:1234/v1',
         model: 'local-model',
-        temperature: 0.7,
-        maxTokens: 4096,
-      },
-    },
-    grok: {
-      enabled: false,
-      config: {
-        model: 'grok-beta',
-        temperature: 0.7,
-        maxTokens: 4096,
-      },
-    },
-    test: {
-      enabled: true,
-      config: {
-        model: 'test-model',
         temperature: 0.7,
         maxTokens: 4096,
       },

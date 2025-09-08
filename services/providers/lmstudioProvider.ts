@@ -29,6 +29,27 @@ export class LMStudioProvider implements LLMProvider {
     // Nothing specific needed for reinitializing LMStudio
   }
 
+  async getAvailableModels(): Promise<string[]> {
+    const baseUrl = this.config.baseUrl || 'http://localhost:1234/v1';
+
+    try {
+      const response = await fetch(`${baseUrl}/models`);
+
+      if (!response.ok) {
+        console.warn('Failed to fetch LM Studio models, using default list');
+        return this.supportedModels;
+      }
+
+      const data = await response.json();
+      const models = data.data?.map((model: any) => model.id) || [];
+
+      return models.length > 0 ? models : this.supportedModels;
+    } catch (error) {
+      console.warn('Error fetching LM Studio models:', error);
+      return this.supportedModels;
+    }
+  }
+
   async *streamChat(params: ChatParams): AsyncIterable<StreamingResponse> {
     const baseUrl = this.config.baseUrl || 'http://localhost:1234/v1';
 
