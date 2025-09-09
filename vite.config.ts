@@ -43,7 +43,7 @@ export default defineConfig(({ mode }) => {
       },
       build: {
         target: 'es2020',
-        minify: 'terser',
+        minify: 'esbuild',
         cssMinify: true,
         chunkSizeWarningLimit: 2000,
         rollupOptions: {
@@ -75,9 +75,10 @@ export default defineConfig(({ mode }) => {
               if (id.includes('pdfjs-dist')) {
                 return 'pdf-worker';
               }
-              if (id.includes('mammoth')) {
-                return 'docx-processor';
-              }
+              // Keep mammoth with vendor bundle to avoid TDZ issues
+              // if (id.includes('mammoth') || id.includes('jszip')) {
+              //   return 'file-processing';
+              // }
               
               // 數據庫
               if (id.includes('@libsql/client')) {
@@ -114,20 +115,6 @@ export default defineConfig(({ mode }) => {
             // 壓縮選項
             compact: true
           }
-        },
-        
-        // Terser 配置用於更好的壓縮
-        terserOptions: {
-          compress: {
-            drop_console: true,
-            drop_debugger: true,
-            pure_funcs: ['console.log', 'console.info'],
-            passes: 2
-          },
-          mangle: true,
-          format: {
-            comments: false
-          }
         }
       },
       optimizeDeps: {
@@ -138,7 +125,8 @@ export default defineConfig(({ mode }) => {
           '@google/genai',
           'qrcode',
           'highlight.js',
-          'idb'
+          'idb',
+          'mammoth'
         ]
       },
       
@@ -146,7 +134,11 @@ export default defineConfig(({ mode }) => {
       esbuild: {
         legalComments: 'none',
         treeShaking: true,
-        target: 'es2020'
+        target: 'es2020',
+        drop: ['console', 'debugger'],
+        minifyIdentifiers: true,
+        minifySyntax: true,
+        minifyWhitespace: true
       },
       
       // 性能優化
