@@ -1,0 +1,352 @@
+import React, { useReducer, useCallback, useEffect } from 'react';
+import { Assistant, ChatSession } from '../../types';
+import * as db from '../../services/db';
+import { preloadEmbeddingModel, isEmbeddingModelLoaded } from '../../services/embeddingService';
+import { initializeProviders } from '../../services/providerRegistry';
+import { AppContext } from './useAppContext';
+import type {
+  ViewMode,
+  ModelLoadingProgress,
+  AppState,
+  AppAction,
+  AppContextValue,
+} from './AppContext.types';
+
+const initialState: AppState = {
+  assistants: [],
+  currentAssistant: null,
+  sessions: [],
+  currentSession: null,
+  viewMode: 'chat',
+  isLoading: true,
+  error: null,
+  isShared: false,
+  sharedAssistantId: null,
+  isSidebarOpen: true,
+  isMobile: false,
+  isTablet: false,
+  isModelLoading: false,
+  modelLoadingProgress: null,
+  isShareModalOpen: false,
+  assistantToShare: null,
+};
+
+function appReducer(state: AppState, action: AppAction): AppState {
+  switch (action.type) {
+    case 'SET_ASSISTANTS':
+      return { ...state, assistants: action.payload };
+    case 'SET_CURRENT_ASSISTANT':
+      return { ...state, currentAssistant: action.payload };
+    case 'SET_SESSIONS':
+      return { ...state, sessions: action.payload };
+    case 'SET_CURRENT_SESSION':
+      return { ...state, currentSession: action.payload };
+    case 'SET_VIEW_MODE':
+      return { ...state, viewMode: action.payload };
+    case 'SET_LOADING':
+      return { ...state, isLoading: action.payload };
+    case 'SET_ERROR':
+      return { ...state, error: action.payload };
+    case 'SET_SHARED_MODE':
+      return {
+        ...state,
+        isShared: action.payload.isShared,
+        sharedAssistantId: action.payload.assistantId,
+      };
+    case 'SET_SIDEBAR_OPEN':
+      return { ...state, isSidebarOpen: action.payload };
+    case 'SET_SCREEN_SIZE':
+      return {
+        ...state,
+        isMobile: action.payload.isMobile,
+        isTablet: action.payload.isTablet,
+      };
+    case 'SET_MODEL_LOADING':
+      return {
+        ...state,
+        isModelLoading: action.payload.isLoading,
+        modelLoadingProgress: action.payload.progress || null,
+      };
+    case 'SET_SHARE_MODAL':
+      return {
+        ...state,
+        isShareModalOpen: action.payload.isOpen,
+        assistantToShare: action.payload.assistant || null,
+      };
+    case 'ADD_SESSION':
+      return {
+        ...state,
+        sessions: [action.payload, ...state.sessions],
+        currentSession: action.payload,
+      };
+    case 'UPDATE_SESSION':
+      return {
+        ...state,
+        sessions: state.sessions.map(s => (s.id === action.payload.id ? action.payload : s)),
+        currentSession:
+          state.currentSession?.id === action.payload.id ? action.payload : state.currentSession,
+      };
+    case 'DELETE_SESSION': {
+      const remainingSessions = state.sessions.filter(s => s.id !== action.payload);
+      return {
+        ...state,
+        sessions: remainingSessions,
+        currentSession:
+          state.currentSession?.id === action.payload
+            ? remainingSessions.length > 0
+              ? remainingSessions[0]
+              : null
+            : state.currentSession,
+      };
+    }
+    case 'DELETE_ASSISTANT': {
+      const remainingAssistants = state.assistants.filter(a => a.id !== action.payload);
+      return {
+        ...state,
+        assistants: remainingAssistants,
+        currentAssistant:
+          state.currentAssistant?.id === action.payload ? null : state.currentAssistant,
+        sessions: state.currentAssistant?.id === action.payload ? [] : state.sessions,
+        currentSession: state.currentAssistant?.id === action.payload ? null : state.currentSession,
+      };
+    }
+    default:
+      return state;
+  }
+}
+
+interface AppProviderProps {
+  children: React.ReactNode;
+}
+
+export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
+  const [state, dispatch] = useReducer(appReducer, initialState);
+
+  // Create new session
+  const createNewSession = useCallback(async (assistantId: string) => {
+    const newSession: ChatSession = {
+      id: `session-${Date.now()}`,
+      assistantId,
+      title: 'New Chat',
+      messages: [],
+      createdAt: Date.now(),
+      tokenCount: 0,
+    };
+    await db.saveSession(newSession);
+    dispatch({ type: 'ADD_SESSION', payload: newSession });
+  }, []);
+
+  // Select an assistant
+  const selectAssistant = useCallback(
+    async (assistantId: string) => {
+      const assistant = await db.getAssistant(assistantId);
+      if (assistant) {
+        dispatch({ type: 'SET_CURRENT_ASSISTANT', payload: assistant });
+        const assistantSessions = await db.getSessionsForAssistant(assistant.id);
+        const sortedSessions = assistantSessions.sort((a, b) => b.createdAt - a.createdAt);
+        dispatch({ type: 'SET_SESSIONS', payload: sortedSessions });
+
+        if (sortedSessions.length > 0) {
+          dispatch({ type: 'SET_CURRENT_SESSION', payload: sortedSessions[0] });
+        } else {
+          await createNewSession(assistant.id);
+        }
+        dispatch({ type: 'SET_VIEW_MODE', payload: 'chat' });
+      }
+    },
+    [createNewSession],
+  );
+
+  // Load data from database
+  const loadData = useCallback(async () => {
+    dispatch({ type: 'SET_LOADING', payload: true });
+    try {
+      const storedAssistants = await db.getAllAssistants();
+      dispatch({
+        type: 'SET_ASSISTANTS',
+        payload: storedAssistants.sort((a, b) => b.createdAt - a.createdAt),
+      });
+
+      // Initialize providers asynchronously
+      initializeProviders().catch(error => {
+        console.error('❌ Failed to initialize providers:', error);
+      });
+
+      // Preload embedding model if not loaded
+      if (!isEmbeddingModelLoaded()) {
+        dispatch({ type: 'SET_MODEL_LOADING', payload: { isLoading: true } });
+        try {
+          await preloadEmbeddingModel(progress => {
+            dispatch({
+              type: 'SET_MODEL_LOADING',
+              payload: { isLoading: true, progress: progress as ModelLoadingProgress },
+            });
+          });
+          console.log('✅ Embedding model preloaded successfully');
+        } catch (error) {
+          console.error('❌ Failed to preload embedding model:', error);
+        } finally {
+          dispatch({ type: 'SET_MODEL_LOADING', payload: { isLoading: false, progress: null } });
+        }
+      }
+
+      if (storedAssistants.length > 0) {
+        await selectAssistant(storedAssistants[0].id);
+      } else {
+        dispatch({ type: 'SET_VIEW_MODE', payload: 'new_assistant' });
+      }
+    } catch (e) {
+      dispatch({ type: 'SET_ERROR', payload: '無法從資料庫載入資料。' });
+      console.error(e);
+    } finally {
+      dispatch({ type: 'SET_LOADING', payload: false });
+    }
+  }, [selectAssistant]);
+
+  // Save assistant
+  const saveAssistant = useCallback(
+    async (assistant: Assistant) => {
+      await db.saveAssistant(assistant);
+      const storedAssistants = await db.getAllAssistants();
+      dispatch({
+        type: 'SET_ASSISTANTS',
+        payload: storedAssistants.sort((a, b) => b.createdAt - a.createdAt),
+      });
+
+      if (
+        !state.currentAssistant ||
+        assistant.id === state.currentAssistant.id ||
+        state.viewMode === 'new_assistant'
+      ) {
+        await selectAssistant(assistant.id);
+        dispatch({ type: 'SET_VIEW_MODE', payload: 'chat' });
+      }
+    },
+    [state.currentAssistant, state.viewMode, selectAssistant],
+  );
+
+  // Delete assistant
+  const deleteAssistant = useCallback(
+    async (assistantId: string) => {
+      if (window.confirm('確定要刪除此助理和所有聊天記錄嗎？')) {
+        await db.deleteAssistant(assistantId);
+        dispatch({ type: 'DELETE_ASSISTANT', payload: assistantId });
+
+        const remainingAssistants = state.assistants.filter(a => a.id !== assistantId);
+        if (remainingAssistants.length > 0) {
+          await selectAssistant(remainingAssistants[0].id);
+        } else {
+          dispatch({ type: 'SET_VIEW_MODE', payload: 'new_assistant' });
+        }
+      }
+    },
+    [state.assistants, selectAssistant],
+  );
+
+  // Delete session
+  const deleteSession = useCallback(
+    async (sessionId: string) => {
+      if (!state.currentAssistant) {
+        return;
+      }
+
+      if (window.confirm('確定要刪除此聊天會話嗎？')) {
+        await db.deleteSession(sessionId);
+        const assistantSessions = await db.getSessionsForAssistant(state.currentAssistant.id);
+        const sortedSessions = assistantSessions.sort((a, b) => b.createdAt - a.createdAt);
+        dispatch({ type: 'SET_SESSIONS', payload: sortedSessions });
+
+        if (state.currentSession?.id === sessionId) {
+          if (sortedSessions.length > 0) {
+            dispatch({ type: 'SET_CURRENT_SESSION', payload: sortedSessions[0] });
+          } else {
+            await createNewSession(state.currentAssistant.id);
+          }
+        }
+      }
+    },
+    [state.currentAssistant, state.currentSession, createNewSession],
+  );
+
+  // Update session
+  const updateSession = useCallback(async (session: ChatSession) => {
+    await db.saveSession(session);
+    dispatch({ type: 'UPDATE_SESSION', payload: session });
+  }, []);
+
+  // Set view mode
+  const setViewMode = useCallback((mode: ViewMode) => {
+    dispatch({ type: 'SET_VIEW_MODE', payload: mode });
+  }, []);
+
+  // Toggle sidebar
+  const toggleSidebar = useCallback(() => {
+    dispatch({ type: 'SET_SIDEBAR_OPEN', payload: !state.isSidebarOpen });
+  }, [state.isSidebarOpen]);
+
+  // Open share modal
+  const openShareModal = useCallback((assistant: Assistant) => {
+    dispatch({ type: 'SET_SHARE_MODAL', payload: { isOpen: true, assistant } });
+  }, []);
+
+  // Close share modal
+  const closeShareModal = useCallback(() => {
+    dispatch({ type: 'SET_SHARE_MODAL', payload: { isOpen: false, assistant: null } });
+  }, []);
+
+  // Check screen size
+  const checkScreenSize = useCallback(() => {
+    const mobile = window.innerWidth < 768;
+    const tablet = window.innerWidth >= 768 && window.innerWidth < 1024;
+    dispatch({ type: 'SET_SCREEN_SIZE', payload: { isMobile: mobile, isTablet: tablet } });
+
+    if (mobile || tablet) {
+      dispatch({ type: 'SET_SIDEBAR_OPEN', payload: false });
+    } else {
+      dispatch({ type: 'SET_SIDEBAR_OPEN', payload: true });
+    }
+  }, []);
+
+  // Check for shared mode and screen size on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const shared = params.has('share');
+    const assistantId = params.get('share');
+
+    dispatch({ type: 'SET_SHARED_MODE', payload: { isShared: shared, assistantId } });
+
+    checkScreenSize();
+    window.addEventListener('resize', checkScreenSize);
+    return () => window.removeEventListener('resize', checkScreenSize);
+  }, [checkScreenSize]);
+
+  // Load data if not in shared mode
+  useEffect(() => {
+    if (!state.isShared) {
+      loadData();
+    }
+  }, [loadData, state.isShared]);
+
+  const contextValue: AppContextValue = {
+    state,
+    dispatch,
+    actions: {
+      loadData,
+      selectAssistant,
+      saveAssistant,
+      deleteAssistant,
+      createNewSession,
+      deleteSession,
+      updateSession,
+      setViewMode,
+      toggleSidebar,
+      openShareModal,
+      closeShareModal,
+      checkScreenSize,
+    },
+  };
+
+  return <AppContext.Provider value={contextValue}>{children}</AppContext.Provider>;
+}
+
+export default AppProvider;
