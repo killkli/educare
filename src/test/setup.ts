@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom';
-import { expect, vi } from 'vitest';
+import { vi } from 'vitest';
 
 // Mock window.indexedDB for testing
 Object.defineProperty(window, 'indexedDB', {
@@ -45,7 +45,5 @@ vi.mock('vite', () => ({
   })),
 }));
 
-// Global test utilities
-expect.extend({
-  toBeInTheDocument: expect.any(Function),
-});
+// This import extends expect with jest-dom matchers
+// The matchers are added automatically when imported

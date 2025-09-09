@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, KeyboardEvent } from 'react';
-import { Assistant } from '../types';
+import { Assistant } from '../../types';
 
 interface CustomSelectProps {
   assistants: Assistant[];
