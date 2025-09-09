@@ -36,17 +36,34 @@ export class GeminiProvider implements LLMProvider {
   }
 
   isAvailable(): boolean {
-    return (
-      !!this.ai ||
-      ApiKeyManager.hasGeminiApiKey() ||
-      !!(typeof process !== 'undefined' && process.env?.API_KEY)
-    );
+    // Check if already initialized
+    if (this.ai) {
+      return true;
+    }
+
+    // Check if we have API key from config
+    if (this.config.apiKey) {
+      return true;
+    }
+
+    // Check global API key manager (for backward compatibility)
+    if (ApiKeyManager.hasGeminiApiKey()) {
+      return true;
+    }
+
+    // Check environment variable
+    if (typeof process !== 'undefined' && process.env?.API_KEY) {
+      return true;
+    }
+
+    return false;
   }
 
   reinitialize(): void {
     this.ai = null;
     this.initializationAttempted = false;
-    this.initialize(this.config);
+    // Don't call initialize here - it will be called by ProviderManager
+    // with the correct updated config
   }
 
   async getAvailableModels(): Promise<string[]> {

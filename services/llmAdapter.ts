@@ -184,10 +184,18 @@ export class ProviderManager {
       };
       this.saveSettings();
 
-      // Reinitialize the provider if it exists
+      // Reinitialize the provider if it exists with the updated config
       const provider = this.providers.get(type);
-      if (provider && provider.reinitialize) {
-        provider.reinitialize();
+      if (provider) {
+        // Pass the updated config to the provider
+        const updatedConfig = this.settings.providers[type].config;
+        if (provider.reinitialize) {
+          provider.reinitialize();
+        }
+        // Initialize with the updated config
+        provider.initialize(updatedConfig).catch(error => {
+          console.warn(`Failed to reinitialize ${type} provider:`, error);
+        });
       }
     }
   }
