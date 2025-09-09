@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Assistant, ChatSession } from './types';
 import * as db from './services/db';
-import { AssistantList, AssistantEditor } from './components/assistant';
+import { AssistantList, AssistantEditor, ShareModal } from './components/assistant';
 import { ChatContainer } from './components/chat';
 import MigrationPanel from './components/MigrationPanel';
 import SharedAssistant from './components/SharedAssistant';
@@ -40,6 +40,8 @@ const App: React.FC = () => {
     progress: number;
     name?: string;
   } | null>(null);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [assistantToShare, setAssistantToShare] = useState<Assistant | null>(null);
 
   const handleNewSession = useCallback(async (assistantId: string) => {
     const newSession: ChatSession = {
@@ -219,8 +221,8 @@ const App: React.FC = () => {
   };
 
   const handleQuickShare = (assistant: Assistant) => {
-    // Share functionality is now handled within AssistantContainer
-    console.log('Sharing assistant:', assistant.name);
+    setAssistantToShare(assistant);
+    setIsShareModalOpen(true);
   };
 
   return (
@@ -592,6 +594,13 @@ const App: React.FC = () => {
         isVisible={isModelLoading}
         progress={modelLoadingProgress || undefined}
       />
+      {assistantToShare && (
+        <ShareModal
+          isOpen={isShareModalOpen}
+          onClose={() => setIsShareModalOpen(false)}
+          assistant={assistantToShare}
+        />
+      )}
     </div>
   );
 };
