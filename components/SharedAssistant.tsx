@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Assistant, ChatSession } from '../types';
-import ChatWindow from './ChatWindow';
+import { ChatContainer } from './chat';
 import { getAssistantFromTurso } from '../services/tursoService';
 import { CryptoService } from '../services/cryptoService';
 import { ApiKeyManager } from '../services/apiKeyManager';
@@ -419,7 +419,7 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
       )}
 
       {/* Integrated Header + Chat */}
-      <ChatWindow
+      <ChatContainer
         session={currentSession}
         assistantName={assistant.name}
         systemPrompt={assistant.systemPrompt}
