@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChatSession, RagChunk } from '../types';
-import { UserIcon, GeminiIcon } from './Icons';
+import { UserIcon, GeminiIcon } from './ui/Icons';
 import { streamChat } from '../services/llmService';
 import { generateEmbedding, cosineSimilarity } from '../services/embeddingService';
 import { searchSimilarChunks } from '../services/tursoService';

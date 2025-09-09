@@ -6,14 +6,14 @@ import ChatWindow from './components/ChatWindow';
 import MigrationPanel from './components/MigrationPanel';
 import SharedAssistant from './components/SharedAssistant';
 import ApiKeySetup from './components/ApiKeySetup';
-import { PlusIcon, ChatIcon, TrashIcon, EditIcon, SettingsIcon } from './components/Icons';
+import { PlusIcon, ChatIcon, TrashIcon, EditIcon, SettingsIcon } from './components/ui/Icons';
 import { canWriteToTurso } from './services/tursoService';
 import { providerManager, initializeProviders } from './services/providerRegistry';
 import ProviderSettings from './components/ProviderSettings';
 import { preloadEmbeddingModel, isEmbeddingModelLoaded } from './services/embeddingService';
 import { ModelLoadingOverlay } from './components/ModelLoadingOverlay';
 import { ShareModal } from './components/ShareModal';
-import { CustomSelect } from './components/CustomSelect';
+import { CustomSelect } from './components/ui/CustomSelect';
 
 type ViewMode =
   | 'chat'
