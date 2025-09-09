@@ -47,6 +47,8 @@ export default [
         HTMLInputElement: 'readonly',
         HTMLDivElement: 'readonly',
         HTMLTextAreaElement: 'readonly',
+        MouseEvent: 'readonly',
+        Node: 'readonly',
         alert: 'readonly',
         // Web Crypto API globals
         crypto: 'readonly',
