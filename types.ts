@@ -11,6 +11,8 @@ export interface Assistant {
   systemPrompt: string; // 給 AI 的內部指令
   ragChunks: RagChunk[];
   createdAt: number;
+  isShared?: boolean;
+  shareId?: string;
 }
 
 export interface ChatMessage {

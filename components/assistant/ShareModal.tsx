@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import QRCode from 'qrcode';
-import { Assistant } from '../types';
-import { CryptoService } from '../services/cryptoService';
-import { ApiKeyManager } from '../services/apiKeyManager';
-import { saveAssistantToTurso } from '../services/tursoService';
+import { Assistant } from '../../types';
+import { CryptoService } from '../../services/cryptoService';
+import { ApiKeyManager } from '../../services/apiKeyManager';
+import { saveAssistantToTurso } from '../../services/tursoService';
 
 interface ShareModalProps {
   isOpen: boolean;
