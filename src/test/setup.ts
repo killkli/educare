@@ -37,8 +37,8 @@ Object.defineProperty(window, 'sessionStorage', {
 global.fetch = vi.fn();
 
 // Mock DOM methods
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-(globalThis as any).Element.prototype.scrollIntoView = vi.fn();
+// @ts-ignore
+globalThis.Element.prototype.scrollIntoView = vi.fn();
 
 // Mock clipboard API
 Object.defineProperty(navigator, 'clipboard', {
@@ -58,11 +58,12 @@ vi.mock('vite', () => ({
 }));
 
 // Mock DOMMatrix for PDF.js compatibility
+// @ts-ignore
 global.DOMMatrix = class DOMMatrix {
   constructor() {
     // Basic mock implementation
   }
-} as any;
+};
 
 // Mock Canvas API for PDF.js
 global.HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
@@ -81,9 +82,11 @@ global.HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
   rotate: vi.fn(),
   transform: vi.fn(),
   setTransform: vi.fn(),
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 })) as any;
 
 // Mock Web Workers for PDF.js
+// @ts-ignore
 global.Worker = class Worker {
   constructor() {
     // Basic mock implementation
@@ -92,7 +95,7 @@ global.Worker = class Worker {
   terminate = vi.fn();
   addEventListener = vi.fn();
   removeEventListener = vi.fn();
-} as any;
+};
 
 // This import extends expect with jest-dom matchers
 // The matchers are added automatically when imported

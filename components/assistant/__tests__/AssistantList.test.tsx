@@ -1,6 +1,7 @@
 /* global HTMLSelectElement */
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { Assistant } from '../../../types';
 import { AssistantList } from '../AssistantList';
 import { AssistantListProps } from '../types';
 import { TEST_ASSISTANTS, setupAssistantTestEnvironment } from './test-utils';
@@ -28,8 +29,8 @@ vi.mock('../ui/CustomSelect', () => ({
     onSelect,
     placeholder,
   }: {
-    assistants: any[];
-    selectedAssistant: any | null;
+    assistants: Assistant[];
+    selectedAssistant: Assistant | null;
     onSelect: (id: string) => void;
     placeholder: string;
   }) => {

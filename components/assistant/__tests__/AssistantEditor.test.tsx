@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
 import { AssistantEditor } from '../AssistantEditor';
-import { Assistant } from '../../../types';
+import { Assistant, RagChunk } from '../../../types';
 import { TEST_ASSISTANTS, TEST_RAG_CHUNKS, setupAssistantTestEnvironment } from './test-utils';
 
 // Mock dependencies
@@ -17,8 +17,8 @@ beforeAll(() => {
       onRagChunksChange,
       disabled,
     }: {
-      ragChunks: any[];
-      onRagChunksChange: (chunks: any[]) => void;
+      ragChunks: RagChunk[];
+      onRagChunksChange: (chunks: RagChunk[]) => void;
       disabled?: boolean;
     }) => {
       const React = require('react');
@@ -184,7 +184,7 @@ describe('AssistantEditor', () => {
     it('handles assistant with undefined description', () => {
       const assistantWithUndefinedDescription = {
         ...TEST_ASSISTANTS.basic,
-        description: undefined as any,
+        description: undefined,
       };
 
       const propsWithAssistant = {

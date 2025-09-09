@@ -1,8 +1,8 @@
+/// <reference lib="dom" />
+/* global FileReader, ProgressEvent, HTMLSelectElement, Blob */
 import { Assistant, RagChunk } from '../../../types';
 import { vi } from 'vitest';
 import React from 'react';
-
-/* global HTMLSelectElement Blob */
 
 // Mock data factories for consistent test data
 export const createMockRagChunk = (overrides: Partial<RagChunk> = {}): RagChunk => ({
@@ -100,11 +100,11 @@ export const mockFileReader = () => {
     readAsText: vi.fn(),
     readAsArrayBuffer: vi.fn(),
     result: 'mocked file content',
-    onload: null as any,
-    onerror: null as any,
+    onload: null as ((this: FileReader, ev: ProgressEvent<FileReader>) => unknown) | null,
+    onerror: null as ((this: FileReader, ev: ProgressEvent<FileReader>) => unknown) | null,
   };
 
-  vi.spyOn(global, 'FileReader').mockImplementation(() => mockReader as any);
+  vi.spyOn(global, 'FileReader').mockImplementation(() => mockReader as unknown as FileReader);
   return mockReader;
 };
 
