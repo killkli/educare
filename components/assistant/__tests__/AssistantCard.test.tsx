@@ -312,7 +312,7 @@ describe('AssistantCard', () => {
     it('handles undefined RAG chunks', () => {
       const assistantWithUndefinedRag = {
         ...TEST_ASSISTANTS.basic,
-        ragChunks: undefined as any,
+        ragChunks: undefined,
       };
 
       render(<AssistantCard {...mockProps} assistant={assistantWithUndefinedRag} />);
@@ -323,7 +323,7 @@ describe('AssistantCard', () => {
     it('handles assistant without isShared property', () => {
       const assistantWithoutSharedProp = {
         ...TEST_ASSISTANTS.basic,
-        isShared: undefined as any,
+        isShared: undefined,
       };
 
       render(<AssistantCard {...mockProps} assistant={assistantWithoutSharedProp} />);

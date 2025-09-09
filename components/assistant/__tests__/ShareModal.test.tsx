@@ -1,3 +1,4 @@
+/* global HTMLAnchorElement */
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
 import { ShareModal } from '../ShareModal';
@@ -58,9 +59,10 @@ beforeAll(() => {
   };
   vi.spyOn(document, 'createElement').mockImplementation(tagName => {
     if (tagName === 'a') {
-      return mockLink as any;
+      return mockLink as unknown as HTMLAnchorElement;
     }
-    return document.createElement(tagName);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return document.createElement(tagName) as any;
   });
 });
 
@@ -165,7 +167,7 @@ describe('ShareModal', () => {
     it('handles assistant with undefined description', async () => {
       const assistantWithoutDescription = {
         ...TEST_ASSISTANTS.basic,
-        description: undefined as any,
+        description: undefined,
       };
 
       const propsWithoutDescription = {
@@ -191,7 +193,7 @@ describe('ShareModal', () => {
     it('handles assistant with undefined createdAt', async () => {
       const assistantWithoutCreatedAt = {
         ...TEST_ASSISTANTS.basic,
-        createdAt: undefined as any,
+        createdAt: undefined,
       };
 
       const propsWithoutCreatedAt = {
@@ -338,7 +340,7 @@ describe('ShareModal', () => {
         href: '',
         click: vi.fn(),
       };
-      vi.spyOn(document, 'createElement').mockReturnValue(mockLink as any);
+      vi.spyOn(document, 'createElement').mockReturnValue(mockLink as unknown as HTMLAnchorElement);
 
       render(<ShareModal {...mockProps} />);
 

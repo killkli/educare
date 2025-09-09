@@ -405,7 +405,7 @@ describe('AssistantContainer', () => {
     it('handles undefined selectedAssistant', () => {
       const propsWithUndefinedSelected = {
         ...mockProps,
-        selectedAssistant: undefined as any,
+        selectedAssistant: undefined,
       };
 
       render(<AssistantContainer {...propsWithUndefinedSelected} />);
