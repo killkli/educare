@@ -36,6 +36,18 @@ Object.defineProperty(window, 'sessionStorage', {
 // Mock fetch for API calls
 global.fetch = vi.fn();
 
+// Mock DOM methods
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(globalThis as any).Element.prototype.scrollIntoView = vi.fn();
+
+// Mock clipboard API
+Object.defineProperty(navigator, 'clipboard', {
+  value: {
+    writeText: vi.fn().mockResolvedValue(undefined),
+  },
+  writable: true,
+});
+
 // Mock environment variables
 vi.mock('vite', () => ({
   loadEnv: vi.fn(() => ({

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Assistant, ChatSession } from './types';
 import * as db from './services/db';
 import AssistantEditor from './components/AssistantEditor';
-import ChatWindow from './components/ChatWindow';
+import { ChatContainer } from './components/chat';
 import MigrationPanel from './components/MigrationPanel';
 import SharedAssistant from './components/SharedAssistant';
 import ApiKeySetup from './components/ApiKeySetup';
@@ -456,7 +456,7 @@ const App: React.FC = () => {
             />
           )}
           {viewMode === 'chat' && currentAssistant && currentSession && (
-            <ChatWindow
+            <ChatContainer
               session={currentSession}
               assistantName={currentAssistant.name}
               systemPrompt={currentAssistant.systemPrompt}
