@@ -13,6 +13,7 @@ import ProviderSettings from './components/ProviderSettings';
 import { preloadEmbeddingModel, isEmbeddingModelLoaded } from './services/embeddingService';
 import { ModelLoadingOverlay } from './components/ModelLoadingOverlay';
 import { ShareModal } from './components/ShareModal';
+import { CustomSelect } from './components/CustomSelect';
 
 type ViewMode =
   | 'chat'
@@ -237,17 +238,12 @@ const App: React.FC = () => {
 
       {/* Sidebar */}
       <div
-        className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} ${
-          isMobile || isTablet
-            ? 'fixed left-0 top-0 h-full z-50 w-80'
-            : 'relative w-72 flex-shrink-0'
+        className={`${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed left-0 top-0 h-full z-50 ${
+          isMobile || isTablet ? 'w-80' : 'w-72'
         } bg-gray-900/95 backdrop-blur-sm flex flex-col p-6 border-r border-gray-700/50 shadow-2xl transition-transform duration-300 ease-in-out`}
       >
-        <div className='flex items-center justify-between mb-6'>
-          <h1 className='text-2xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent'>
-            專業助理
-          </h1>
-          {(isMobile || isTablet) && (
+        {(isMobile || isTablet) && (
+          <div className='flex items-center justify-end mb-6'>
             <button
               onClick={() => setIsSidebarOpen(false)}
               className='p-2 text-gray-400 hover:text-white rounded-lg hover:bg-gray-800/50 transition-colors'
@@ -261,192 +257,150 @@ const App: React.FC = () => {
                 />
               </svg>
             </button>
-          )}
-        </div>
-        <button
-          onClick={() => setViewMode('new_assistant')}
-          className='w-full flex items-center justify-center p-3 mb-6 bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-gray-900'
-          aria-label='新增助理'
-          role='button'
-          tabIndex={0}
-        >
-          <PlusIcon className='w-5 h-5 mr-2' aria-hidden='true' /> 新增助理
-        </button>
+          </div>
+        )}
+        {/* Assistant Selection and Actions */}
+        <div className='mb-6 px-2' role='navigation' aria-label='助理選擇'>
+          <label className='block text-sm font-bold text-gray-300 uppercase tracking-wider mb-2'>
+            選擇助理
+          </label>
 
-        {/* Assistants List */}
-        <div className='flex-1 overflow-y-auto chat-scroll' role='navigation' aria-label='助理列表'>
-          <div className='mb-6'>
-            <h2
-              className='text-sm font-bold text-gray-300 uppercase tracking-wider mb-4 px-2'
-              id='assistants-heading'
+          <CustomSelect
+            assistants={assistants}
+            selectedAssistant={currentAssistant}
+            onSelect={handleSelectAssistant}
+            placeholder='請選擇一個助理'
+          />
+
+          <div className='flex justify-end gap-1 mt-2'>
+            <button
+              onClick={() => setViewMode('new_assistant')}
+              className='p-1.5 text-gray-400 hover:text-cyan-400 rounded-md hover:bg-cyan-500/20 transition-colors'
+              title='新增助理'
+              aria-label='新增助理'
             >
-              助理
+              <PlusIcon className='w-4 h-4' />
+            </button>
+            {currentAssistant && (
+              <>
+                <button
+                  onClick={() => handleQuickShare(currentAssistant)}
+                  className='p-1.5 text-gray-400 hover:text-blue-400 rounded-md hover:bg-blue-500/20 transition-colors'
+                  title='分享助理'
+                  aria-label='分享助理'
+                >
+                  <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                    <path
+                      strokeLinecap='round'
+                      strokeLinejoin='round'
+                      strokeWidth={2}
+                      d='M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z'
+                    />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => {
+                    setViewMode('edit_assistant');
+                    setCurrentAssistant(currentAssistant);
+                  }}
+                  className='p-1.5 text-gray-400 hover:text-cyan-400 rounded-md hover:bg-cyan-500/20 transition-colors'
+                  title='編輯助理'
+                  aria-label='編輯助理'
+                >
+                  <EditIcon className='w-4 h-4' />
+                </button>
+                <button
+                  onClick={() => handleDeleteAssistant(currentAssistant.id)}
+                  className='p-1.5 text-gray-400 hover:text-red-400 rounded-md hover:bg-red-500/20 transition-colors'
+                  title='刪除助理'
+                  aria-label='刪除助理'
+                >
+                  <TrashIcon className='w-4 h-4' />
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {currentAssistant && (
+          <div
+            className='flex-1 overflow-y-auto chat-scroll'
+            role='navigation'
+            aria-label='聊天記錄'
+          >
+            <h2 className='text-sm font-bold text-gray-300 uppercase tracking-wider mb-3 px-2'>
+              聊天記錄
             </h2>
-            <div className='space-y-2' role='list' aria-labelledby='assistants-heading'>
-              {assistants.map(asst => (
+            <button
+              onClick={() => handleNewSession(currentAssistant.id)}
+              className='w-full flex items-center justify-center p-2.5 mb-3 bg-gray-700/50 hover:bg-gray-600/60 text-gray-200 hover:text-white rounded-lg text-sm font-medium border border-gray-600/30 hover:border-gray-500/50 transition-colors'
+            >
+              <PlusIcon className='w-4 h-4 mr-2' /> 新增聊天
+            </button>
+            <div className='space-y-2'>
+              {sessions.map(sess => (
                 <div
-                  key={asst.id}
-                  className={`group flex items-center p-3 rounded-lg cursor-pointer transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-gray-900 ${
-                    currentAssistant?.id === asst.id
-                      ? 'bg-cyan-600/20 border border-cyan-500/30 text-white shadow-md'
+                  key={sess.id}
+                  className={`group flex items-center p-3 rounded-lg cursor-pointer transition-colors ${
+                    currentSession?.id === sess.id
+                      ? 'bg-cyan-600/20 border border-cyan-500/30 text-white'
                       : 'bg-gray-800/30 hover:bg-gray-700/50 text-gray-200 hover:text-white border border-transparent hover:border-gray-600/30'
                   }`}
-                  onClick={() => handleSelectAssistant(asst.id)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      handleSelectAssistant(asst.id);
-                    }
-                  }}
-                  role='listitem'
-                  tabIndex={0}
-                  aria-label={`選擇助理 ${asst.name}`}
-                  aria-current={currentAssistant?.id === asst.id ? 'page' : undefined}
+                  onClick={() => setCurrentSession(sess)}
                 >
                   <div
                     className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 flex-shrink-0 ${
-                      currentAssistant?.id === asst.id ? 'bg-cyan-500' : 'bg-gray-600'
+                      currentSession?.id === sess.id ? 'bg-cyan-500' : 'bg-gray-600'
                     }`}
                   >
-                    <svg
-                      className='w-4 h-4 text-white'
-                      fill='none'
-                      stroke='currentColor'
-                      viewBox='0 0 24 24'
-                    >
-                      <path
-                        strokeLinecap='round'
-                        strokeLinejoin='round'
-                        strokeWidth={2}
-                        d='M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z'
-                      />
-                    </svg>
+                    <ChatIcon className='w-4 h-4 text-white' />
                   </div>
-                  <span className='flex-1 truncate font-medium'>{asst.name}</span>
-                  <div className='flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200'>
-                    <button
-                      onClick={e => {
-                        e.stopPropagation();
-                        handleQuickShare(asst);
-                      }}
-                      className='p-1.5 text-gray-400 hover:text-blue-400 rounded-md hover:bg-blue-500/20 transition-colors'
-                      title='快速分享'
-                    >
-                      <svg
-                        className='w-4 h-4'
-                        fill='none'
-                        stroke='currentColor'
-                        viewBox='0 0 24 24'
-                      >
-                        <path
-                          strokeLinecap='round'
-                          strokeLinejoin='round'
-                          strokeWidth={2}
-                          d='M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z'
-                        />
-                      </svg>
-                    </button>
-                    <button
-                      onClick={e => {
-                        e.stopPropagation();
-                        setViewMode('edit_assistant');
-                        setCurrentAssistant(asst);
-                      }}
-                      className='p-1.5 text-gray-400 hover:text-cyan-400 rounded-md hover:bg-gray-600/30 transition-colors'
-                      title='編輯助理'
-                    >
-                      <EditIcon className='w-4 h-4' />
-                    </button>
-                    <button
-                      onClick={e => {
-                        e.stopPropagation();
-                        handleDeleteAssistant(asst.id);
-                      }}
-                      className='p-1.5 text-gray-400 hover:text-red-400 rounded-md hover:bg-red-500/20 transition-colors'
-                      title='刪除助理'
-                    >
-                      <TrashIcon className='w-4 h-4' />
-                    </button>
+                  <div className='flex-1 min-w-0'>
+                    <div className='truncate font-medium text-white'>{sess.title}</div>
+                    <div className='text-xs text-gray-400 mt-1'>
+                      {new Date(sess.updatedAt || sess.createdAt).toLocaleString('zh-TW', {
+                        month: 'numeric',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </div>
                   </div>
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
+                      handleDeleteSession(sess.id);
+                    }}
+                    className='opacity-0 group-hover:opacity-100 p-1.5 text-gray-400 hover:text-red-400 rounded-md hover:bg-red-500/20 transition-all duration-200 ml-2'
+                    title='刪除聊天'
+                  >
+                    <TrashIcon className='w-4 h-4' />
+                  </button>
                 </div>
               ))}
             </div>
           </div>
+        )}
 
-          {currentAssistant && (
-            <div>
-              <h2 className='text-sm font-bold text-gray-300 uppercase tracking-wider mb-4 px-2'>
-                聊天記錄
-              </h2>
-              <button
-                onClick={() => handleNewSession(currentAssistant.id)}
-                className='w-full flex items-center justify-center p-3 mb-4 bg-gray-700/50 hover:bg-gray-600/60 text-gray-200 hover:text-white rounded-lg text-sm font-medium border border-gray-600/30 hover:border-gray-500/50 transition-all duration-200'
-              >
-                <PlusIcon className='w-4 h-4 mr-2' /> 新增聊天
-              </button>
-              <div className='space-y-2'>
-                {sessions.map(sess => (
-                  <div
-                    key={sess.id}
-                    className={`group flex items-center p-3 rounded-lg cursor-pointer transition-all duration-200 ${
-                      currentSession?.id === sess.id
-                        ? 'bg-cyan-600/20 border border-cyan-500/30 text-white shadow-md'
-                        : 'bg-gray-800/30 hover:bg-gray-700/50 text-gray-200 hover:text-white border border-transparent hover:border-gray-600/30'
-                    }`}
-                    onClick={() => setCurrentSession(sess)}
-                  >
-                    <div
-                      className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 flex-shrink-0 ${
-                        currentSession?.id === sess.id ? 'bg-cyan-500' : 'bg-gray-600'
-                      }`}
-                    >
-                      <ChatIcon className='w-4 h-4 text-white' />
-                    </div>
-                    <div className='flex-1 min-w-0'>
-                      <div className='truncate font-medium text-white'>{sess.title}</div>
-                      <div className='text-xs text-gray-400 mt-1'>
-                        {new Date(sess.updatedAt || sess.createdAt).toLocaleString('zh-TW', {
-                          month: 'numeric',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </div>
-                    </div>
-                    <button
-                      onClick={e => {
-                        e.stopPropagation();
-                        handleDeleteSession(sess.id);
-                      }}
-                      className='opacity-0 group-hover:opacity-100 p-1.5 text-gray-400 hover:text-red-400 rounded-md hover:bg-red-500/20 transition-all duration-200 ml-2'
-                      title='刪除聊天'
-                    >
-                      <TrashIcon className='w-4 h-4' />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className='mt-auto pt-6'>
-          <div className='border-t border-gray-700/30 pt-4'>
+        <div className='mt-auto pt-4'>
+          <div className='border-t border-gray-700/30 pt-3 px-2'>
             <button
               onClick={() => setViewMode('settings')}
-              className='w-full flex items-center p-3 text-gray-300 hover:text-white rounded-lg hover:bg-gray-700/50 transition-all duration-200 border border-transparent hover:border-gray-600/30'
+              className='flex items-center p-1.5 text-gray-400 hover:text-white rounded-md hover:bg-gray-700/50 transition-colors text-xs'
             >
-              <div className='w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center mr-3 flex-shrink-0'>
-                <SettingsIcon className='w-4 h-4 text-white' />
-              </div>
-              <span className='font-medium'>設定與分享</span>
+              <SettingsIcon className='w-4 h-4 mr-2' />
+              <span>設定</span>
             </button>
           </div>
         </div>
       </div>
 
       {/* Main Content */}
-      <main className='flex-1 bg-gradient-to-br from-gray-800 to-gray-900 backdrop-blur-sm flex flex-col min-w-0 relative'>
+      <main
+        className={`flex-1 bg-gradient-to-br from-gray-800 to-gray-900 backdrop-blur-sm flex flex-col min-w-0 relative transition-all duration-300 ease-in-out ${
+          isSidebarOpen && !isMobile && !isTablet ? 'ml-72' : ''
+        }`}
+      >
         {/* Top Bar with Hamburger Menu */}
         {(isMobile || isTablet) && !isSidebarOpen && (
           <div className='flex items-center p-4 border-b border-gray-700/50 bg-gray-800/80 backdrop-blur-sm'>
