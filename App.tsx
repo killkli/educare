@@ -1,24 +1,22 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Assistant, ChatSession } from './types';
 import * as db from './services/db';
-import AssistantEditor from './components/AssistantEditor';
+import { AssistantList, AssistantEditor } from './components/assistant';
 import { ChatContainer } from './components/chat';
 import MigrationPanel from './components/MigrationPanel';
 import SharedAssistant from './components/SharedAssistant';
 import ApiKeySetup from './components/ApiKeySetup';
-import { PlusIcon, ChatIcon, TrashIcon, EditIcon, SettingsIcon } from './components/ui/Icons';
+import { ChatIcon, TrashIcon, SettingsIcon } from './components/ui/Icons';
 import { canWriteToTurso } from './services/tursoService';
 import { providerManager, initializeProviders } from './services/providerRegistry';
 import ProviderSettings from './components/ProviderSettings';
 import { preloadEmbeddingModel, isEmbeddingModelLoaded } from './services/embeddingService';
 import { ModelLoadingOverlay } from './components/ModelLoadingOverlay';
-import { ShareModal } from './components/ShareModal';
-import { CustomSelect } from './components/ui/CustomSelect';
 
 type ViewMode =
   | 'chat'
-  | 'edit_assistant'
   | 'new_assistant'
+  | 'edit_assistant'
   | 'settings'
   | 'api_setup'
   | 'provider_settings';
@@ -42,8 +40,6 @@ const App: React.FC = () => {
     progress: number;
     name?: string;
   } | null>(null);
-  const [shareModalOpen, setShareModalOpen] = useState(false);
-  const [assistantToShare, setAssistantToShare] = useState<Assistant | null>(null);
 
   const handleNewSession = useCallback(async (assistantId: string) => {
     const newSession: ChatSession = {
@@ -164,6 +160,7 @@ const App: React.FC = () => {
     setAssistants(storedAssistants.sort((a, b) => b.createdAt - a.createdAt));
     if (!currentAssistant || assistant.id === currentAssistant.id || viewMode === 'new_assistant') {
       handleSelectAssistant(assistant.id);
+      setViewMode('chat');
     }
   };
 
@@ -222,8 +219,8 @@ const App: React.FC = () => {
   };
 
   const handleQuickShare = (assistant: Assistant) => {
-    setAssistantToShare(assistant);
-    setShareModalOpen(true);
+    // Share functionality is now handled within AssistantContainer
+    console.log('Sharing assistant:', assistant.name);
   };
 
   return (
@@ -259,68 +256,19 @@ const App: React.FC = () => {
             </button>
           </div>
         )}
-        {/* Assistant Selection and Actions */}
-        <div className='mb-6 px-2' role='navigation' aria-label='助理選擇'>
-          <label className='block text-sm font-bold text-gray-300 uppercase tracking-wider mb-2'>
-            選擇助理
-          </label>
-
-          <CustomSelect
-            assistants={assistants}
-            selectedAssistant={currentAssistant}
-            onSelect={handleSelectAssistant}
-            placeholder='請選擇一個助理'
-          />
-
-          <div className='flex justify-end gap-1 mt-2'>
-            <button
-              onClick={() => setViewMode('new_assistant')}
-              className='p-1.5 text-gray-400 hover:text-cyan-400 rounded-md hover:bg-cyan-500/20 transition-colors'
-              title='新增助理'
-              aria-label='新增助理'
-            >
-              <PlusIcon className='w-4 h-4' />
-            </button>
-            {currentAssistant && (
-              <>
-                <button
-                  onClick={() => handleQuickShare(currentAssistant)}
-                  className='p-1.5 text-gray-400 hover:text-blue-400 rounded-md hover:bg-blue-500/20 transition-colors'
-                  title='分享助理'
-                  aria-label='分享助理'
-                >
-                  <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                    <path
-                      strokeLinecap='round'
-                      strokeLinejoin='round'
-                      strokeWidth={2}
-                      d='M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z'
-                    />
-                  </svg>
-                </button>
-                <button
-                  onClick={() => {
-                    setViewMode('edit_assistant');
-                    setCurrentAssistant(currentAssistant);
-                  }}
-                  className='p-1.5 text-gray-400 hover:text-cyan-400 rounded-md hover:bg-cyan-500/20 transition-colors'
-                  title='編輯助理'
-                  aria-label='編輯助理'
-                >
-                  <EditIcon className='w-4 h-4' />
-                </button>
-                <button
-                  onClick={() => handleDeleteAssistant(currentAssistant.id)}
-                  className='p-1.5 text-gray-400 hover:text-red-400 rounded-md hover:bg-red-500/20 transition-colors'
-                  title='刪除助理'
-                  aria-label='刪除助理'
-                >
-                  <TrashIcon className='w-4 h-4' />
-                </button>
-              </>
-            )}
-          </div>
-        </div>
+        {/* Assistant Selection */}
+        <AssistantList
+          assistants={assistants}
+          selectedAssistant={currentAssistant}
+          onSelect={handleSelectAssistant}
+          onEdit={assistant => {
+            setCurrentAssistant(assistant);
+            setViewMode('edit_assistant');
+          }}
+          onDelete={handleDeleteAssistant}
+          onShare={handleQuickShare}
+          onCreateNew={() => setViewMode('new_assistant')}
+        />
 
         {currentAssistant && (
           <div
@@ -335,7 +283,15 @@ const App: React.FC = () => {
               onClick={() => handleNewSession(currentAssistant.id)}
               className='w-full flex items-center justify-center p-2.5 mb-3 bg-gray-700/50 hover:bg-gray-600/60 text-gray-200 hover:text-white rounded-lg text-sm font-medium border border-gray-600/30 hover:border-gray-500/50 transition-colors'
             >
-              <PlusIcon className='w-4 h-4 mr-2' /> 新增聊天
+              <svg className='w-4 h-4 mr-2' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                <path
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  strokeWidth={2}
+                  d='M12 4v16m8-8H4'
+                />
+              </svg>
+              新增聊天
             </button>
             <div className='space-y-2'>
               {sessions.map(sess => (
@@ -442,6 +398,8 @@ const App: React.FC = () => {
               onCancel={() => {
                 if (assistants.length > 0) {
                   setViewMode('chat');
+                } else {
+                  setViewMode('new_assistant');
                 }
               }}
               onShare={handleQuickShare}
@@ -634,18 +592,6 @@ const App: React.FC = () => {
         isVisible={isModelLoading}
         progress={modelLoadingProgress || undefined}
       />
-
-      {/* Share Modal */}
-      {assistantToShare && (
-        <ShareModal
-          isOpen={shareModalOpen}
-          onClose={() => {
-            setShareModalOpen(false);
-            setAssistantToShare(null);
-          }}
-          assistant={assistantToShare}
-        />
-      )}
     </div>
   );
 };

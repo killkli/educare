@@ -57,5 +57,42 @@ vi.mock('vite', () => ({
   })),
 }));
 
+// Mock DOMMatrix for PDF.js compatibility
+global.DOMMatrix = class DOMMatrix {
+  constructor() {
+    // Basic mock implementation
+  }
+} as any;
+
+// Mock Canvas API for PDF.js
+global.HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
+  clearRect: vi.fn(),
+  drawImage: vi.fn(),
+  getImageData: vi.fn(() => ({ data: new Uint8ClampedArray(4) })),
+  putImageData: vi.fn(),
+  fillRect: vi.fn(),
+  strokeRect: vi.fn(),
+  fillText: vi.fn(),
+  measureText: vi.fn(() => ({ width: 0 })),
+  save: vi.fn(),
+  restore: vi.fn(),
+  scale: vi.fn(),
+  translate: vi.fn(),
+  rotate: vi.fn(),
+  transform: vi.fn(),
+  setTransform: vi.fn(),
+})) as any;
+
+// Mock Web Workers for PDF.js
+global.Worker = class Worker {
+  constructor() {
+    // Basic mock implementation
+  }
+  postMessage = vi.fn();
+  terminate = vi.fn();
+  addEventListener = vi.fn();
+  removeEventListener = vi.fn();
+} as any;
+
 // This import extends expect with jest-dom matchers
 // The matchers are added automatically when imported
