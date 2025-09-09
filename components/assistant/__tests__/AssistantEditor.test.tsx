@@ -161,7 +161,7 @@ describe('AssistantEditor', () => {
       expect(screen.getByLabelText('公開描述')).toHaveValue(TEST_ASSISTANTS.withRag.description);
       expect(screen.getByLabelText('系統提示')).toHaveValue(TEST_ASSISTANTS.withRag.systemPrompt);
       expect(
-        screen.getByText(`Chunks: ${TEST_ASSISTANTS.withRag.ragChunks.length}`),
+        screen.getByText(`Chunks: ${TEST_ASSISTANTS.withRag.ragChunks!.length}`),
       ).toBeInTheDocument();
     });
 
@@ -184,7 +184,7 @@ describe('AssistantEditor', () => {
     it('handles assistant with undefined description', () => {
       const assistantWithUndefinedDescription = {
         ...TEST_ASSISTANTS.basic,
-        description: undefined,
+        description: '',
       };
 
       const propsWithAssistant = {
@@ -341,7 +341,7 @@ describe('AssistantEditor', () => {
         expect(mockProps.onSave).toHaveBeenCalled();
       });
 
-      const savedAssistant = mockProps.onSave.mock.calls[0][0];
+      const savedAssistant = (mockProps.onSave as ReturnType<typeof vi.fn>).mock.calls[0][0];
       expect(savedAssistant.name).toBe('Test Assistant'); // Trimmed
       expect(savedAssistant.description).toBe('Test Description'); // Trimmed
       expect(savedAssistant.systemPrompt).toBe('Test Prompt'); // Trimmed
@@ -372,7 +372,7 @@ describe('AssistantEditor', () => {
         expect(mockProps.onSave).toHaveBeenCalled();
       });
 
-      const savedAssistant = mockProps.onSave.mock.calls[0][0];
+      const savedAssistant = (mockProps.onSave as ReturnType<typeof vi.fn>).mock.calls[0][0];
       expect(savedAssistant.id).toBe(TEST_ASSISTANTS.basic.id);
       expect(savedAssistant.createdAt).toBe(TEST_ASSISTANTS.basic.createdAt);
       expect(savedAssistant.name).toBe('Updated Name');
@@ -763,7 +763,7 @@ describe('AssistantEditor', () => {
       render(<AssistantEditor {...propsWithAssistant} />);
 
       expect(
-        screen.getByText(`Chunks: ${TEST_ASSISTANTS.withRag.ragChunks.length}`),
+        screen.getByText(`Chunks: ${TEST_ASSISTANTS.withRag.ragChunks!.length}`),
       ).toBeInTheDocument();
     });
   });

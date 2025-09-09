@@ -3,10 +3,10 @@ import { AppProvider, useAppContext, ErrorBoundary, Layout, ModelLoadingOverlay 
 import { AssistantEditor, ShareModal } from '../assistant';
 import { ChatContainer } from '../chat';
 import { ChatSession } from '../../types';
-import SharedAssistant from '../SharedAssistant';
-import MigrationPanel from '../MigrationPanel';
-import ApiKeySetup from '../ApiKeySetup';
-import ProviderSettings from '../ProviderSettings';
+import SharedAssistant from '../features/SharedAssistant';
+import MigrationPanel from '../settings/MigrationPanel';
+import ApiKeySetup from '../settings/ApiKeySetup';
+import ProviderSettings from '../settings/ProviderSettings';
 import { providerManager } from '../../services/providerRegistry';
 import { canWriteToTurso } from '../../services/tursoService';
 
@@ -67,7 +67,7 @@ function AppContent(): React.JSX.Element {
           assistantName={state.currentAssistant.name}
           systemPrompt={state.currentAssistant.systemPrompt}
           assistantId={state.currentAssistant.id}
-          ragChunks={state.currentAssistant.ragChunks}
+          ragChunks={state.currentAssistant.ragChunks ?? []}
           onNewMessage={handleNewMessage}
         />
       )}

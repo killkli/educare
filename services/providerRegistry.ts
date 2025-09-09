@@ -17,7 +17,8 @@ export function getProviderManager(): ProviderManager {
 
 // Initialize providers asynchronously when needed
 export async function initializeProviders(): Promise<void> {
-  if (isInitializing || !providerManagerInstance) {
+  const manager = getProviderManager();
+  if (isInitializing || !manager) {
     return;
   }
 
@@ -29,7 +30,7 @@ export async function initializeProviders(): Promise<void> {
     const [{ GeminiProvider }] = await Promise.all([import('./providers/geminiProvider')]);
 
     // Register safe providers first
-    providerManagerInstance.registerProvider('gemini', new GeminiProvider());
+    manager.registerProvider('gemini', new GeminiProvider());
 
     // Load native providers (no LLM.js dependencies)
     const nativeProviders = [
@@ -56,7 +57,7 @@ export async function initializeProviders(): Promise<void> {
       try {
         const providerModule = await import(module);
         const ProviderClass = providerModule[className];
-        providerManagerInstance.registerProvider(name as ProviderType, new ProviderClass());
+        manager.registerProvider(name as ProviderType, new ProviderClass());
         console.log(`✅ ${name} provider loaded successfully`);
       } catch (error) {
         console.warn(`⚠️ Failed to load ${name} provider:`, error);
@@ -64,11 +65,11 @@ export async function initializeProviders(): Promise<void> {
     }
 
     // Initialize providers with their configurations
-    const settings = providerManagerInstance.getSettings();
+    const settings = manager.getSettings();
 
     for (const [providerType, providerSettings] of Object.entries(settings.providers)) {
       if (providerSettings.enabled) {
-        const provider = providerManagerInstance.getProvider(providerType as ProviderType);
+        const provider = manager.getProvider(providerType as ProviderType);
         if (provider) {
           await provider.initialize(providerSettings.config).catch(error => {
             console.warn(`Failed to initialize ${providerType} provider:`, error);
@@ -87,3 +88,7 @@ export async function initializeProviders(): Promise<void> {
 
 // Export the lazy getter
 export const providerManager = getProviderManager();
+
+export function isLLMAvailable(): boolean {
+  return providerManager.getAvailableProviders().length > 0;
+}

@@ -36,7 +36,10 @@ export const migrateIndexedDBToTurso = async (
       };
     }
 
-    const totalChunks = assistants.reduce((sum, assistant) => sum + assistant.ragChunks.length, 0);
+    const totalChunks = assistants.reduce(
+      (sum, assistant) => sum + (assistant.ragChunks?.length ?? 0),
+      0,
+    );
     let processedAssistants = 0;
     let processedChunks = 0;
     let migratedAssistants = 0;
@@ -74,8 +77,8 @@ export const migrateIndexedDBToTurso = async (
             completed: false,
           });
           shouldMigrateChunks = false;
-          processedChunks += assistant.ragChunks.length;
-          migratedChunks += assistant.ragChunks.length; // 視為已遷移
+          processedChunks += assistant.ragChunks?.length ?? 0;
+          migratedChunks += assistant.ragChunks?.length ?? 0; // 視為已遷移
         }
 
         // 遷移助手基本資料
@@ -99,13 +102,13 @@ export const migrateIndexedDBToTurso = async (
         }
 
         // 遷移 RAG chunks
-        if (shouldMigrateChunks && assistant.ragChunks.length > 0) {
-          for (let i = 0; i < assistant.ragChunks.length; i++) {
-            const chunk = assistant.ragChunks[i];
+        if (shouldMigrateChunks && (assistant.ragChunks?.length ?? 0) > 0) {
+          for (let i = 0; i < (assistant.ragChunks?.length ?? 0); i++) {
+            const chunk = assistant.ragChunks![i];
             processedChunks++;
 
             onProgress?.({
-              step: `Migrating chunk ${i + 1}/${assistant.ragChunks.length} for "${assistant.name}"`,
+              step: `Migrating chunk ${i + 1}/${assistant.ragChunks?.length ?? 0} for "${assistant.name}"`,
               current: processedChunks,
               total: totalChunks,
               completed: false,
@@ -186,7 +189,10 @@ export const checkMigrationStatus = async (): Promise<{
 }> => {
   try {
     const assistants = await getAllAssistants();
-    const totalChunks = assistants.reduce((sum, assistant) => sum + assistant.ragChunks.length, 0);
+    const totalChunks = assistants.reduce(
+      (sum, assistant) => sum + (assistant.ragChunks?.length ?? 0),
+      0,
+    );
 
     return {
       hasIndexedDBData: assistants.length > 0,

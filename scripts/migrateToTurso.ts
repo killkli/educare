@@ -37,11 +37,11 @@ export const migrateData = async () => {
       }
 
       // 遷移 RAG chunks
-      totalChunks += assistant.ragChunks.length;
-      console.log(`  📝 Migrating ${assistant.ragChunks.length} RAG chunks...`);
+      totalChunks += assistant.ragChunks?.length ?? 0;
+      console.log(`  📝 Migrating ${assistant.ragChunks?.length ?? 0} RAG chunks...`);
 
-      for (let i = 0; i < assistant.ragChunks.length; i++) {
-        const chunk = assistant.ragChunks[i];
+      for (let i = 0; i < (assistant.ragChunks?.length ?? 0); i++) {
+        const chunk = assistant.ragChunks![i];
         try {
           await saveRagChunkToTurso(
             {

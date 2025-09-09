@@ -3,7 +3,7 @@ import {
   migrateIndexedDBToTurso,
   checkMigrationStatus,
   MigrationProgress,
-} from '../services/migrationService';
+} from '../../services/migrationService';
 
 const MigrationPanel: React.FC = () => {
   const [migrationStatus, setMigrationStatus] = useState<{
@@ -47,7 +47,7 @@ const MigrationPanel: React.FC = () => {
     setMigrationProgress(null);
 
     try {
-      const result = await migrateIndexedDBToTurso(progress => {
+      const result = await migrateIndexedDBToTurso((progress: MigrationProgress) => {
         setMigrationProgress(progress);
       });
 

@@ -133,7 +133,7 @@ export const AssistantContainer: React.FC<AssistantContainerProps> = ({
     <>
       <AssistantList
         assistants={assistants}
-        selectedAssistant={selectedAssistant}
+        selectedAssistant={selectedAssistant || null}
         onSelect={handleSelectAssistant}
         onEdit={handleEditAssistant}
         onDelete={handleDeleteAssistant}

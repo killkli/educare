@@ -1,5 +1,7 @@
+/// <reference types="vitest/globals" />
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll } from 'vitest';
+import { vi } from 'vitest';
 import React from 'react';
 import { AppShell } from '../AppShell';
 import { setupCoreTestEnvironment, TEST_ASSISTANTS, TEST_SESSIONS } from './test-utils';
@@ -475,7 +477,8 @@ describe('AppShell', () => {
       const mockProviderManager = vi.mocked(
         await import('../../../services/providerRegistry'),
       ).providerManager;
-      mockProviderManager.getAvailableProviders.mockReturnValue(['gemini', 'openai']);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (mockProviderManager.getAvailableProviders as any).mockReturnValue(['gemini', 'openai']);
 
       render(<AppShell />);
 
@@ -503,7 +506,8 @@ describe('AppShell', () => {
       const mockProviderManager = vi.mocked(
         await import('../../../services/providerRegistry'),
       ).providerManager;
-      mockProviderManager.getAvailableProviders.mockReturnValue([]);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (mockProviderManager.getAvailableProviders as any).mockReturnValue([]);
 
       render(<AppShell />);
 

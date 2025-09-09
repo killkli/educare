@@ -1,9 +1,27 @@
+/// <reference types="vitest" />
 import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
+      test: {
+        globals: true,
+        deps: {
+          optimizer: {
+            web: {
+              include: ['vitest-canvas-mock'],
+            },
+          },
+        },
+        environment: 'happy-dom',
+        setupFiles: ['./src/vitest.setup.ts'],
+        poolOptions: {
+          threads: {
+            singleThread: true,
+          },
+        },
+      },
       define: {
         // 移除 Gemini API KEY - 現在由用戶在運行時提供
         'process.env.API_KEY': JSON.stringify(''),

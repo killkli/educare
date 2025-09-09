@@ -667,8 +667,8 @@ describe('Layout', () => {
       });
 
       // Should trigger assistant selection and edit mode
-      await waitFor(() => {
-        const mockSelectAssistant = vi.mocked(import('../../../services/db')).getAssistant;
+      await waitFor(async () => {
+        const mockSelectAssistant = vi.mocked(await import('../../../services/db')).getAssistant;
         expect(mockSelectAssistant).toHaveBeenCalled();
       });
     });

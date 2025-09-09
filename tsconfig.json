@@ -6,7 +6,7 @@
     "module": "ESNext",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "skipLibCheck": true,
-    "types": ["node", "react", "react-dom"],
+    "types": ["node", "react", "react-dom", "vitest/globals"],
     "moduleResolution": "bundler",
     "isolatedModules": true,
     "moduleDetection": "force",
@@ -20,5 +20,6 @@
     "strict": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true
-  }
+  },
+  "include": ["src", "components", "**/*.test.ts", "**/*.test.tsx", "vite.config.ts"]
 }

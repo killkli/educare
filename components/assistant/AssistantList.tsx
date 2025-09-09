@@ -20,7 +20,7 @@ export const AssistantList: React.FC<AssistantListProps> = ({
 
       <CustomSelect
         assistants={assistants}
-        selectedAssistant={selectedAssistant}
+        selectedAssistant={selectedAssistant ?? null}
         onSelect={onSelect}
         placeholder='請選擇一個助理'
       />

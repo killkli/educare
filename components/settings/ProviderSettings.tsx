@@ -1,9 +1,19 @@
 import React, { useState } from 'react';
-import { providerManager } from '../services/providerRegistry';
-import { ProviderType, ProviderSettings as IProviderSettings } from '../services/llmAdapter';
+import { providerManager } from '../../services/providerRegistry';
+import { ProviderType, ProviderSettings as IProviderSettings } from '../../services/llmAdapter';
 
 interface ProviderSettingsProps {
   onClose?: () => void;
+}
+
+interface ProviderInfo {
+  name: string;
+  description: string;
+  icon: string;
+  color: string;
+  apiKeyLabel: string;
+  apiKeyPlaceholder: string;
+  helpUrl: string;
 }
 
 const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
@@ -20,7 +30,7 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
     {} as Record<ProviderType, boolean>,
   );
 
-  const providerInfo = {
+  const providerInfo: Record<ProviderType, ProviderInfo> = {
     gemini: {
       name: 'Google Gemini',
       description: '高品質的 AI 助手，適合日常對話和創作',

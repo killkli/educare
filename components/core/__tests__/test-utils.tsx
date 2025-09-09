@@ -105,7 +105,7 @@ export const createMockChatSessionWithMessages = (
       content: 'Hello, test assistant!',
     },
     {
-      role: 'assistant',
+      role: 'model',
       content: 'Hello! How can I help you today?',
     },
   ],
@@ -355,12 +355,7 @@ export const mockChatComponents = () => {
           'button',
           {
             key: 'send-message',
-            onClick: () =>
-              onNewMessage &&
-              onNewMessage(session, 'test message', 'test response', {
-                promptTokenCount: 5,
-                candidatesTokenCount: 10,
-              }),
+            onClick: () => onNewMessage && onNewMessage('test message'),
             'data-testid': 'send-message',
           },
           'Send Message',

@@ -54,9 +54,9 @@ describe('AssistantContainer', () => {
 
       render(<AssistantContainer {...propsWithNoAssistants} />);
 
-      // Should render AssistantEditor in new mode
+      // defaults to "new" view, showing the editor
       expect(screen.getByTestId('assistant-editor')).toBeInTheDocument();
-      expect(screen.getByText('New Mode')).toBeInTheDocument();
+      expect(screen.getByText('新增助理')).toBeInTheDocument();
     });
 
     it('switches to edit view when edit is triggered', async () => {
@@ -86,7 +86,8 @@ describe('AssistantContainer', () => {
 
   describe('Assistant Selection', () => {
     it('calls db.getAssistant when selecting an assistant', async () => {
-      const mockGetAssistant = vi.mocked(await import('../../services/db')).getAssistant;
+      const db = await import('@/services/db');
+      const mockGetAssistant = vi.spyOn(db, 'getAssistant');
       mockGetAssistant.mockResolvedValue(TEST_ASSISTANTS.basic);
 
       render(<AssistantContainer {...mockProps} />);
@@ -97,7 +98,8 @@ describe('AssistantContainer', () => {
     });
 
     it('calls onAssistantChange when assistant is successfully retrieved', async () => {
-      const mockGetAssistant = vi.mocked(await import('../../services/db')).getAssistant;
+      const db = await import('@/services/db');
+      const mockGetAssistant = vi.spyOn(db, 'getAssistant');
       mockGetAssistant.mockResolvedValue(TEST_ASSISTANTS.basic);
 
       render(<AssistantContainer {...mockProps} />);
@@ -204,7 +206,8 @@ describe('AssistantContainer', () => {
       render(<AssistantContainer {...propsWithNoAssistants} />);
 
       expect(screen.getByTestId('assistant-editor')).toBeInTheDocument();
-      expect(screen.getByText('New Mode')).toBeInTheDocument();
+      // Check for translated title for new assistant
+      expect(screen.getByText('新增助理')).toBeInTheDocument();
     });
 
     it('passes null assistant in new mode', () => {
@@ -215,7 +218,9 @@ describe('AssistantContainer', () => {
 
       render(<AssistantContainer {...propsWithNoAssistants} />);
 
-      expect(screen.getByText('New Mode')).toBeInTheDocument();
+      expect(screen.getByTestId('assistant-editor')).toBeInTheDocument();
+      // Check for translated title for new assistant
+      expect(screen.getByText('新增助理')).toBeInTheDocument();
     });
 
     it('handles save in new mode', async () => {
@@ -245,8 +250,9 @@ describe('AssistantContainer', () => {
       const cancelButton = screen.getByTestId('cancel-button');
       fireEvent.click(cancelButton);
 
-      // Should switch to list mode if assistants exist, otherwise stay in new mode
-      expect(screen.getByText('New Mode')).toBeInTheDocument();
+      // The editor should be visible, and since there are no assistants, cancel should not change the view.
+      expect(screen.getByTestId('assistant-editor')).toBeInTheDocument();
+      expect(screen.getByText('新增助理')).toBeInTheDocument();
     });
 
     it('handles save in edit mode', async () => {
@@ -361,7 +367,8 @@ describe('AssistantContainer', () => {
 
   describe('Error Handling', () => {
     it('handles errors when getting assistant fails', async () => {
-      const mockGetAssistant = vi.mocked(await import('../../services/db')).getAssistant;
+      const db = await import('@/services/db');
+      const mockGetAssistant = vi.spyOn(db, 'getAssistant');
       mockGetAssistant.mockRejectedValue(new Error('Database error'));
 
       render(<AssistantContainer {...mockProps} />);

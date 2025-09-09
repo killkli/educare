@@ -8,7 +8,7 @@ const WelcomeMessage: React.FC<WelcomeMessageProps> = ({
   sharedMode = false,
 }) => {
   return (
-    <div className='text-center py-12'>
+    <div data-testid='welcome-message' className='text-center py-12'>
       <div className='w-20 h-20 bg-cyan-600 rounded-full flex items-center justify-center mx-auto mb-6'>
         <GeminiIcon className='w-10 h-10 text-white' />
       </div>

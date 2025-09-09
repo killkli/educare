@@ -66,7 +66,7 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({
       setName(assistant.name);
       setDescription(assistant.description || '');
       setSystemPrompt(assistant.systemPrompt);
-      setRagChunks(assistant.ragChunks);
+      setRagChunks(assistant.ragChunks ?? []);
       // 載入現有的 RAG chunk 數量
       getRagChunkCount(assistant.id).then(count => setRagChunkCount(count));
     } else {
@@ -399,7 +399,7 @@ const AssistantEditor: React.FC<AssistantEditorProps> = ({
             <div className='space-y-2'>
               <div className='flex items-center space-x-2'>
                 <button
-                  onClick={() => onShare?.(assistant)}
+                  onClick={() => assistant && onShare?.(assistant)}
                   className='px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-semibold flex items-center space-x-2 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5'
                 >
                   <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
