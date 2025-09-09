@@ -138,7 +138,7 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
 
   // Select an assistant
   const selectAssistant = useCallback(
-    async (assistantId: string) => {
+    async (assistantId: string, changeView = true) => {
       const assistant = await db.getAssistant(assistantId);
       if (assistant) {
         dispatch({ type: 'SET_CURRENT_ASSISTANT', payload: assistant });
@@ -151,7 +151,10 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
         } else {
           await createNewSession(assistant.id);
         }
-        dispatch({ type: 'SET_VIEW_MODE', payload: 'chat' });
+
+        if (changeView) {
+          dispatch({ type: 'SET_VIEW_MODE', payload: 'chat' });
+        }
       }
     },
     [createNewSession],
@@ -213,16 +216,16 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
         payload: storedAssistants.sort((a, b) => b.createdAt - a.createdAt),
       });
 
-      if (
-        !state.currentAssistant ||
-        assistant.id === state.currentAssistant.id ||
-        state.viewMode === 'new_assistant'
-      ) {
+      // If we are creating a new assistant, select it and switch to chat.
+      if (state.viewMode === 'new_assistant') {
         await selectAssistant(assistant.id);
-        dispatch({ type: 'SET_VIEW_MODE', payload: 'chat' });
+      } else {
+        // If we are editing, just update the current assistant's data
+        // and stay in the current view mode (e.g., 'edit_assistant').
+        dispatch({ type: 'SET_CURRENT_ASSISTANT', payload: assistant });
       }
     },
-    [state.currentAssistant, state.viewMode, selectAssistant],
+    [selectAssistant, state.viewMode],
   );
 
   // Delete assistant
