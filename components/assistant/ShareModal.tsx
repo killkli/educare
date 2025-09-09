@@ -84,10 +84,10 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
         message: '分享連結生成成功！',
       });
     } catch (error) {
-      console.error('生成分享連結失敗:', error.message, error);
+      console.error('生成分享連結失敗:', error);
       setShareStatus({
         type: 'error',
-        message: `生成分享連結失敗，請檢查 Turso 配置並稍後再試。錯誤: ${error.message}`,
+        message: `生成分享連結失敗，請檢查 Turso 配置並稍後再試。錯誤: ${error instanceof Error ? error.message : String(error)}`,
       });
     } finally {
       setIsGenerating(false);

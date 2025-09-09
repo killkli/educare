@@ -97,7 +97,11 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
       alert('API 金鑰導入成功！現在您可以開始聊天了。');
     } catch (error) {
       console.error('解密失敗:', error);
-      alert('解密失敗：' + error.message + '\n請檢查密碼是否正確。');
+      alert(
+        '解密失敗：' +
+          (error instanceof Error ? error.message : String(error)) +
+          '\n請檢查密碼是否正確。',
+      );
     } finally {
       setIsDecrypting(false);
     }

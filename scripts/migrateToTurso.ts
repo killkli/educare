@@ -30,7 +30,9 @@ export const migrateData = async () => {
         migratedAssistants++;
       } catch (error) {
         console.error('  ❌ Failed to save assistant:', error);
-        assistantErrors.push(`Failed to migrate assistant "${assistant.name}": ${error.message}`);
+        assistantErrors.push(
+          `Failed to migrate assistant "${assistant.name}": ${error instanceof Error ? error.message : String(error)}`,
+        );
         continue;
       }
 

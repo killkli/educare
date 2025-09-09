@@ -126,7 +126,7 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, showTit
       alert('API 金鑰導入成功！');
     } catch (error) {
       console.error('導入失敗:', error);
-      alert('導入失敗：' + error.message);
+      alert('導入失敗：' + (error instanceof Error ? error.message : String(error)));
     }
   };
 
