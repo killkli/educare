@@ -233,7 +233,7 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
         isLoading={isLoading}
         statusText={statusText}
         currentSession={currentSession}
-        disabled={sharedMode && !input.trim()}
+        disabled={false}
       />
     </div>
   );
