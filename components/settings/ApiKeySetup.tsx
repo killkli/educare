@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { ApiKeyManager, UserApiKeys } from '../services/apiKeyManager';
-import { CryptoService } from '../services/cryptoService';
+import { ApiKeyManager, UserApiKeys } from '../../services/apiKeyManager';
+import { CryptoService } from '../../services/cryptoService';
 
 interface ApiKeySetupProps {
   onComplete?: () => void;
@@ -178,7 +178,9 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, showTit
             type='password'
             id='geminiApiKey'
             value={apiKeys.geminiApiKey || ''}
-            onChange={e => setApiKeys(prev => ({ ...prev, geminiApiKey: e.target.value }))}
+            onChange={e =>
+              setApiKeys((prev: UserApiKeys) => ({ ...prev, geminiApiKey: e.target.value }))
+            }
             className='w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-white focus:ring-cyan-500 focus:border-cyan-500'
             placeholder='AIzaSy...'
           />
@@ -215,7 +217,9 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, showTit
           <textarea
             id='tursoApiKey'
             value={apiKeys.tursoWriteApiKey || ''}
-            onChange={e => setApiKeys(prev => ({ ...prev, tursoWriteApiKey: e.target.value }))}
+            onChange={e =>
+              setApiKeys((prev: UserApiKeys) => ({ ...prev, tursoWriteApiKey: e.target.value }))
+            }
             rows={3}
             className='w-full bg-gray-700 border border-gray-600 rounded-md px-3 py-2 text-white focus:ring-cyan-500 focus:border-cyan-500 font-mono text-xs'
             placeholder='eyJhbGciOiJFZERTQSI...'

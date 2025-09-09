@@ -48,7 +48,7 @@ export function Layout({ children }: LayoutProps): React.JSX.Element {
           selectedAssistant={state.currentAssistant}
           onSelect={actions.selectAssistant}
           onEdit={assistant => {
-            actions.selectAssistant(assistant.id, false);
+            actions.selectAssistant(assistant.id);
             actions.setViewMode('edit_assistant');
           }}
           onDelete={actions.deleteAssistant}

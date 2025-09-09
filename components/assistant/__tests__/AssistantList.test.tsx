@@ -1,4 +1,5 @@
 /* global HTMLSelectElement */
+import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Assistant } from '../../../types';
@@ -34,7 +35,6 @@ vi.mock('../ui/CustomSelect', () => ({
     onSelect: (id: string) => void;
     placeholder: string;
   }) => {
-    import React from 'react';
     return React.createElement(
       'select',
       {

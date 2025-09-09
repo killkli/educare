@@ -4,7 +4,7 @@ import { Assistant, ChatSession } from '../types';
 const DB_NAME = 'professional-assistant-db';
 const DB_VERSION = 1;
 const ASSISTANTS_STORE = 'assistants';
-const SESSIONS_STORE = 'sessions';
+export const SESSIONS_STORE = 'sessions';
 
 interface ProfessionalAssistantDB extends DBSchema {
   [ASSISTANTS_STORE]: {

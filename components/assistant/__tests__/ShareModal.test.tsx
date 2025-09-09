@@ -1,9 +1,11 @@
+/// <reference types="vitest/globals" />
 /* global HTMLAnchorElement */
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll } from 'vitest';
+import { vi } from 'vitest';
 import { ShareModal } from '../ShareModal';
 import { Assistant } from '../../../types';
-import { TEST_ASSISTANTS, setupAssistantTestEnvironment } from './test-utils';
+import { TEST_ASSISTANTS, setupAssistantTestEnvironment, mockQRCode } from './test-utils';
 
 // Mock dependencies
 vi.mock('../../../services/tursoService', () => ({
@@ -28,13 +30,8 @@ vi.mock('../../../services/apiKeyManager', () => ({
   },
 }));
 
-vi.mock('qrcode', () => ({
-  default: {
-    toDataURL: vi.fn().mockResolvedValue('data:image/png;base64,mockQRCode'),
-  },
-}));
-
 beforeAll(() => {
+  mockQRCode();
   // Mock window.location
   Object.defineProperty(window, 'location', {
     value: {
@@ -167,7 +164,7 @@ describe('ShareModal', () => {
     it('handles assistant with undefined description', async () => {
       const assistantWithoutDescription = {
         ...TEST_ASSISTANTS.basic,
-        description: undefined,
+        description: '',
       };
 
       const propsWithoutDescription = {
@@ -193,7 +190,7 @@ describe('ShareModal', () => {
     it('handles assistant with undefined createdAt', async () => {
       const assistantWithoutCreatedAt = {
         ...TEST_ASSISTANTS.basic,
-        createdAt: undefined,
+        createdAt: Date.now(),
       };
 
       const propsWithoutCreatedAt = {
@@ -241,7 +238,8 @@ describe('ShareModal', () => {
   describe('QR Code Generation', () => {
     it('generates and displays QR code', async () => {
       const mockQRCode = vi.mocked(await import('qrcode')).default;
-      mockQRCode.toDataURL.mockResolvedValue('data:image/png;base64,mockQRCode');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (mockQRCode.toDataURL as any).mockResolvedValue('data:image/png;base64,mockQRCode');
 
       render(<ShareModal {...mockProps} />);
 
@@ -370,7 +368,7 @@ describe('ShareModal', () => {
       expect(screen.getByRole('button', { name: '重新生成' })).toBeInTheDocument();
     });
 
-    it('generates random password', () => {
+    it('generates random password', async () => {
       const { CryptoService } = await import('../../../services/cryptoService');
       const mockCryptoService = vi.mocked(CryptoService);
 
@@ -661,7 +659,8 @@ describe('ShareModal', () => {
 
     it('handles QR code generation failure', async () => {
       const mockQRCode = vi.mocked(await import('qrcode')).default;
-      mockQRCode.toDataURL.mockRejectedValue(new Error('QR generation failed'));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (mockQRCode.toDataURL as any).mockRejectedValue(new Error('QR generation failed'));
 
       // Should not crash the component
       render(<ShareModal {...mockProps} />);

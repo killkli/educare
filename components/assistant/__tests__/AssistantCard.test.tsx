@@ -75,9 +75,8 @@ describe('AssistantCard', () => {
 
       const ragIndicator = screen.getByText(/RAG:/);
       expect(ragIndicator).toBeInTheDocument();
-      expect(
-        screen.getByText(`${TEST_ASSISTANTS.withRag.ragChunks.length} 檔案`),
-      ).toBeInTheDocument();
+      const chunkCount = screen.getByText(/檔案/);
+      expect(chunkCount).toHaveTextContent(`${TEST_ASSISTANTS.withRag.ragChunks!.length} 檔案`);
     });
 
     it('does not render RAG indicator when assistant has no RAG chunks', () => {
@@ -108,21 +107,21 @@ describe('AssistantCard', () => {
 
       render(<AssistantCard {...selectedProps} />);
 
-      const card = screen.getByRole('button');
+      const card = screen.getByTestId(`assistant-card-${selectedProps.assistant.id}`);
       expect(card).toHaveClass('bg-cyan-600/20', 'border-cyan-500/30', 'text-white');
     });
 
     it('applies unselected styles when isSelected is false', () => {
       render(<AssistantCard {...mockProps} />);
 
-      const card = screen.getByRole('button');
+      const card = screen.getByTestId(`assistant-card-${mockProps.assistant.id}`);
       expect(card).toHaveClass('bg-gray-800/30', 'text-gray-200', 'border-transparent');
     });
 
     it('has hover styles in CSS classes', () => {
       render(<AssistantCard {...mockProps} />);
 
-      const card = screen.getByRole('button');
+      const card = screen.getByTestId(`assistant-card-${mockProps.assistant.id}`);
       expect(card).toHaveClass(
         'hover:bg-gray-700/50',
         'hover:text-white',
@@ -135,7 +134,7 @@ describe('AssistantCard', () => {
     it('calls onSelect when card is clicked', () => {
       render(<AssistantCard {...mockProps} />);
 
-      const card = screen.getByRole('button');
+      const card = screen.getByTestId(`assistant-card-${mockProps.assistant.id}`);
       fireEvent.click(card);
 
       expect(mockProps.onSelect).toHaveBeenCalledWith(TEST_ASSISTANTS.basic.id);
@@ -269,7 +268,7 @@ describe('AssistantCard', () => {
     it('has proper flex layout classes', () => {
       render(<AssistantCard {...mockProps} />);
 
-      const card = screen.getByRole('button');
+      const card = screen.getByTestId(`assistant-card-${mockProps.assistant.id}`);
       expect(card).toHaveClass('group', 'p-4', 'rounded-lg', 'cursor-pointer');
 
       const mainContent = card.querySelector('.flex.items-start.justify-between');

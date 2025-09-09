@@ -12,12 +12,20 @@ export const AssistantCard: React.FC<AssistantCardProps> = ({
 }) => {
   return (
     <div
+      data-testid={`assistant-card-${assistant.id}`}
+      role='button'
+      tabIndex={0}
       className={`group p-4 rounded-lg cursor-pointer transition-all duration-200 border ${
         isSelected
           ? 'bg-cyan-600/20 border-cyan-500/30 text-white shadow-md'
           : 'bg-gray-800/30 hover:bg-gray-700/50 text-gray-200 hover:text-white border-transparent hover:border-gray-600/30'
       }`}
       onClick={() => onSelect(assistant.id)}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          onSelect(assistant.id);
+        }
+      }}
     >
       <div className='flex items-start justify-between'>
         <div className='flex-1 min-w-0'>

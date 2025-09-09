@@ -52,8 +52,8 @@ const createTestAssistants = async () => {
     await saveAssistant(testAssistant2);
 
     console.log('✅ Test assistants created successfully!');
-    console.log(`- ${testAssistant.name}: ${testAssistant.ragChunks.length} RAG chunks`);
-    console.log(`- ${testAssistant2.name}: ${testAssistant2.ragChunks.length} RAG chunks`);
+    console.log(`- ${testAssistant.name}: ${testAssistant.ragChunks?.length ?? 0} RAG chunks`);
+    console.log(`- ${testAssistant2.name}: ${testAssistant2.ragChunks?.length ?? 0} RAG chunks`);
   } catch (error) {
     console.error('❌ Failed to create test assistants:', error);
     throw error;

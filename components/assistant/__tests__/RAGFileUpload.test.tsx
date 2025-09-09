@@ -1,5 +1,7 @@
+/// <reference types="vitest/globals" />
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll } from 'vitest';
+import { vi } from 'vitest';
 import { RAGFileUpload } from '../RAGFileUpload';
 import { RAGFileUploadProps } from '../types';
 import {
@@ -76,7 +78,7 @@ describe('RAGFileUpload', () => {
 
     it('shows RAG chunk count when chunks exist in Turso', async () => {
       const mockGetRagChunkCount = vi.mocked(
-        await import('../../services/tursoService'),
+        await import('../../../services/tursoService'),
       ).getRagChunkCount;
       mockGetRagChunkCount.mockResolvedValue(5);
 
@@ -90,17 +92,18 @@ describe('RAGFileUpload', () => {
   describe('File Upload Handling', () => {
     it('handles single file upload', async () => {
       const mockGenerateEmbedding = vi.mocked(
-        await import('../../services/embeddingService'),
+        await import('../../../services/embeddingService'),
       ).generateEmbedding;
       const mockSaveRagChunk = vi.mocked(
-        await import('../../services/tursoService'),
+        await import('../../../services/tursoService'),
       ).saveRagChunkToTurso;
-      const mockParseDocument = vi.mocked(await import('../../services/documentParserService'))
+      const mockParseDocument = vi.mocked(await import('../../../services/documentParserService'))
         .DocumentParserService.parseDocument;
 
       mockGenerateEmbedding.mockResolvedValue([0.1, 0.2, 0.3]);
       mockSaveRagChunk.mockResolvedValue(undefined);
-      mockParseDocument.mockResolvedValue({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (mockParseDocument as any).mockResolvedValue({
         content: 'Test document content',
         metadata: { fileName: 'test.pdf', fileType: 'pdf' },
       });
@@ -130,13 +133,14 @@ describe('RAGFileUpload', () => {
 
     it('handles multiple file upload', async () => {
       const mockGenerateEmbedding = vi.mocked(
-        await import('../../services/embeddingService'),
+        await import('../../../services/embeddingService'),
       ).generateEmbedding;
-      const mockParseDocument = vi.mocked(await import('../../services/documentParserService'))
+      const mockParseDocument = vi.mocked(await import('../../../services/documentParserService'))
         .DocumentParserService.parseDocument;
 
       mockGenerateEmbedding.mockResolvedValue([0.1, 0.2, 0.3]);
-      mockParseDocument.mockResolvedValue({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (mockParseDocument as any).mockResolvedValue({
         content: 'Test document content',
         metadata: { fileName: 'test.pdf', fileType: 'pdf' },
       });
@@ -172,7 +176,7 @@ describe('RAGFileUpload', () => {
 
     it('shows processing status during file upload', async () => {
       const mockGenerateEmbedding = vi.mocked(
-        await import('../../services/embeddingService'),
+        await import('../../../services/embeddingService'),
       ).generateEmbedding;
 
       // Add delay to mock for testing loading state
@@ -228,10 +232,11 @@ describe('RAGFileUpload', () => {
 
   describe('File Type Validation', () => {
     it('skips unsupported file types', async () => {
-      const mockIsSupportedFile = vi.mocked(await import('../../services/documentParserService'))
+      const mockIsSupportedFile = vi.mocked(await import('../../../services/documentParserService'))
         .DocumentParserService.isSupportedFile;
 
-      mockIsSupportedFile.mockReturnValue(false);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (mockIsSupportedFile as any).mockReturnValue(false);
 
       render(<RAGFileUpload {...mockProps} />);
 
@@ -253,13 +258,15 @@ describe('RAGFileUpload', () => {
     });
 
     it('processes supported file types', async () => {
-      const mockIsSupportedFile = vi.mocked(await import('../../services/documentParserService'))
+      const mockIsSupportedFile = vi.mocked(await import('../../../services/documentParserService'))
         .DocumentParserService.isSupportedFile;
-      const mockGetFileTypeName = vi.mocked(await import('../../services/documentParserService'))
+      const mockGetFileTypeName = vi.mocked(await import('../../../services/documentParserService'))
         .DocumentParserService.getFileTypeName;
 
-      mockIsSupportedFile.mockReturnValue(true);
-      mockGetFileTypeName.mockReturnValue('PDF');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (mockIsSupportedFile as any).mockReturnValue(true);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (mockGetFileTypeName as any).mockReturnValue('PDF');
 
       render(<RAGFileUpload {...mockProps} />);
 
@@ -335,10 +342,11 @@ describe('RAGFileUpload', () => {
 
   describe('Error Handling', () => {
     it('handles file parsing errors', async () => {
-      const mockParseDocument = vi.mocked(await import('../../services/documentParserService'))
+      const mockParseDocument = vi.mocked(await import('../../../services/documentParserService'))
         .DocumentParserService.parseDocument;
 
-      mockParseDocument.mockRejectedValue(new Error('Parse error'));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (mockParseDocument as any).mockRejectedValue(new Error('Parse error'));
 
       render(<RAGFileUpload {...mockProps} />);
 
@@ -361,12 +369,13 @@ describe('RAGFileUpload', () => {
 
     it('handles embedding generation errors', async () => {
       const mockGenerateEmbedding = vi.mocked(
-        await import('../../services/embeddingService'),
+        await import('../../../services/embeddingService'),
       ).generateEmbedding;
-      const mockParseDocument = vi.mocked(await import('../../services/documentParserService'))
+      const mockParseDocument = vi.mocked(await import('../../../services/documentParserService'))
         .DocumentParserService.parseDocument;
 
-      mockParseDocument.mockResolvedValue({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (mockParseDocument as any).mockResolvedValue({
         content: 'Test content',
         metadata: { fileName: 'test.pdf', fileType: 'pdf' },
       });
@@ -393,10 +402,10 @@ describe('RAGFileUpload', () => {
 
     it('handles Turso save errors gracefully', async () => {
       const mockSaveRagChunk = vi.mocked(
-        await import('../../services/tursoService'),
+        await import('../../../services/tursoService'),
       ).saveRagChunkToTurso;
       const mockGenerateEmbedding = vi.mocked(
-        await import('../../services/embeddingService'),
+        await import('../../../services/embeddingService'),
       ).generateEmbedding;
 
       mockGenerateEmbedding.mockResolvedValue([0.1, 0.2, 0.3]);
@@ -425,10 +434,10 @@ describe('RAGFileUpload', () => {
   describe('Sync Status Display', () => {
     it('shows success message after successful upload', async () => {
       const mockGenerateEmbedding = vi.mocked(
-        await import('../../services/embeddingService'),
+        await import('../../../services/embeddingService'),
       ).generateEmbedding;
       const mockSaveRagChunk = vi.mocked(
-        await import('../../services/tursoService'),
+        await import('../../../services/tursoService'),
       ).saveRagChunkToTurso;
 
       mockGenerateEmbedding.mockResolvedValue([0.1, 0.2, 0.3]);
@@ -455,7 +464,7 @@ describe('RAGFileUpload', () => {
 
     it('shows warning message when some chunks fail to sync', async () => {
       const mockSaveRagChunk = vi.mocked(
-        await import('../../services/tursoService'),
+        await import('../../../services/tursoService'),
       ).saveRagChunkToTurso;
 
       // Mock first call to succeed, second to fail
@@ -500,7 +509,7 @@ describe('RAGFileUpload', () => {
   describe('Progress Tracking', () => {
     it('shows embedding model download progress', async () => {
       const mockGenerateEmbedding = vi.mocked(
-        await import('../../services/embeddingService'),
+        await import('../../../services/embeddingService'),
       ).generateEmbedding;
 
       // Mock progress callback

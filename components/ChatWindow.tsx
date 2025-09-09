@@ -225,22 +225,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}
         components={{
-          // 自定義 code 區塊樣式
-          code({
-            inline,
-            className,
-            children,
-            ...props
-          }: {
-            inline?: boolean;
-            className?: string;
-            children: React.ReactNode;
-            [key: string]: unknown;
-          }) {
+          code(props: React.ComponentProps<'code'>) {
+            const { className, children, ...rest } = props;
             const match = /language-(\w+)/.exec(className || '');
             const language = match ? match[1] : '';
 
-            if (!inline) {
+            if (match) {
               // 多行代碼塊
               return (
                 <div className='bg-gray-900 rounded-md my-2 overflow-hidden'>
@@ -254,7 +244,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                     </button>
                   </div>
                   <pre className='p-4 text-sm overflow-x-auto'>
-                    <code className={className} {...props}>
+                    <code className={className} {...rest}>
                       {children}
                     </code>
                   </pre>
@@ -265,7 +255,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               return (
                 <code
                   className='bg-gray-700 text-cyan-300 px-1.5 py-0.5 rounded text-sm font-mono'
-                  {...props}
+                  {...rest}
                 >
                   {children}
                 </code>

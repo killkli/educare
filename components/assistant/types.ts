@@ -2,7 +2,7 @@ import { Assistant, RagChunk } from '../../types';
 
 export interface AssistantListProps {
   assistants: Assistant[];
-  selectedAssistant: Assistant | null;
+  selectedAssistant: Assistant | null | undefined;
   onSelect: (assistantId: string) => void;
   onEdit: (assistant: Assistant) => void;
   onDelete: (assistantId: string) => void;
@@ -21,7 +21,7 @@ export interface AssistantCardProps {
 
 export interface AssistantContainerProps {
   assistants: Assistant[];
-  selectedAssistant: Assistant | null;
+  selectedAssistant: Assistant | null | undefined;
   onAssistantChange: (assistant: Assistant | null) => void;
   onAssistantSave: (assistant: Assistant) => void;
   onAssistantDelete: (assistantId: string) => void;

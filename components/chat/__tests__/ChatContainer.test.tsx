@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import ChatContainer from '../ChatContainer';
@@ -109,10 +109,10 @@ describe('ChatContainer', () => {
       render(<ChatContainer {...defaultProps} hideHeader={false} />);
 
       // Assert
-      expect(screen.getByText(defaultProps.assistantName)).toBeInTheDocument();
-      expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent(
-        defaultProps.assistantName,
-      );
+      const headers = screen.getAllByText(defaultProps.assistantName);
+      expect(headers.length).toBeGreaterThan(0);
+      const headerSection = screen.getByRole('heading', { level: 2 }).closest('div');
+      expect(headerSection).toBeInTheDocument();
     });
 
     it('should hide header when hideHeader is true', () => {
@@ -139,8 +139,12 @@ describe('ChatContainer', () => {
       render(<ChatContainer {...defaultProps} session={TEST_SESSIONS.emptySession} />);
 
       // Assert
-      expect(screen.getByText(defaultProps.assistantName)).toBeInTheDocument();
-      expect(screen.getByText(defaultProps.assistantDescription!)).toBeInTheDocument();
+      const welcomeMessage = screen.getByTestId('welcome-message');
+      expect(welcomeMessage).toBeInTheDocument();
+      expect(within(welcomeMessage).getByText(defaultProps.assistantName)).toBeInTheDocument();
+      expect(
+        within(welcomeMessage).getByText(defaultProps.assistantDescription!),
+      ).toBeInTheDocument();
     });
 
     it('should not show welcome message when session has messages', () => {

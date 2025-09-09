@@ -144,6 +144,13 @@ export const mockIcons = () => {
   }));
 };
 
+// Mock qrcode library
+export const mockQRCode = () => {
+  vi.mock('qrcode', () => ({
+    toDataURL: vi.fn().mockResolvedValue('data:image/png;base64,mocked-qr-code'),
+  }));
+};
+
 // Mock CustomSelect component
 export const mockCustomSelect = () => {
   vi.mock('../ui/CustomSelect', () => ({
@@ -183,8 +190,8 @@ export const mockCustomSelect = () => {
 
 // Mock AssistantEditor component for container tests
 export const mockAssistantEditor = () => {
-  vi.mock('../../AssistantEditor', () => ({
-    default: ({
+  vi.mock('../AssistantEditor', () => ({
+    AssistantEditor: ({
       assistant,
       onSave,
       onCancel,

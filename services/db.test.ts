@@ -1,12 +1,49 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { getAllAssistants, getAssistant, saveAssistant, deleteAssistant } from './db';
-import { Assistant } from '../types';
+import { IDBPTransaction } from 'idb';
+import { SESSIONS_STORE } from './db';
+import {
+  getAllAssistants,
+  getAssistant,
+  saveAssistant,
+  deleteAssistant,
+  getSessionsForAssistant,
+  saveSession,
+  deleteSession,
+} from './db';
+import { Assistant, ChatSession } from '../types';
 import type { IDBPDatabase } from 'idb';
 
 // Mock idb module
-vi.mock('idb', () => ({
-  openDB: vi.fn(),
-}));
+vi.mock('idb', async () => {
+  const actual = await vi.importActual('idb');
+  const mockDB = {
+    getAll: vi.fn(),
+    get: vi.fn(),
+    getAllFromIndex: vi.fn(),
+    add: vi.fn(),
+    put: vi.fn(),
+    delete: vi.fn(),
+    transaction: vi.fn(),
+    close: vi.fn(),
+  };
+
+  const mockTx = {
+    store: {
+      delete: vi.fn(),
+    },
+    done: Promise.resolve(),
+  };
+
+  // Ensure transaction() returns a mock transaction object
+  mockDB.transaction.mockReturnValue(
+    mockTx as unknown as IDBPTransaction<unknown, [typeof SESSIONS_STORE], 'readwrite'>,
+  );
+
+  return {
+    ...actual,
+    openDB: vi.fn().mockResolvedValue(mockDB),
+  };
+});
 
 describe('Database Service', () => {
   const mockAssistant: Assistant = {
@@ -18,12 +55,30 @@ describe('Database Service', () => {
     createdAt: Date.now(),
   };
 
+  const mockSession: ChatSession = {
+    id: 'session-id',
+    assistantId: 'test-id',
+    title: 'Test Session',
+    messages: [],
+    createdAt: Date.now(),
+    tokenCount: 0,
+  };
+
+  const mockTx = {
+    store: {
+      delete: vi.fn(),
+    },
+    done: Promise.resolve(),
+  };
+
   const mockDB = {
     getAll: vi.fn(),
     get: vi.fn(),
+    getAllFromIndex: vi.fn(),
     add: vi.fn(),
     put: vi.fn(),
     delete: vi.fn(),
+    transaction: vi.fn(),
   };
 
   beforeEach(async () => {
@@ -85,11 +140,56 @@ describe('Database Service', () => {
 
   describe('deleteAssistant', () => {
     it('should delete assistant from database', async () => {
+      mockDB.transaction.mockReturnValue(
+        mockTx as unknown as IDBPTransaction<unknown, [typeof SESSIONS_STORE], 'readwrite'>,
+      );
+      mockDB.getAllFromIndex.mockResolvedValue([]);
       mockDB.delete.mockResolvedValue(undefined);
 
       await deleteAssistant('test-id');
 
       expect(mockDB.delete).toHaveBeenCalledWith('assistants', 'test-id');
+      expect(mockDB.getAllFromIndex).toHaveBeenCalledWith('sessions', 'by-assistant', 'test-id');
+    });
+
+    it('should delete associated sessions when deleting an assistant', async () => {
+      mockDB.getAllFromIndex.mockResolvedValue([mockSession]);
+      mockDB.transaction.mockReturnValue(
+        mockTx as unknown as IDBPTransaction<unknown, [typeof SESSIONS_STORE], 'readwrite'>,
+      );
+      mockTx.store.delete.mockResolvedValue(undefined);
+
+      await deleteAssistant('test-id');
+
+      expect(mockDB.getAllFromIndex).toHaveBeenCalledWith('sessions', 'by-assistant', 'test-id');
+      expect(mockDB.transaction).toHaveBeenCalledWith('sessions', 'readwrite');
+      expect(mockTx.store.delete).toHaveBeenCalledWith('session-id');
+    });
+  });
+
+  describe('getSessionsForAssistant', () => {
+    it('should return all sessions for a given assistant', async () => {
+      const mockSessions = [mockSession];
+      mockDB.getAllFromIndex.mockResolvedValue(mockSessions);
+
+      const result = await getSessionsForAssistant('test-id');
+
+      expect(mockDB.getAllFromIndex).toHaveBeenCalledWith('sessions', 'by-assistant', 'test-id');
+      expect(result).toEqual(mockSessions);
+    });
+  });
+
+  describe('saveSession', () => {
+    it('should save a session to the database', async () => {
+      await saveSession(mockSession);
+      expect(mockDB.put).toHaveBeenCalledWith('sessions', mockSession);
+    });
+  });
+
+  describe('deleteSession', () => {
+    it('should delete a session from the database', async () => {
+      await deleteSession('session-id');
+      expect(mockDB.delete).toHaveBeenCalledWith('sessions', 'session-id');
     });
   });
 });

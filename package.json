@@ -39,9 +39,9 @@
     ]
   },
   "dependencies": {
-    "@google/genai": "^1.17.0",
+    "@google/genai": "^1.18.0",
     "@huggingface/transformers": "latest",
-    "@libsql/client": "^0.15.14",
+    "@libsql/client": "^0.15.15",
     "@themaximalist/llm.js": "^1.0.1",
     "@types/qrcode": "^1.5.5",
     "highlight.js": "^11.11.1",
@@ -60,11 +60,11 @@
     "@testing-library/jest-dom": "^6.8.0",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
-    "@types/node": "^22.14.0",
+    "@types/node": "^22.18.1",
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
-    "@typescript-eslint/eslint-plugin": "^8.42.0",
-    "@typescript-eslint/parser": "^8.42.0",
+    "@typescript-eslint/eslint-plugin": "^8.43.0",
+    "@typescript-eslint/parser": "^8.43.0",
     "@vitest/coverage-v8": "^3.2.4",
     "@vitest/ui": "^3.2.4",
     "eslint": "^9.35.0",
@@ -80,8 +80,8 @@
     "lint-staged": "^16.1.6",
     "prettier": "^3.6.2",
     "tsx": "^4.20.5",
-    "typescript": "~5.8.2",
-    "vite": "^6.2.0",
+    "typescript": "~5.8.3",
+    "vite": "^6.3.6",
     "vitest": "^3.2.4"
   }
 }
