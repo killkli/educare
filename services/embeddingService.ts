@@ -94,7 +94,7 @@ export const generateEmbedding = async (
  * @returns Promise that resolves when the model is loaded and ready.
  */
 export const preloadEmbeddingModel = async (
-  progress_callback?: (progress: { status: string; progress: number; name?: string }) => void,
+  progress_callback?: (progress: unknown) => void,
 ): Promise<void> => {
   try {
     console.log('🔄 Starting embedding model preload...');
