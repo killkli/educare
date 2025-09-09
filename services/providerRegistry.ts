@@ -1,4 +1,10 @@
 import { ProviderManager, ProviderType } from './llmAdapter';
+import { GeminiProvider } from './providers/geminiProvider';
+import { OpenAINativeProvider } from './providers/openaiNativeProvider';
+import { OpenRouterProvider } from './providers/openrouterProvider';
+import { LMStudioProvider } from './providers/lmstudioProvider';
+import { OllamaNativeProvider } from './providers/ollamaNativeProvider';
+import { GroqNativeProvider } from './providers/groqNativeProvider';
 
 let providerManagerInstance: ProviderManager | null = null;
 let isInitializing = false;
@@ -25,38 +31,21 @@ export async function initializeProviders(): Promise<void> {
   isInitializing = true;
 
   try {
-    // Dynamic imports to avoid circular dependencies
-    // Load safe providers first
-    const [{ GeminiProvider }] = await Promise.all([import('./providers/geminiProvider')]);
-
-    // Register safe providers first
+    // Register providers using static imports for proper bundling
     manager.registerProvider('gemini', new GeminiProvider());
+    console.log('✅ gemini provider loaded successfully');
 
     // Load native providers (no LLM.js dependencies)
     const nativeProviders = [
-      {
-        name: 'openai',
-        module: './providers/openaiNativeProvider',
-        className: 'OpenAINativeProvider',
-      },
-      {
-        name: 'openrouter',
-        module: './providers/openrouterProvider',
-        className: 'OpenRouterProvider',
-      },
-      { name: 'lmstudio', module: './providers/lmstudioProvider', className: 'LMStudioProvider' },
-      {
-        name: 'ollama',
-        module: './providers/ollamaNativeProvider',
-        className: 'OllamaNativeProvider',
-      },
-      { name: 'groq', module: './providers/groqNativeProvider', className: 'GroqNativeProvider' },
+      { name: 'openai', ProviderClass: OpenAINativeProvider },
+      { name: 'openrouter', ProviderClass: OpenRouterProvider },
+      { name: 'lmstudio', ProviderClass: LMStudioProvider },
+      { name: 'ollama', ProviderClass: OllamaNativeProvider },
+      { name: 'groq', ProviderClass: GroqNativeProvider },
     ];
 
-    for (const { name, module, className } of nativeProviders) {
+    for (const { name, ProviderClass } of nativeProviders) {
       try {
-        const providerModule = await import(module);
-        const ProviderClass = providerModule[className];
         manager.registerProvider(name as ProviderType, new ProviderClass());
         console.log(`✅ ${name} provider loaded successfully`);
       } catch (error) {
