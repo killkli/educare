@@ -20,6 +20,28 @@ export interface ChatMessage {
   content: string;
 }
 
+/**
+ * 壓縮上下文介面 - 儲存壓縮後的對話摘要
+ */
+export interface CompactContext {
+  type: 'compact';
+  content: string; // 壓縮後的摘要內容
+  tokenCount: number; // 摘要的 token 數量
+  compressedFromRounds: number; // 壓縮了多少輪對話
+  compressedFromMessages: number; // 壓縮了多少條訊息
+  createdAt: string; // 壓縮時間 (ISO string)
+  version: string; // 壓縮版本（用於未來升級）
+}
+
+/**
+ * 對話輪次介面 - 代表一輪完整的對話 (使用者訊息 + AI回覆)
+ */
+export interface ConversationRound {
+  userMessage: ChatMessage;
+  assistantMessage: ChatMessage;
+  roundNumber: number;
+}
+
 export interface ChatSession {
   id: string;
   assistantId: string;
@@ -28,4 +50,7 @@ export interface ChatSession {
   createdAt: number;
   updatedAt?: number;
   tokenCount: number;
+  // 壓縮相關欄位
+  compactContext?: CompactContext; // 壓縮的對話上下文
+  lastCompactionAt?: string; // 最後壓縮時間 (ISO string)
 }
