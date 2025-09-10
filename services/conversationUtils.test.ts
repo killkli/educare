@@ -5,9 +5,8 @@ import {
   groupMessagesByRounds,
   getIncompleteRound,
   reconstructHistory,
-  type ConversationRound,
 } from './conversationUtils';
-import { ChatMessage } from '../types';
+import { ChatMessage, ConversationRound } from '../types';
 
 describe('conversationUtils', () => {
   const createMessage = (role: 'user' | 'model', content: string): ChatMessage => ({

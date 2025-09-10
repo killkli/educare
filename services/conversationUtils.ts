@@ -1,13 +1,4 @@
-import { ChatMessage } from '../types';
-
-/**
- * 代表一輪完整的對話 (使用者訊息 + AI回覆)
- */
-export interface ConversationRound {
-  userMessage: ChatMessage;
-  assistantMessage: ChatMessage;
-  roundNumber: number;
-}
+import { ChatMessage, ConversationRound } from '../types';
 
 /**
  * 計算訊息陣列中的完整對話輪次數
