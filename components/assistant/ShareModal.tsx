@@ -38,7 +38,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
   );
 
   // Helper function to get available providers from user's API keys
-  const getAvailableProviders = (): Array<{
+  const getAvailableProviders = useCallback((): Array<{
     providerKey: string;
     name: string;
     icon: string;
@@ -80,25 +80,32 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
     });
 
     return available;
-  };
+  }, [providerInfo]);
 
-  // Get available providers and set initial selection
-  const availableProviders = getAvailableProviders();
+  // Get available providers - memoize to prevent infinite re-renders
+  const availableProviders = useMemo(() => getAvailableProviders(), [getAvailableProviders]);
 
-  // Auto-select providers when available providers change
+  // Auto-select providers when modal opens
   useEffect(() => {
-    if (availableProviders.length > 0) {
+    if (isOpen && availableProviders.length > 0) {
       // Default to selecting all available providers
       setSelectedProviders(new Set(availableProviders.map(p => p.providerKey)));
     }
-  }, [availableProviders]);
+  }, [isOpen, availableProviders]);
 
   // 生成分享連結
   const generateShareLink = useCallback(async () => {
+    // 防止重複生成
+    if (isGenerating) {
+      console.log('⚠️ [SHARE MODAL] Already generating share link, skipping');
+      return;
+    }
+
     setIsGenerating(true);
     setShareStatus(null);
 
     try {
+      console.log('🔗 [SHARE MODAL] Starting share link generation for:', assistant.name);
       // 將助理儲存到 Turso
       await saveAssistantToTurso({
         id: assistant.id,
@@ -108,7 +115,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
         createdAt: assistant.createdAt || Date.now(), // 確保 createdAt 已設定
       });
 
-      let url = `${window.location.origin}${window.location.pathname}?share=${assistant.id}`;
+      let url = `${window.location.origin}/shared/${assistant.id}`;
 
       if (shareWithApiKeys) {
         if (!sharePassword.trim()) {
