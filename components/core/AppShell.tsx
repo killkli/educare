@@ -9,6 +9,8 @@ import ApiKeySetup from '../settings/ApiKeySetup';
 import ProviderSettings from '../settings/ProviderSettings';
 import { providerManager } from '../../services/providerRegistry';
 import { canWriteToTurso } from '../../services/tursoService';
+import { ChatCompactorService } from '../../services/chatCompactorService';
+import { countConversationRounds, groupMessagesByRounds } from '../../services/conversationUtils';
 
 function AppContent(): React.JSX.Element {
   const { state, actions } = useAppContext();
@@ -18,18 +20,99 @@ function AppContent(): React.JSX.Element {
     return <SharedAssistant assistantId={state.sharedAssistantId} />;
   }
 
+  // Initialize compression service with default configuration
+  const compressionService = new ChatCompactorService({
+    targetTokens: 2000,
+    triggerRounds: 10,
+    preserveLastRounds: 2,
+    maxRetries: 2,
+    compressionModel: 'gemini-2.5-flash',
+    compressionVersion: '1.0',
+  });
+
   const handleNewMessage = async (
     session: ChatSession,
     userMessage: string,
     _modelResponse: string,
     _tokenInfo: { promptTokenCount: number; candidatesTokenCount: number },
   ) => {
-    const updatedSession = {
+    let updatedSession = {
       ...session,
       title:
         session.title === 'New Chat' && userMessage ? userMessage.substring(0, 40) : session.title,
       updatedAt: Date.now(),
     };
+
+    try {
+      // Check if compression should be triggered
+      const totalRounds = countConversationRounds(session.messages);
+      const hasExistingCompact = !!session.compactContext;
+
+      if (compressionService.shouldTriggerCompression(totalRounds, hasExistingCompact)) {
+        console.log(
+          '🗜️ [COMPRESSION] Triggering compression - Total rounds:',
+          totalRounds,
+          'Has existing compact:',
+          hasExistingCompact,
+        );
+
+        // Get conversation rounds to compress
+        const allRounds = groupMessagesByRounds(session.messages);
+        const preserveRounds = compressionService.getConfig().preserveLastRounds;
+
+        // Determine which rounds to compress
+        const roundsToCompress = allRounds.slice(0, -preserveRounds);
+
+        if (roundsToCompress.length > 0) {
+          console.log(
+            '🗜️ [COMPRESSION] Compressing',
+            roundsToCompress.length,
+            'rounds, preserving last',
+            preserveRounds,
+            'rounds',
+          );
+
+          // Perform compression
+          const compressionResult = await compressionService.compressConversationHistory(
+            roundsToCompress,
+            session.compactContext,
+          );
+
+          if (compressionResult.success && compressionResult.compactContext) {
+            console.log('✅ [COMPRESSION] Compression successful!', {
+              originalTokens: compressionResult.originalTokenCount,
+              compressedTokens: compressionResult.compressedTokenCount,
+              retryCount: compressionResult.retryCount,
+            });
+
+            // Calculate preserved messages (keep last N rounds + any incomplete message)
+            const preservedRounds = allRounds.slice(-preserveRounds);
+            const preservedMessages = preservedRounds.flatMap(round => [
+              round.userMessage,
+              round.assistantMessage,
+            ]);
+
+            // Update session with compressed context and reduced message history
+            updatedSession = {
+              ...updatedSession,
+              compactContext: compressionResult.compactContext,
+              lastCompactionAt: new Date().toISOString(),
+              messages: preservedMessages,
+              // Recalculate token count for the preserved messages only
+              tokenCount:
+                compressionResult.compactContext.tokenCount +
+                Math.floor(preservedMessages.length * 50), // Rough estimate for preserved messages
+            };
+          } else {
+            console.warn('❌ [COMPRESSION] Compression failed:', compressionResult.error);
+            // Continue without compression if it fails
+          }
+        }
+      }
+    } catch (error) {
+      console.error('❌ [COMPRESSION] Compression error:', error);
+      // Continue without compression if there's an error
+    }
 
     await actions.updateSession(updatedSession);
   };

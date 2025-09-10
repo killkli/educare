@@ -147,7 +147,10 @@ export const mockIcons = () => {
 // Mock qrcode library
 export const mockQRCode = () => {
   vi.mock('qrcode', () => ({
-    toDataURL: vi.fn().mockResolvedValue('data:image/png;base64,mocked-qr-code'),
+    default: {
+      toDataURL: vi.fn().mockResolvedValue('data:image/png;base64,mocked-qr-code'),
+    },
+    toDataURL: vi.fn().mockResolvedValue('data:image/png;base64,mocked-qr-code-direct'),
   }));
 };
 

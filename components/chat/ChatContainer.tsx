@@ -8,7 +8,7 @@ import StreamingResponse from './StreamingResponse';
 import { generateEmbedding, cosineSimilarity } from '../../services/embeddingService';
 import { searchSimilarChunks } from '../../services/tursoService';
 import { streamChat } from '../../services/llmService';
-import { RagChunk } from '../../types';
+import { ChatMessage, RagChunk } from '../../types';
 
 const ChatContainer: React.FC<ChatContainerProps> = ({
   session,
@@ -138,10 +138,43 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
         setStatusText('🤖 生成回答...');
       }
 
+      // Prepare chat history with compression support
+      let chatHistory: ChatMessage[];
+      let enhancedSystemPrompt = systemPrompt;
+
+      // Step 1: Add RAG context to system prompt first (if available)
+      if (ragContext) {
+        const ragPreamble = `Use the information from the following context to inform your response to the user's question. Provide a natural, conversational answer as if the information is part of your general knowledge, without mentioning the context or documents directly. If the answer is not found in the provided information, state that you don't have the relevant information to answer the question.\n\n<context>\n${ragContext}\n</context>`;
+        enhancedSystemPrompt = `${systemPrompt}\n\n${ragPreamble}`;
+      }
+
+      // Step 2: Add compressed conversation context (if available)
+      if (currentSession.compactContext) {
+        const compactedContextPrompt = `\n\n[PREVIOUS CONVERSATION SUMMARY]\n${currentSession.compactContext.content}\n\nThe above is a summary of our previous conversation. Please refer to this context when responding to continue our conversation naturally.\n\n[CURRENT CONVERSATION]`;
+
+        enhancedSystemPrompt = `${enhancedSystemPrompt}${compactedContextPrompt}`;
+
+        // Use only the preserved recent messages for history
+        chatHistory = currentSession.messages;
+
+        console.log('📜 [CHAT HISTORY] Using compressed context in system prompt:', {
+          compactTokens: currentSession.compactContext.tokenCount,
+          compressedRounds: currentSession.compactContext.compressedFromRounds,
+          preservedMessages: currentSession.messages.length,
+          systemPromptLength: enhancedSystemPrompt.length,
+        });
+      } else {
+        // No compression, use regular message history
+        chatHistory = currentSession.messages;
+        console.log('📜 [CHAT HISTORY] Using regular history:', {
+          messageCount: chatHistory.length,
+        });
+      }
+
       await streamChat({
-        systemPrompt,
-        ragContext,
-        history: currentSession.messages,
+        systemPrompt: enhancedSystemPrompt,
+        ragContext: '', // Pass empty since we've already integrated RAG into system prompt
+        history: chatHistory,
         message: userMessage,
         onChunk: chunk => {
           if (isThinking) {
