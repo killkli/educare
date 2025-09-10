@@ -79,8 +79,11 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, showTit
       // 生成隨機密碼
       const password = CryptoService.generateRandomPassword();
 
-      // 加密 API 金鑰
-      const encryptedData = await CryptoService.encryptApiKeys(apiKeys, password);
+      // 加密 API 金鑰 - Filter out undefined values
+      const filteredApiKeys = Object.fromEntries(
+        Object.entries(apiKeys).filter(([_, value]) => value !== undefined),
+      ) as Record<string, string>;
+      const encryptedData = await CryptoService.encryptApiKeys(filteredApiKeys, password);
 
       // 生成分享 URL
       const url = CryptoService.generateSharingUrl(encryptedData, password);

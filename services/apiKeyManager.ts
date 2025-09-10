@@ -3,19 +3,34 @@
  * 處理雙層 API KEY 架構：
  * 1. 內建只讀權限（Turso 只讀）- 所有人都可以讀取分享的助理
  * 2. 用戶提供（Gemini + Turso 讀寫）- 儲存在 LocalStorage
+ * 3. 與 providerManager 系統整合 - 也檢查 providerManager 的設定
  */
 
 // LocalStorage 鍵值
 const STORAGE_KEYS = {
+  // AI Providers
   GEMINI_API_KEY: 'user_gemini_api_key',
+  OPENAI_API_KEY: 'user_openai_api_key',
+  GROQ_API_KEY: 'user_groq_api_key',
+  OPENROUTER_API_KEY: 'user_openrouter_api_key',
+  // Local providers (use base URLs instead of API keys)
+  OLLAMA_BASE_URL: 'user_ollama_base_url',
+  LMSTUDIO_BASE_URL: 'user_lmstudio_base_url',
+  // Database
   TURSO_WRITE_API_KEY: 'user_turso_write_api_key',
-  // 不再需要 TURSO_WRITE_URL，因為使用共用 URL
 } as const;
 
 export interface UserApiKeys {
+  // AI Provider API Keys
   geminiApiKey?: string;
+  openaiApiKey?: string;
+  groqApiKey?: string;
+  openrouterApiKey?: string;
+  // Local provider base URLs
+  ollamaBaseUrl?: string;
+  lmstudioBaseUrl?: string;
+  // Database API Key
   tursoWriteApiKey?: string;
-  // 不再需要 tursoWriteUrl，因為使用共用 URL
 }
 
 /**
@@ -37,6 +52,41 @@ export class ApiKeyManager {
   }
 
   /**
+   * 檢查是否有用戶設定的 OpenAI API KEY
+   */
+  static hasOpenaiApiKey(): boolean {
+    return !!this.getOpenaiApiKey();
+  }
+
+  /**
+   * 檢查是否有用戶設定的 Groq API KEY
+   */
+  static hasGroqApiKey(): boolean {
+    return !!this.getGroqApiKey();
+  }
+
+  /**
+   * 檢查是否有用戶設定的 OpenRouter API KEY
+   */
+  static hasOpenrouterApiKey(): boolean {
+    return !!this.getOpenrouterApiKey();
+  }
+
+  /**
+   * 檢查是否有用戶設定的 Ollama Base URL
+   */
+  static hasOllamaBaseUrl(): boolean {
+    return !!this.getOllamaBaseUrl();
+  }
+
+  /**
+   * 檢查是否有用戶設定的 LM Studio Base URL
+   */
+  static hasLmstudioBaseUrl(): boolean {
+    return !!this.getLmstudioBaseUrl();
+  }
+
+  /**
    * 獲取 Gemini API KEY (用戶設定)
    */
   static getGeminiApiKey(): string | null {
@@ -54,6 +104,56 @@ export class ApiKeyManager {
       return null;
     }
     return localStorage.getItem(STORAGE_KEYS.TURSO_WRITE_API_KEY);
+  }
+
+  /**
+   * 獲取 OpenAI API KEY (用戶設定)
+   */
+  static getOpenaiApiKey(): string | null {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+    return localStorage.getItem(STORAGE_KEYS.OPENAI_API_KEY);
+  }
+
+  /**
+   * 獲取 Groq API KEY (用戶設定)
+   */
+  static getGroqApiKey(): string | null {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+    return localStorage.getItem(STORAGE_KEYS.GROQ_API_KEY);
+  }
+
+  /**
+   * 獲取 OpenRouter API KEY (用戶設定)
+   */
+  static getOpenrouterApiKey(): string | null {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+    return localStorage.getItem(STORAGE_KEYS.OPENROUTER_API_KEY);
+  }
+
+  /**
+   * 獲取 Ollama Base URL (用戶設定)
+   */
+  static getOllamaBaseUrl(): string | null {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+    return localStorage.getItem(STORAGE_KEYS.OLLAMA_BASE_URL);
+  }
+
+  /**
+   * 獲取 LM Studio Base URL (用戶設定)
+   */
+  static getLmstudioBaseUrl(): string | null {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+    return localStorage.getItem(STORAGE_KEYS.LMSTUDIO_BASE_URL);
   }
 
   // 不再需要獨立的 getTursoWriteUrl()，因為使用共用 URL
@@ -101,19 +201,50 @@ export class ApiKeyManager {
       return;
     }
 
+    // AI Provider API Keys
     if (keys.geminiApiKey) {
       localStorage.setItem(STORAGE_KEYS.GEMINI_API_KEY, keys.geminiApiKey);
     } else {
       localStorage.removeItem(STORAGE_KEYS.GEMINI_API_KEY);
     }
 
+    if (keys.openaiApiKey) {
+      localStorage.setItem(STORAGE_KEYS.OPENAI_API_KEY, keys.openaiApiKey);
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.OPENAI_API_KEY);
+    }
+
+    if (keys.groqApiKey) {
+      localStorage.setItem(STORAGE_KEYS.GROQ_API_KEY, keys.groqApiKey);
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.GROQ_API_KEY);
+    }
+
+    if (keys.openrouterApiKey) {
+      localStorage.setItem(STORAGE_KEYS.OPENROUTER_API_KEY, keys.openrouterApiKey);
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.OPENROUTER_API_KEY);
+    }
+
+    // Local Provider Base URLs
+    if (keys.ollamaBaseUrl) {
+      localStorage.setItem(STORAGE_KEYS.OLLAMA_BASE_URL, keys.ollamaBaseUrl);
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.OLLAMA_BASE_URL);
+    }
+
+    if (keys.lmstudioBaseUrl) {
+      localStorage.setItem(STORAGE_KEYS.LMSTUDIO_BASE_URL, keys.lmstudioBaseUrl);
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.LMSTUDIO_BASE_URL);
+    }
+
+    // Database API Key
     if (keys.tursoWriteApiKey) {
       localStorage.setItem(STORAGE_KEYS.TURSO_WRITE_API_KEY, keys.tursoWriteApiKey);
     } else {
       localStorage.removeItem(STORAGE_KEYS.TURSO_WRITE_API_KEY);
     }
-
-    // 不再儲存 URL，因為使用共用 URL
   }
 
   /**
@@ -133,11 +264,59 @@ export class ApiKeyManager {
    * 獲取所有用戶 API KEY
    */
   static getUserApiKeys(): UserApiKeys {
-    return {
-      geminiApiKey: this.getGeminiApiKey() || undefined,
+    // Get API keys from both localStorage (new system) and providerManager (existing system)
+    const result: UserApiKeys = {
+      // AI Provider API Keys - check both systems
+      geminiApiKey: this.getGeminiApiKey() || this.getProviderApiKey('gemini') || undefined,
+      openaiApiKey: this.getOpenaiApiKey() || this.getProviderApiKey('openai') || undefined,
+      groqApiKey: this.getGroqApiKey() || this.getProviderApiKey('groq') || undefined,
+      openrouterApiKey:
+        this.getOpenrouterApiKey() || this.getProviderApiKey('openrouter') || undefined,
+      // Local Provider Base URLs
+      ollamaBaseUrl: this.getOllamaBaseUrl() || this.getProviderBaseUrl('ollama') || undefined,
+      lmstudioBaseUrl:
+        this.getLmstudioBaseUrl() || this.getProviderBaseUrl('lmstudio') || undefined,
+      // Database API Key
       tursoWriteApiKey: this.getTursoWriteApiKey() || undefined,
-      // 不再返回 URL，因為使用共用 URL
     };
+
+    return result;
+  }
+
+  /**
+   * Helper method to get API key from providerManager
+   */
+  private static getProviderApiKey(providerType: string): string | null {
+    try {
+      // Lazy import to avoid circular dependencies
+      const { providerManager } = require('./providerRegistry');
+      if (!providerManager) {
+        return null;
+      }
+      const settings = providerManager.getSettings();
+      return settings?.providers?.[providerType]?.config?.apiKey || null;
+    } catch (_) {
+      console.error(_);
+      return null;
+    }
+  }
+
+  /**
+   * Helper method to get base URL from providerManager
+   */
+  private static getProviderBaseUrl(providerType: string): string | null {
+    try {
+      // Lazy import to avoid circular dependencies
+      const { providerManager } = require('./providerRegistry');
+      if (!providerManager) {
+        return null;
+      }
+      const settings = providerManager.getSettings();
+      return settings?.providers?.[providerType]?.config?.baseUrl || null;
+    } catch (_) {
+      console.error(_);
+      return null;
+    }
   }
 
   /**
@@ -156,6 +335,54 @@ export class ApiKeyManager {
     try {
       const parts = apiKey.split('.');
       return parts.length === 3 && parts.every(part => part.length > 0);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * 檢查 OpenAI API KEY 格式是否有效
+   */
+  static validateOpenaiApiKey(apiKey: string): boolean {
+    // OpenAI API KEY 通常以 sk- 開頭
+    return /^sk-[A-Za-z0-9]{32,}$/.test(apiKey);
+  }
+
+  /**
+   * 檢查 Groq API KEY 格式是否有效
+   */
+  static validateGroqApiKey(apiKey: string): boolean {
+    // Groq API KEY 通常以 gsk_ 開頭
+    return /^gsk_[A-Za-z0-9]{52}$/.test(apiKey);
+  }
+
+  /**
+   * 檢查 OpenRouter API KEY 格式是否有效
+   */
+  static validateOpenrouterApiKey(apiKey: string): boolean {
+    // OpenRouter API KEY 通常以 sk-or-v1- 開頭
+    return /^sk-or-v1-[A-Za-z0-9]{64}$/.test(apiKey);
+  }
+
+  /**
+   * 檢查 Ollama Base URL 格式是否有效
+   */
+  static validateOllamaBaseUrl(baseUrl: string): boolean {
+    try {
+      const url = new URL(baseUrl);
+      return url.protocol === 'http:' || url.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * 檢查 LM Studio Base URL 格式是否有效
+   */
+  static validateLmstudioBaseUrl(baseUrl: string): boolean {
+    try {
+      const url = new URL(baseUrl);
+      return url.protocol === 'http:' || url.protocol === 'https:';
     } catch {
       return false;
     }
