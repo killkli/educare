@@ -187,10 +187,17 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
         // 加密 API 金鑰 (使用原本的格式相容性)
         const apiKeysToEncrypt = { ...selectedApiKeys };
 
-        // Also include the current provider in the encrypted data
-        const currentProviderType = providerManager.getSettings().currentProvider;
-        if (currentProviderType) {
-          apiKeysToEncrypt.provider = currentProviderType;
+        // Also include the selected provider and model in the encrypted data
+        if (selectedProvider) {
+          apiKeysToEncrypt.provider = selectedProvider;
+
+          // Include the current model for this provider
+          const settings = providerManager.getSettings();
+          const providerConfig =
+            settings.providers[selectedProvider as keyof typeof settings.providers];
+          if (providerConfig?.config?.model) {
+            apiKeysToEncrypt.model = providerConfig.config.model;
+          }
         }
 
         const password = sharePassword || CryptoService.generateRandomPassword();

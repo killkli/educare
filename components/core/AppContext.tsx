@@ -252,11 +252,12 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
                   const providerType = decryptedApiKeys.provider as ProviderType;
 
                   // 1. Configure provider with specific keys if available
-                  const config: { apiKey?: string; baseUrl?: string } = {};
+                  const config: { apiKey?: string; baseUrl?: string; model?: string } = {};
                   const keyName = `${providerType}ApiKey` as keyof typeof decryptedApiKeys;
                   const baseUrlName = `${providerType}BaseUrl` as keyof typeof decryptedApiKeys;
                   const apiKey = decryptedApiKeys[keyName];
                   const baseUrl = decryptedApiKeys[baseUrlName];
+                  const model = decryptedApiKeys.model;
 
                   if (apiKey) {
                     config.apiKey = apiKey as string;
@@ -264,19 +265,37 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
                     config.baseUrl = baseUrl as string;
                   }
 
+                  // Include model if provided
+                  if (model) {
+                    config.model = model as string;
+                  }
+
                   if (Object.keys(config).length > 0) {
                     providerManager.updateProviderConfig(providerType, config);
                     providerManager.enableProvider(providerType, true);
                   }
 
-                  // 2. Set the active provider to persist choice BEFORE reload
+                  // 2. Set the active provider to persist choice
                   providerManager.setActiveProvider(providerType);
 
-                  // 3. Dispatch an action to notify UI components of the change
+                  // 3. Ensure the provider is properly initialized with the new config
+                  const provider = providerManager.getProvider(providerType);
+                  if (provider) {
+                    try {
+                      await provider.initialize(config);
+                      console.log(
+                        `✅ ${providerType} provider initialized successfully with shared keys`,
+                      );
+                    } catch (error) {
+                      console.warn(`⚠️ Failed to initialize ${providerType} provider:`, error);
+                    }
+                  }
+
+                  // 4. Dispatch an action to notify UI components of the change
                   dispatch({ type: 'SET_ACTIVE_PROVIDER', payload: providerType });
 
-                  // 4. Notify user of success
-                  alert(`API 金鑰與 ${providerType} 提供者已成功匯入！`);
+                  // 5. Notify user of success
+                  alert(`API 金鑰與 ${providerType} 提供者已成功匯入並啟用！`);
                   const newParams = new URLSearchParams(window.location.search);
                   newParams.delete('keys');
                   window.history.replaceState(
