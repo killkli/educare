@@ -312,23 +312,10 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
 
   // Check for shared mode and screen size on mount
   useEffect(() => {
-    // Check for /shared/ID format first
-    const path = window.location.pathname;
-    const sharedMatch = path.match(/\/shared\/([^/?]+)/);
-
-    let shared = false;
-    let assistantId: string | null = null;
-
-    if (sharedMatch) {
-      // New /shared/ID format
-      shared = true;
-      assistantId = sharedMatch[1];
-    } else {
-      // Fallback to old ?share=ID format for backward compatibility
-      const params = new URLSearchParams(window.location.search);
-      shared = params.has('share');
-      assistantId = params.get('share');
-    }
+    // Check for ?share=ID format
+    const params = new URLSearchParams(window.location.search);
+    const shared = params.has('share');
+    const assistantId = params.get('share');
 
     dispatch({ type: 'SET_SHARED_MODE', payload: { isShared: shared, assistantId } });
 
