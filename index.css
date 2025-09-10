@@ -57,3 +57,16 @@ html {
 .hide-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* 確保文字換行和防止水平溢出 */
+.overflow-wrap-anywhere {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+/* 為長網址和代碼提供額外的換行支持 */
+.break-anywhere {
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}

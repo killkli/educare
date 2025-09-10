@@ -56,7 +56,10 @@ export function Layout({ children }: LayoutProps): React.JSX.Element {
         <AssistantList
           assistants={state.assistants}
           selectedAssistant={state.currentAssistant}
-          onSelect={actions.selectAssistant}
+          onSelect={assistantId => {
+            // 強制切換到聊天模式，無論當前是什麼模式
+            actions.selectAssistant(assistantId, true);
+          }}
           onEdit={assistant => {
             actions.selectAssistant(assistant.id, false);
             actions.setViewMode('edit_assistant');
@@ -77,7 +80,11 @@ export function Layout({ children }: LayoutProps): React.JSX.Element {
               聊天記錄
             </h2>
             <button
-              onClick={() => actions.createNewSession(state.currentAssistant!.id)}
+              onClick={() => {
+                actions.createNewSession(state.currentAssistant!.id);
+                // 強制切換到聊天模式
+                actions.setViewMode('chat');
+              }}
               className='w-full flex items-center justify-center p-2.5 mb-3 bg-gray-700/50 hover:bg-gray-600/60 text-gray-200 hover:text-white rounded-lg text-sm font-medium border border-gray-600/30 hover:border-gray-500/50 transition-colors'
             >
               <svg className='w-4 h-4 mr-2' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
@@ -99,7 +106,11 @@ export function Layout({ children }: LayoutProps): React.JSX.Element {
                       ? 'bg-cyan-600/20 border border-cyan-500/30 text-white'
                       : 'bg-gray-800/30 hover:bg-gray-700/50 text-gray-200 hover:text-white border border-transparent hover:border-gray-600/30'
                   }`}
-                  onClick={() => dispatch({ type: 'SET_CURRENT_SESSION', payload: sess })}
+                  onClick={() => {
+                    dispatch({ type: 'SET_CURRENT_SESSION', payload: sess });
+                    // 強制切換到聊天模式
+                    actions.setViewMode('chat');
+                  }}
                 >
                   <div
                     className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 flex-shrink-0 ${
