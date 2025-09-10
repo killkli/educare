@@ -15,11 +15,6 @@ import { countConversationRounds, groupMessagesByRounds } from '../../services/c
 function AppContent(): React.JSX.Element {
   const { state, actions } = useAppContext();
 
-  // If in shared mode, render SharedAssistant
-  if (state.isShared && state.sharedAssistantId) {
-    return <SharedAssistant assistantId={state.sharedAssistantId} />;
-  }
-
   // Initialize compression service with default configuration
   const compressionService = new ChatCompactorService({
     targetTokens: 2000,
@@ -115,6 +110,80 @@ function AppContent(): React.JSX.Element {
 
     await actions.updateSession(updatedSession);
   };
+
+  // If in shared mode, render SharedAssistant component (which sets up state) and continue with normal rendering
+  if (state.isShared && state.sharedAssistantId) {
+    // SharedAssistant component handles loading the shared assistant and setting up state
+    return (
+      <Layout>
+        <SharedAssistant assistantId={state.sharedAssistantId} />
+
+        {/* Render content based on current view mode, just like normal mode */}
+        {state.viewMode === 'api_setup' && (
+          <div className='p-6 bg-gray-800 h-full overflow-y-auto'>
+            <ApiKeySetup
+              onComplete={() => actions.setViewMode('chat')}
+              onCancel={() => actions.setViewMode('chat')}
+            />
+          </div>
+        )}
+
+        {state.viewMode === 'chat' && state.currentAssistant && state.currentSession && (
+          <ChatContainer
+            session={state.currentSession}
+            assistantName={state.currentAssistant.name}
+            systemPrompt={state.currentAssistant.systemPrompt}
+            assistantId={state.currentAssistant.id}
+            ragChunks={state.currentAssistant.ragChunks ?? []}
+            onNewMessage={handleNewMessage}
+          />
+        )}
+
+        {/* Loading Screen */}
+        {state.isLoading && (
+          <div className='flex flex-col items-center justify-center h-full text-gray-400 p-8'>
+            <div className='relative mb-6'>
+              <div className='w-16 h-16 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin'></div>
+              <div className='absolute inset-0 w-16 h-16 border-4 border-cyan-300/20 rounded-full'></div>
+            </div>
+            <div className='text-center max-w-md'>
+              <p className='text-lg font-medium text-white mb-2'>載入分享的助理中...</p>
+              <p className='text-sm text-gray-400'>正在從雲端載入助理資料</p>
+            </div>
+          </div>
+        )}
+
+        {/* Error State */}
+        {state.error && !state.isLoading && (
+          <div className='flex flex-col items-center justify-center h-full text-gray-400 p-8'>
+            <div className='w-20 h-20 bg-red-900/20 rounded-full flex items-center justify-center mb-6'>
+              <svg
+                className='w-10 h-10 text-red-500'
+                fill='none'
+                stroke='currentColor'
+                viewBox='0 0 24 24'
+              >
+                <path
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  strokeWidth={2}
+                  d='M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+                />
+              </svg>
+            </div>
+            <h3 className='text-xl font-semibold text-white mb-2'>載入失敗</h3>
+            <p className='text-gray-400 mb-6 text-center max-w-md'>{state.error}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className='px-6 py-3 bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5'
+            >
+              重新載入
+            </button>
+          </div>
+        )}
+      </Layout>
+    );
+  }
 
   return (
     <Layout>

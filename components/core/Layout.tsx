@@ -11,6 +11,16 @@ interface LayoutProps {
 export function Layout({ children }: LayoutProps): React.JSX.Element {
   const { state, dispatch, actions } = useAppContext();
 
+  // In shared mode, render a simplified layout without sidebar
+  if (state.isShared) {
+    return (
+      <div className='flex h-screen font-sans bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900'>
+        {/* Main content area - full width in shared mode */}
+        <div className='flex-1 flex flex-col overflow-hidden'>{children}</div>
+      </div>
+    );
+  }
+
   return (
     <div className='flex h-screen font-sans bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 relative'>
       {/* Sidebar Overlay for Mobile and Tablet */}
