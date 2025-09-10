@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { ChatCompactorService, CompressionConfig } from './chatCompactorService';
 import { CompactContext, ConversationRound } from '../types';
 import * as geminiService from './geminiService';
@@ -10,7 +10,7 @@ vi.mock('./geminiService', () => ({
 
 describe('ChatCompactorService', () => {
   let compactorService: ChatCompactorService;
-  let mockStreamChat: vi.Mock;
+  let mockStreamChat: Mock;
 
   beforeEach(() => {
     compactorService = new ChatCompactorService();
