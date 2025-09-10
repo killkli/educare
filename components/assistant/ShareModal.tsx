@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import QRCode from 'qrcode';
 import { Assistant } from '../../types';
 import { CryptoService } from '../../services/cryptoService';
 import { ApiKeyManager } from '../../services/apiKeyManager';
 import { saveAssistantToTurso } from '../../services/tursoService';
+import { providerManager } from '../../services/providerRegistry';
 
 interface ShareModalProps {
   isOpen: boolean;
@@ -21,6 +22,76 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
     type: 'success' | 'error' | 'info';
     message: string;
   } | null>(null);
+  const [selectedProviders, setSelectedProviders] = useState<Set<string>>(new Set());
+
+  // Provider configuration for UI display
+  const providerInfo = useMemo(
+    () => ({
+      gemini: { name: 'Google Gemini', icon: '🧠', key: 'geminiApiKey' },
+      openai: { name: 'OpenAI', icon: '🤖', key: 'openaiApiKey' },
+      groq: { name: 'Groq', icon: '⚡', key: 'groqApiKey' },
+      openrouter: { name: 'OpenRouter', icon: '🚀', key: 'openrouterApiKey' },
+      ollama: { name: 'Ollama', icon: '🏠', key: 'ollamaBaseUrl' },
+      lmstudio: { name: 'LM Studio', icon: '🖥️', key: 'lmstudioBaseUrl' },
+    }),
+    [],
+  );
+
+  // Helper function to get available providers from user's API keys
+  const getAvailableProviders = (): Array<{
+    providerKey: string;
+    name: string;
+    icon: string;
+    key: string;
+  }> => {
+    const available: Array<{ providerKey: string; name: string; icon: string; key: string }> = [];
+
+    // Check both ApiKeyManager (localStorage) and providerManager (provider settings)
+    const userApiKeys = ApiKeyManager.getUserApiKeys();
+    const providerSettings = providerManager.getSettings();
+
+    Object.entries(providerInfo).forEach(([providerKey, info]) => {
+      let hasApiKey = false;
+
+      // Check localStorage first (new system)
+      const localStorageKey = userApiKeys[info.key as keyof typeof userApiKeys];
+      if (localStorageKey) {
+        hasApiKey = true;
+      }
+      // Then check providerManager (existing system)
+      else if (providerSettings?.providers) {
+        const providers = providerSettings.providers as Record<
+          string,
+          { enabled: boolean; config?: { apiKey?: string; baseUrl?: string } }
+        >;
+        const providerConfig = providers[providerKey];
+        if (providerConfig) {
+          const configKey =
+            providerKey === 'ollama' || providerKey === 'lmstudio' ? 'baseUrl' : 'apiKey';
+          if (providerConfig.enabled && providerConfig.config?.[configKey]) {
+            hasApiKey = true;
+          }
+        }
+      }
+
+      if (hasApiKey) {
+        available.push({ providerKey, ...info });
+      }
+    });
+
+    return available;
+  };
+
+  // Get available providers and set initial selection
+  const availableProviders = getAvailableProviders();
+
+  // Auto-select providers when available providers change
+  useEffect(() => {
+    if (availableProviders.length > 0) {
+      // Default to selecting all available providers
+      setSelectedProviders(new Set(availableProviders.map(p => p.providerKey)));
+    }
+  }, [availableProviders]);
 
   // 生成分享連結
   const generateShareLink = useCallback(async () => {
@@ -49,10 +120,50 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
           return;
         }
 
-        // 獲取當前用戶的 API 金鑰
-        const userApiKeys = ApiKeyManager.getUserApiKeys();
+        if (selectedProviders.size === 0) {
+          setShareStatus({
+            type: 'error',
+            message: '請選擇至少一個要分享的服務商。',
+          });
+          setIsGenerating(false);
+          return;
+        }
 
-        if (!userApiKeys.geminiApiKey && !userApiKeys.tursoWriteApiKey) {
+        // Collect selected API keys from both systems
+        const selectedApiKeys: Record<string, string> = {};
+        const userApiKeys = ApiKeyManager.getUserApiKeys();
+        const providerSettings = providerManager.getSettings();
+
+        selectedProviders.forEach(providerKey => {
+          const info = providerInfo[providerKey as keyof typeof providerInfo];
+          if (!info) {
+            return;
+          }
+
+          // Try localStorage first (new system)
+          const localStorageKey = userApiKeys[info.key as keyof typeof userApiKeys];
+          if (localStorageKey) {
+            selectedApiKeys[providerKey] = localStorageKey;
+          }
+          // Then try providerManager (existing system)
+          else if (providerSettings?.providers) {
+            const providers = providerSettings.providers as Record<
+              string,
+              { enabled: boolean; config?: { apiKey?: string; baseUrl?: string } }
+            >;
+            const providerConfig = providers[providerKey];
+            if (providerConfig) {
+              const configKey =
+                providerKey === 'ollama' || providerKey === 'lmstudio' ? 'baseUrl' : 'apiKey';
+              const configValue = providerConfig.config?.[configKey];
+              if (configValue) {
+                selectedApiKeys[providerKey] = configValue;
+              }
+            }
+          }
+        });
+
+        if (Object.keys(selectedApiKeys).length === 0) {
           setShareStatus({
             type: 'error',
             message: '沒有可分享的 API 金鑰。請先在設定中配置您的 API 金鑰。',
@@ -61,9 +172,10 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
           return;
         }
 
-        // 加密 API 金鑰
-        const encryptedApiKeys = await CryptoService.encryptApiKeys(userApiKeys, sharePassword);
-        url += `&keys=${encryptedApiKeys}`;
+        // 加密 API 金鑰 (使用原本的格式相容性)
+        const password = sharePassword || CryptoService.generateRandomPassword();
+        const encryptedString = await CryptoService.encryptApiKeys(selectedApiKeys, password);
+        url += `&keys=${encryptedString}`;
       }
 
       setShareUrl(url);
@@ -100,6 +212,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
     assistant.description,
     assistant.systemPrompt,
     assistant.createdAt,
+    selectedProviders,
+    providerInfo,
   ]);
 
   // 複製到剪貼簿
@@ -125,6 +239,16 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
     link.download = `${assistant.name}-share-qr.png`;
     link.href = qrCodeDataUrl;
     link.click();
+  };
+
+  const handleProviderToggle = (providerKey: string) => {
+    const newSelection = new Set(selectedProviders);
+    if (newSelection.has(providerKey)) {
+      newSelection.delete(providerKey);
+    } else {
+      newSelection.add(providerKey);
+    }
+    setSelectedProviders(newSelection);
   };
 
   // Modal 打開時自動生成基本分享連結
@@ -218,6 +342,33 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
 
           {shareWithApiKeys && (
             <div className='space-y-4'>
+              {/* Provider Selection */}
+              {availableProviders.length > 0 && (
+                <div>
+                  <label className='block text-sm text-gray-400 mb-3'>
+                    選擇要分享的服務商 ({availableProviders.length} 個可用)
+                  </label>
+                  <div className='grid grid-cols-2 gap-2'>
+                    {availableProviders.map(provider => (
+                      <label
+                        key={provider.providerKey}
+                        className='flex items-center space-x-2 bg-gray-600/30 rounded-lg p-2 cursor-pointer hover:bg-gray-600/50 transition-colors'
+                      >
+                        <input
+                          type='checkbox'
+                          checked={selectedProviders.has(provider.providerKey)}
+                          onChange={() => handleProviderToggle(provider.providerKey)}
+                          className='w-4 h-4 text-cyan-600 rounded focus:ring-cyan-500'
+                        />
+                        <span className='text-sm text-gray-200'>
+                          {provider.icon} {provider.name}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className='block text-sm text-gray-400 mb-2'>加密密碼</label>
                 <div className='flex gap-2'>

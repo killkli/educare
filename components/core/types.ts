@@ -60,7 +60,7 @@ export interface AppContextValue {
   dispatch: React.Dispatch<AppAction>;
   actions: {
     loadData: () => Promise<void>;
-    selectAssistant: (assistantId: string) => Promise<void>;
+    selectAssistant: (assistantId: string, changeView?: boolean) => Promise<void>;
     saveAssistant: (assistant: Assistant) => Promise<void>;
     deleteAssistant: (assistantId: string) => Promise<void>;
     createNewSession: (assistantId: string) => Promise<void>;

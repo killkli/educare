@@ -49,12 +49,9 @@ export class CryptoService {
   /**
    * 加密 API 金鑰數據
    */
-  static async encryptApiKeys(
-    apiKeys: { geminiApiKey?: string; tursoWriteApiKey?: string },
-    password: string,
-  ): Promise<string> {
+  static async encryptApiKeys(apiKeys: Record<string, string>, password: string): Promise<string> {
     try {
-      // 生成隨機 salt 和 IV
+      // 生成隨機 salt 和IV
       const salt = crypto.getRandomValues(new Uint8Array(this.SALT_LENGTH));
       const iv = crypto.getRandomValues(new Uint8Array(this.IV_LENGTH));
 
@@ -96,7 +93,7 @@ export class CryptoService {
   static async decryptApiKeys(
     encryptedString: string,
     password: string,
-  ): Promise<{ geminiApiKey?: string; tursoWriteApiKey?: string }> {
+  ): Promise<Record<string, string>> {
     try {
       // 解析加密數據
       const decodedData = new TextDecoder().decode(this.base64UrlToArrayBuffer(encryptedString));
