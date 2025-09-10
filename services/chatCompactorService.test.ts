@@ -1,11 +1,22 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { ChatCompactorService, CompressionConfig } from './chatCompactorService';
 import { CompactContext, ConversationRound } from '../types';
-import * as geminiService from './geminiService';
 
-// Mock geminiService
-vi.mock('./geminiService', () => ({
+// Mock ProviderManager
+const mockProvider = {
+  displayName: 'Mock Provider',
+  isAvailable: vi.fn().mockReturnValue(true),
+};
+
+const mockProviderManager = {
+  getActiveProvider: vi.fn().mockReturnValue(mockProvider),
   streamChat: vi.fn(),
+};
+
+vi.mock('./llmAdapter', () => ({
+  ProviderManager: {
+    getInstance: vi.fn().mockReturnValue(mockProviderManager),
+  },
 }));
 
 describe('ChatCompactorService', () => {
@@ -14,7 +25,11 @@ describe('ChatCompactorService', () => {
 
   beforeEach(() => {
     compactorService = new ChatCompactorService();
-    mockStreamChat = vi.mocked(geminiService.streamChat);
+    mockStreamChat = mockProviderManager.streamChat;
+    vi.clearAllMocks();
+    // Reset default mock behavior
+    mockProvider.isAvailable.mockReturnValue(true);
+    mockProviderManager.getActiveProvider.mockReturnValue(mockProvider);
   });
 
   afterEach(() => {
@@ -49,7 +64,7 @@ describe('ChatCompactorService', () => {
       expect(config.triggerRounds).toBe(10);
       expect(config.preserveLastRounds).toBe(2);
       expect(config.maxRetries).toBe(1);
-      expect(config.compressionModel).toBe('gemini-2.5-flash');
+      // compressionModel 已移除，現在使用 ProviderManager 的設定
       expect(config.compressionVersion).toBe('1.0');
     });
 
@@ -255,24 +270,21 @@ describe('ChatCompactorService', () => {
 
   describe('End-to-End Compression', () => {
     it('should successfully compress conversation rounds', async () => {
-      // Mock successful LLM response
-      mockStreamChat.mockImplementation(
-        ({
-          onChunk,
-          onComplete,
-        }: {
-          onChunk: (chunk: string) => void;
-          onComplete: (
-            tokenInfo: { promptTokenCount: number; candidatesTokenCount: number },
-            fullResponse: string,
-          ) => void;
-        }) => {
-          const response =
-            '用戶詢問了技術問題，助手提供了詳細的解答和示例代碼。接著討論了最佳實踐和注意事項。';
-          onChunk(response);
-          onComplete({ promptTokenCount: 100, candidatesTokenCount: 50 }, response);
-          return Promise.resolve();
-        },
+      // Mock successful LLM response using AsyncIterable
+      const responseText =
+        '用戶詢問了技術問題，助手提供了詳細的解答和示例代碼。接著討論了最佳實踐和注意事項。';
+
+      mockStreamChat.mockResolvedValue(
+        (async function* () {
+          yield {
+            text: responseText,
+            isComplete: false,
+          };
+          yield {
+            text: '',
+            isComplete: true,
+          };
+        })(),
       );
 
       const rounds = [
@@ -291,22 +303,19 @@ describe('ChatCompactorService', () => {
     });
 
     it('should handle compression with existing compact context', async () => {
-      mockStreamChat.mockImplementation(
-        ({
-          onChunk,
-          onComplete,
-        }: {
-          onChunk: (chunk: string) => void;
-          onComplete: (
-            tokenInfo: { promptTokenCount: number; candidatesTokenCount: number },
-            fullResponse: string,
-          ) => void;
-        }) => {
-          const response = '結合之前的討論和新的問題，用戶繼續探索技術主題...';
-          onChunk(response);
-          onComplete({ promptTokenCount: 100, candidatesTokenCount: 50 }, response);
-          return Promise.resolve();
-        },
+      const responseText = '結合之前的討論和新的問題，用戶繼續探索技術主題...';
+
+      mockStreamChat.mockResolvedValue(
+        (async function* () {
+          yield {
+            text: responseText,
+            isComplete: false,
+          };
+          yield {
+            text: '',
+            isComplete: true,
+          };
+        })(),
       );
 
       const rounds = [createTestRound(3, 'Another question', 'Another answer')];
@@ -327,40 +336,39 @@ describe('ChatCompactorService', () => {
     });
 
     it('should handle LLM errors with retry', async () => {
-      mockStreamChat.mockImplementation(() => {
-        return Promise.reject(new Error('LLM API error'));
-      });
+      mockStreamChat.mockRejectedValue(
+        new Error('No active LLM provider available for compression'),
+      );
 
       const rounds = [createTestRound(1, 'Test', 'Response')];
       const result = await compactorService.compressConversationHistory(rounds);
 
       expect(result.success).toBe(false);
       expect(result.retryCount).toBe(2); // First attempt + 1 retry = 2 total attempts
-      expect(result.error).toContain('LLM API error');
+      expect(result.error).toContain('No active LLM provider available for compression');
     });
 
     it('should retry when compression result is too long', async () => {
       let callCount = 0;
-      mockStreamChat.mockImplementation(
-        ({
-          onChunk,
-          onComplete,
-        }: {
-          onChunk: (chunk: string) => void;
-          onComplete: (
-            tokenInfo: { promptTokenCount: number; candidatesTokenCount: number },
-            fullResponse: string,
-          ) => void;
-        }) => {
-          callCount++;
-          // Always return a long response that exceeds target tokens
-          const response = 'Very long response '.repeat(200) + '用戶助手討論';
 
-          onChunk(response);
-          onComplete({ promptTokenCount: 100, candidatesTokenCount: 50 }, response);
-          return Promise.resolve();
-        },
-      );
+      mockStreamChat.mockImplementation(() => {
+        callCount++;
+        // Always return a long response that exceeds target tokens
+        const longResponse = 'Very long response '.repeat(200) + '用戶助手討論';
+
+        return Promise.resolve(
+          (async function* () {
+            yield {
+              text: longResponse,
+              isComplete: false,
+            };
+            yield {
+              text: '',
+              isComplete: true,
+            };
+          })(),
+        );
+      });
 
       const rounds = [createTestRound(1, 'Test', 'Response')];
       const result = await compactorService.compressConversationHistory(rounds);
@@ -370,48 +378,41 @@ describe('ChatCompactorService', () => {
     });
 
     it('should fail after max retries', async () => {
-      mockStreamChat.mockImplementation(() => {
-        return Promise.reject(new Error('Persistent error'));
-      });
+      mockStreamChat.mockRejectedValue(
+        new Error('No active LLM provider available for compression'),
+      );
 
       const rounds = [createTestRound(1, 'Test', 'Response')];
       const result = await compactorService.compressConversationHistory(rounds);
 
       expect(result.success).toBe(false);
       expect(result.retryCount).toBe(2); // First attempt + 1 retry = 2 total attempts
-      expect(result.error).toContain('Persistent error');
+      expect(result.error).toContain('No active LLM provider available for compression');
     });
   });
 
-  describe('Integration with streamChat', () => {
-    it('should call streamChat with correct parameters', async () => {
-      mockStreamChat.mockImplementation(
-        ({
-          systemPrompt,
-          history,
-          message,
-          onChunk,
-          onComplete,
-        }: {
-          systemPrompt: string;
-          history: unknown[];
-          message: string;
-          onChunk: (chunk: string) => void;
-          onComplete: (
-            tokenInfo: { promptTokenCount: number; candidatesTokenCount: number },
-            fullResponse: string,
-          ) => void;
-        }) => {
-          expect(systemPrompt).toContain('專業的對話摘要助手');
-          expect(history).toEqual([]);
-          expect(message).toContain('請將以下對話歷史壓縮');
+  describe('Integration with ProviderManager', () => {
+    it('should call ProviderManager.streamChat with correct parameters', async () => {
+      const responseText = '用戶詢問助手回答的摘要';
 
-          const response = '用戶詢問助手回答的摘要';
-          onChunk(response);
-          onComplete({ promptTokenCount: 100, candidatesTokenCount: 50 }, response);
-          return Promise.resolve();
-        },
-      );
+      mockStreamChat.mockImplementation(params => {
+        expect(params.systemPrompt).toContain('專業的對話摘要助手');
+        expect(params.history).toEqual([]);
+        expect(params.message).toContain('請將以下對話歷史壓縮');
+
+        return Promise.resolve(
+          (async function* () {
+            yield {
+              text: responseText,
+              isComplete: false,
+            };
+            yield {
+              text: '',
+              isComplete: true,
+            };
+          })(),
+        );
+      });
 
       const rounds = [createTestRound(1, 'Test question', 'Test answer')];
       await compactorService.compressConversationHistory(rounds);
