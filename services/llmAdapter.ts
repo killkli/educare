@@ -222,6 +222,7 @@ export class ProviderManager {
     if (!activeProvider) {
       throw new Error('No active LLM provider available');
     }
+    console.log('[CHAT DEBUG] Using provider for chat:', activeProvider.name);
 
     if (!activeProvider.isAvailable()) {
       throw new Error(`Provider ${activeProvider.displayName} is not available`);

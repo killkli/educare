@@ -1,8 +1,9 @@
 import React, { useReducer, useCallback, useEffect } from 'react';
 import { Assistant, ChatSession } from '../../types';
+import { ProviderType } from '../../services/llmAdapter';
 import * as db from '../../services/db';
 import { preloadEmbeddingModel, isEmbeddingModelLoaded } from '../../services/embeddingService';
-import { initializeProviders } from '../../services/providerRegistry';
+import { initializeProviders, providerManager } from '../../services/providerRegistry';
 import { CryptoService } from '../../services/cryptoService';
 import { ApiKeyManager } from '../../services/apiKeyManager';
 import { getAssistantFromTurso } from '../../services/tursoService';
@@ -36,6 +37,8 @@ const initialState: AppState = {
 
 function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
+    case 'SET_ACTIVE_PROVIDER':
+      return { ...state };
     case 'SET_ASSISTANTS':
       return { ...state, assistants: action.payload };
     case 'SET_CURRENT_ASSISTANT':
@@ -144,7 +147,7 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
     async (assistantId: string, changeView = true) => {
       const assistant = await db.getAssistant(assistantId);
       if (assistant) {
-        dispatch({ type: 'SET_CURRENT_ASSISTANT', payload: assistant });
+        dispatch({ type: 'SET_CURRENT_ASSISTANT', payload: { ...assistant } });
         const assistantSessions = await db.getSessionsForAssistant(assistant.id);
         const sortedSessions = assistantSessions.sort((a, b) => b.createdAt - a.createdAt);
         dispatch({ type: 'SET_SESSIONS', payload: sortedSessions });
@@ -211,13 +214,15 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
 
   const loadSharedAssistant = useCallback(
     async (assistantId: string) => {
+      // Initialize providers first to establish a baseline
       await initializeProviders();
+
       dispatch({ type: 'SET_LOADING', payload: true });
       try {
         const assistant = await getAssistantFromTurso(assistantId);
         if (assistant) {
           await db.saveAssistant(assistant);
-          dispatch({ type: 'SET_CURRENT_ASSISTANT', payload: assistant });
+          dispatch({ type: 'SET_CURRENT_ASSISTANT', payload: { ...assistant } });
           dispatch({
             type: 'SET_ASSISTANTS',
             payload: [assistant],
@@ -242,10 +247,44 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
               try {
                 const decryptedApiKeys = await CryptoService.decryptApiKeys(keys, password);
                 ApiKeyManager.setUserApiKeys(decryptedApiKeys);
-                alert('API 金鑰已成功匯入！');
 
-                // 重新整理頁面以使用新的金鑰
-                window.location.search = `?share=${assistantId}`;
+                if (decryptedApiKeys.provider) {
+                  const providerType = decryptedApiKeys.provider as ProviderType;
+
+                  // 1. Configure provider with specific keys if available
+                  const config: { apiKey?: string; baseUrl?: string } = {};
+                  const keyName = `${providerType}ApiKey` as keyof typeof decryptedApiKeys;
+                  const baseUrlName = `${providerType}BaseUrl` as keyof typeof decryptedApiKeys;
+                  const apiKey = decryptedApiKeys[keyName];
+                  const baseUrl = decryptedApiKeys[baseUrlName];
+
+                  if (apiKey) {
+                    config.apiKey = apiKey as string;
+                  } else if (baseUrl) {
+                    config.baseUrl = baseUrl as string;
+                  }
+
+                  if (Object.keys(config).length > 0) {
+                    providerManager.updateProviderConfig(providerType, config);
+                    providerManager.enableProvider(providerType, true);
+                  }
+
+                  // 2. Set the active provider to persist choice BEFORE reload
+                  providerManager.setActiveProvider(providerType);
+
+                  // 3. Dispatch an action to notify UI components of the change
+                  dispatch({ type: 'SET_ACTIVE_PROVIDER', payload: providerType });
+
+                  // 4. Notify user of success
+                  alert(`API 金鑰與 ${providerType} 提供者已成功匯入！`);
+                  const newParams = new URLSearchParams(window.location.search);
+                  newParams.delete('keys');
+                  window.history.replaceState(
+                    {},
+                    '',
+                    `${window.location.pathname}?${newParams.toString()}`,
+                  );
+                }
               } catch (error) {
                 alert('密碼錯誤或金鑰損毀，無法解密 API 金鑰。');
                 console.error('解密失敗:', error);
@@ -281,7 +320,7 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       } else {
         // If we are editing, just update the current assistant's data
         // and stay in the current view mode (e.g., 'edit_assistant').
-        dispatch({ type: 'SET_CURRENT_ASSISTANT', payload: assistant });
+        dispatch({ type: 'SET_CURRENT_ASSISTANT', payload: { ...assistant } });
       }
     },
     [selectAssistant, state.viewMode],

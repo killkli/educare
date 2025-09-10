@@ -22,7 +22,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
     type: 'success' | 'error' | 'info';
     message: string;
   } | null>(null);
-  const [selectedProviders, setSelectedProviders] = useState<Set<string>>(new Set());
+  const [selectedProvider, setSelectedProvider] = useState<string>('');
   const isGeneratingRef = useRef(false);
 
   // Provider configuration for UI display
@@ -88,9 +88,14 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
 
   // Auto-select providers when modal opens
   useEffect(() => {
-    if (isOpen && availableProviders.length > 0) {
-      // Default to selecting all available providers
-      setSelectedProviders(new Set(availableProviders.map(p => p.providerKey)));
+    if (isOpen) {
+      // Default to the current provider, or the first available one
+      const currentProvider = providerManager.getSettings().currentProvider;
+      if (currentProvider && availableProviders.some(p => p.providerKey === currentProvider)) {
+        setSelectedProvider(currentProvider);
+      } else if (availableProviders.length > 0) {
+        setSelectedProvider(availableProviders[0].providerKey);
+      }
     }
   }, [isOpen, availableProviders]);
 
@@ -129,10 +134,10 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
           return;
         }
 
-        if (selectedProviders.size === 0) {
+        if (!selectedProvider) {
           setShareStatus({
             type: 'error',
-            message: '請選擇至少一個要分享的服務商。',
+            message: '請選擇一個要分享的服務商。',
           });
           setIsGenerating(false);
           return;
@@ -143,16 +148,12 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
         const userApiKeys = ApiKeyManager.getUserApiKeys();
         const providerSettings = providerManager.getSettings();
 
-        selectedProviders.forEach(providerKey => {
-          const info = providerInfo[providerKey as keyof typeof providerInfo];
-          if (!info) {
-            return;
-          }
-
+        const info = providerInfo[selectedProvider as keyof typeof providerInfo];
+        if (info) {
           // Try localStorage first (new system)
           const localStorageKey = userApiKeys[info.key as keyof typeof userApiKeys];
           if (localStorageKey) {
-            selectedApiKeys[providerKey] = localStorageKey;
+            selectedApiKeys[info.key] = localStorageKey;
           }
           // Then try providerManager (existing system)
           else if (providerSettings?.providers) {
@@ -160,17 +161,19 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
               string,
               { enabled: boolean; config?: { apiKey?: string; baseUrl?: string } }
             >;
-            const providerConfig = providers[providerKey];
+            const providerConfig = providers[selectedProvider];
             if (providerConfig) {
               const configKey =
-                providerKey === 'ollama' || providerKey === 'lmstudio' ? 'baseUrl' : 'apiKey';
+                selectedProvider === 'ollama' || selectedProvider === 'lmstudio'
+                  ? 'baseUrl'
+                  : 'apiKey';
               const configValue = providerConfig.config?.[configKey];
               if (configValue) {
-                selectedApiKeys[providerKey] = configValue;
+                selectedApiKeys[info.key] = configValue;
               }
             }
           }
-        });
+        }
 
         if (Object.keys(selectedApiKeys).length === 0) {
           setShareStatus({
@@ -182,8 +185,16 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
         }
 
         // 加密 API 金鑰 (使用原本的格式相容性)
+        const apiKeysToEncrypt = { ...selectedApiKeys };
+
+        // Also include the current provider in the encrypted data
+        const currentProviderType = providerManager.getSettings().currentProvider;
+        if (currentProviderType) {
+          apiKeysToEncrypt.provider = currentProviderType;
+        }
+
         const password = sharePassword || CryptoService.generateRandomPassword();
-        const encryptedString = await CryptoService.encryptApiKeys(selectedApiKeys, password);
+        const encryptedString = await CryptoService.encryptApiKeys(apiKeysToEncrypt, password);
         url += `&keys=${encryptedString}`;
       }
 
@@ -222,7 +233,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
     assistant.description,
     assistant.systemPrompt,
     assistant.createdAt,
-    selectedProviders,
+    selectedProvider,
     providerInfo,
     // isGenerating 不應該在依賴中，因為它會導致循環
   ]);
@@ -252,21 +263,16 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
     link.click();
   };
 
-  const handleProviderToggle = (providerKey: string) => {
-    const newSelection = new Set(selectedProviders);
-    if (newSelection.has(providerKey)) {
-      newSelection.delete(providerKey);
-    } else {
-      newSelection.add(providerKey);
-    }
-    setSelectedProviders(newSelection);
-  };
-
   // Modal 打開時自動生成基本分享連結
   useEffect(() => {
     if (isOpen && assistant) {
       generateShareLink();
     }
+
+    // Cleanup function to reset the generating flag when the modal is closed or component unmounts
+    return () => {
+      isGeneratingRef.current = false;
+    };
   }, [isOpen, assistant, generateShareLink]);
 
   if (!isOpen) {
@@ -366,10 +372,11 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
                         className='flex items-center space-x-2 bg-gray-600/30 rounded-lg p-2 cursor-pointer hover:bg-gray-600/50 transition-colors'
                       >
                         <input
-                          type='checkbox'
-                          checked={selectedProviders.has(provider.providerKey)}
-                          onChange={() => handleProviderToggle(provider.providerKey)}
-                          className='w-4 h-4 text-cyan-600 rounded focus:ring-cyan-500'
+                          type='radio'
+                          name='provider-selection'
+                          checked={selectedProvider === provider.providerKey}
+                          onChange={() => setSelectedProvider(provider.providerKey)}
+                          className='w-4 h-4 text-cyan-600 rounded-full focus:ring-cyan-500'
                         />
                         <span className='text-sm text-gray-200'>
                           {provider.icon} {provider.name}

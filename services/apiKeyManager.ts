@@ -18,6 +18,8 @@ const STORAGE_KEYS = {
   LMSTUDIO_BASE_URL: 'user_lmstudio_base_url',
   // Database
   TURSO_WRITE_API_KEY: 'user_turso_write_api_key',
+  // Active Provider
+  ACTIVE_PROVIDER: 'active_provider',
 } as const;
 
 export interface UserApiKeys {
@@ -31,6 +33,8 @@ export interface UserApiKeys {
   lmstudioBaseUrl?: string;
   // Database API Key
   tursoWriteApiKey?: string;
+  // Active Provider
+  provider?: string;
 }
 
 /**
@@ -245,6 +249,13 @@ export class ApiKeyManager {
     } else {
       localStorage.removeItem(STORAGE_KEYS.TURSO_WRITE_API_KEY);
     }
+
+    // Active Provider
+    if (keys.provider) {
+      localStorage.setItem(STORAGE_KEYS.ACTIVE_PROVIDER, keys.provider);
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.ACTIVE_PROVIDER);
+    }
   }
 
   /**
@@ -278,6 +289,8 @@ export class ApiKeyManager {
         this.getLmstudioBaseUrl() || this.getProviderBaseUrl('lmstudio') || undefined,
       // Database API Key
       tursoWriteApiKey: this.getTursoWriteApiKey() || undefined,
+      // Active provider
+      provider: localStorage.getItem(STORAGE_KEYS.ACTIVE_PROVIDER) || undefined,
     };
 
     return result;
