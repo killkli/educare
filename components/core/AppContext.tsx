@@ -3,6 +3,9 @@ import { Assistant, ChatSession } from '../../types';
 import * as db from '../../services/db';
 import { preloadEmbeddingModel, isEmbeddingModelLoaded } from '../../services/embeddingService';
 import { initializeProviders } from '../../services/providerRegistry';
+import { CryptoService } from '../../services/cryptoService';
+import { ApiKeyManager } from '../../services/apiKeyManager';
+import { getAssistantFromTurso } from '../../services/tursoService';
 import { AppContext } from './useAppContext';
 import type {
   ViewMode,
@@ -206,6 +209,62 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
     }
   }, [selectAssistant]);
 
+  const loadSharedAssistant = useCallback(
+    async (assistantId: string) => {
+      await initializeProviders();
+      dispatch({ type: 'SET_LOADING', payload: true });
+      try {
+        const assistant = await getAssistantFromTurso(assistantId);
+        if (assistant) {
+          await db.saveAssistant(assistant);
+          dispatch({ type: 'SET_CURRENT_ASSISTANT', payload: assistant });
+          dispatch({
+            type: 'SET_ASSISTANTS',
+            payload: [assistant],
+          });
+          const assistantSessions = await db.getSessionsForAssistant(assistant.id);
+          const sortedSessions = assistantSessions.sort((a, b) => b.createdAt - a.createdAt);
+          dispatch({ type: 'SET_SESSIONS', payload: sortedSessions });
+
+          if (sortedSessions.length > 0) {
+            dispatch({ type: 'SET_CURRENT_SESSION', payload: sortedSessions[0] });
+          } else {
+            await createNewSession(assistant.id);
+          }
+
+          dispatch({ type: 'SET_VIEW_MODE', payload: 'chat' });
+
+          const params = new URLSearchParams(window.location.search);
+          const keys = params.get('keys');
+          if (keys) {
+            const password = window.prompt('此助理包含已加密的 API 金鑰。請輸入密碼以解密：', '');
+            if (password) {
+              try {
+                const decryptedApiKeys = await CryptoService.decryptApiKeys(keys, password);
+                ApiKeyManager.setUserApiKeys(decryptedApiKeys);
+                alert('API 金鑰已成功匯入！');
+
+                // 重新整理頁面以使用新的金鑰
+                window.location.search = `?share=${assistantId}`;
+              } catch (error) {
+                alert('密碼錯誤或金鑰損毀，無法解密 API 金鑰。');
+                console.error('解密失敗:', error);
+              }
+            }
+          }
+        } else {
+          dispatch({ type: 'SET_ERROR', payload: '找不到分享的助理。' });
+        }
+      } catch (e) {
+        dispatch({ type: 'SET_ERROR', payload: '載入分享的助理時發生錯誤。' });
+        console.error(e);
+      } finally {
+        dispatch({ type: 'SET_LOADING', payload: false });
+      }
+    },
+    [createNewSession],
+  );
+
   // Save assistant
   const saveAssistant = useCallback(
     async (assistant: Assistant) => {
@@ -328,8 +387,10 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
   useEffect(() => {
     if (!state.isShared) {
       loadData();
+    } else if (state.sharedAssistantId) {
+      loadSharedAssistant(state.sharedAssistantId);
     }
-  }, [loadData, state.isShared]);
+  }, [loadData, state.isShared, loadSharedAssistant, state.sharedAssistantId]);
 
   const contextValue: AppContextValue = {
     state,
@@ -347,6 +408,7 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       openShareModal,
       closeShareModal,
       checkScreenSize,
+      loadSharedAssistant,
     },
   };
 

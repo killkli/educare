@@ -71,5 +71,6 @@ export interface AppContextValue {
     openShareModal: (assistant: Assistant) => void;
     closeShareModal: () => void;
     checkScreenSize: () => void;
+    loadSharedAssistant: (assistantId: string) => Promise<void>;
   };
 }
