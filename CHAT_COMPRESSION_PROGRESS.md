@@ -2,10 +2,10 @@
 
 ## 📋 總體進度概覽
 
-**專案狀態**: 🎉 核心功能完成  
+**專案狀態**: 🎉 功能增強完成  
 **開始時間**: 2025-09-10  
 **完成時間**: 2025-09-10  
-**當前階段**: Stage 5 完成 - 資料庫整合完成，壓縮功能全面可用
+**當前階段**: Provider 支援完成 - 壓縮功能支援所有 LLM Provider，完全可用
 
 ### 🏆 里程碑完成
 
@@ -14,6 +14,7 @@
 - ✅ **M3**: Stage 3 完成 - 2025-09-10 ✨
 - ✅ **M4**: Stage 4 完成 - 2025-09-10 ✨
 - ✅ **M5**: Stage 5 完成 - 2025-09-10 ✨
+- ✅ **M6**: Provider 支援完成 - 2025-09-10 ✨
 
 ---
 
@@ -280,7 +281,85 @@ export interface ChatSession {
 
 ---
 
-## 🎯 Stage 6: 效能優化與錯誤處理
+## 🎯 Stage 6: LLM Provider 支援改進 ✅
+
+**目標**: 改進壓縮服務支援用戶設定的 LLM Provider 而非固定使用 Gemini  
+**開始時間**: 2025-09-10  
+**完成時間**: 2025-09-10  
+**狀態**: ✅ 已完成
+
+### ✅ 已完成
+
+- [x] 分析現有的 LLM Provider 配置系統
+- [x] 修改壓縮服務從 `geminiService` 改為 `ProviderManager`
+- [x] 更新 `ChatCompactorService` 使用動態 Provider 選擇
+- [x] 移除硬編碼的 `compressionModel` 配置
+- [x] 更新所有測試以支援新的 Provider 架構
+- [x] 確保向後相容性和錯誤處理
+
+### 📝 實作細節
+
+#### ✅ 主要改進
+
+**之前**: 壓縮服務直接使用 `geminiService.streamChat()`
+**之後**: 壓縮服務使用 `ProviderManager.getInstance().streamChat()`
+
+#### ✅ 核心變更
+
+```typescript
+// services/chatCompactorService.ts
+private async callCompressionLLM(prompt: string): Promise<string> {
+  // 使用 ProviderManager 來調用當前設定的 Provider
+  const { ProviderManager } = await import('./llmAdapter');
+  const providerManager = ProviderManager.getInstance();
+
+  const activeProvider = providerManager.getActiveProvider();
+  if (!activeProvider || !activeProvider.isAvailable()) {
+    throw new Error('No active LLM provider available for compression');
+  }
+
+  const streamResponse = await providerManager.streamChat({
+    systemPrompt: '你是一個專業的對話摘要助手...',
+    history: [],
+    message: prompt,
+  });
+
+  // 收集流式響應
+  let finalResponse = '';
+  for await (const chunk of streamResponse) {
+    if (chunk.text) {
+      finalResponse += chunk.text;
+    }
+  }
+
+  return finalResponse.trim();
+}
+```
+
+#### ✅ 配置簡化
+
+移除了 `CompressionConfig` 中的 `compressionModel` 欄位：
+
+- 現在壓縮使用用戶在 UI 中設定的當前 Provider
+- 支援所有可用的 Provider：Gemini、OpenAI、Claude、Groq、OpenRouter 等
+- 自動繼承 Provider 的模型配置和 API 設定
+
+#### ✅ 測試更新
+
+- 重構了所有 24 個壓縮服務測試
+- 使用 `ProviderManager` 的 mock 替代 `geminiService` mock
+- 更新測試以符合新的 `AsyncIterable<StreamingResponse>` 格式
+- 保持 100% 測試通過率
+
+#### ✅ 向後相容性
+
+- 現有的壓縮配置仍然有效（除了移除的 `compressionModel`）
+- 所有現有的壓縮上下文和會話資料完全相容
+- UI 和使用者體驗沒有變化
+
+---
+
+## 🎯 Stage 7: 效能優化與錯誤處理
 
 **目標**: 確保壓縮過程穩定可靠，處理邊界情況  
 **狀態**: ⏳ 等待中
@@ -436,7 +515,12 @@ export interface ChatSession {
 - **17:15** - 分析現有資料庫架構，確認 IndexedDB 已自動支援
 - **17:30** - 撰寫資料庫壓縮上下文測試，全部通過
 - **17:45** - ✅ **Stage 5 完成！** 🎉 **核心功能全面完成**
+- **18:00** - 開始 Stage 6: LLM Provider 支援改進
+- **18:15** - 分析 ProviderManager 架構，修改壓縮服務 API 調用
+- **18:30** - 更新 ChatCompactorService 使用動態 Provider 選擇
+- **18:45** - 重構所有測試以支援新的 Provider 架構
+- **19:00** - ✅ **Stage 6 完成！** 🎉 **Provider 支援全面完成**
 
 ---
 
-_最後更新: 2025-09-10 17:45_
+_最後更新: 2025-09-10 19:00_

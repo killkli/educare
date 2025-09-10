@@ -1,5 +1,4 @@
 import { CompactContext, ConversationRound } from '../types';
-import { streamChat } from './geminiService';
 
 /**
  * 聊天壓縮服務配置
@@ -9,7 +8,6 @@ export interface CompressionConfig {
   triggerRounds: number; // 觸發壓縮的輪次數
   preserveLastRounds: number; // 保留最後幾輪完整對話
   maxRetries: number; // 壓縮失敗重試次數
-  compressionModel: string; // 用於壓縮的模型
   compressionVersion: string; // 壓縮版本
 }
 
@@ -40,7 +38,6 @@ export class ChatCompactorService {
       triggerRounds: 10,
       preserveLastRounds: 2,
       maxRetries: 1,
-      compressionModel: 'gemini-2.5-flash',
       compressionVersion: '1.0',
       ...config,
     };
@@ -91,7 +88,7 @@ export class ChatCompactorService {
         const compressionInput = this.prepareCompressionInput(rounds, existingCompact);
         const prompt = this.generateCompressionPrompt(compressionInput);
 
-        // 使用 Gemini API 進行壓縮
+        // 使用當前設定的 LLM Provider 進行壓縮
         const compressedContent = await this.callCompressionLLM(prompt);
 
         if (!this.validateCompressionResult(compressedContent)) {
@@ -230,19 +227,45 @@ ${input}
    * 調用 LLM 進行壓縮
    */
   private async callCompressionLLM(prompt: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-      streamChat({
-        systemPrompt: '你是一個專業的對話摘要助手，擅長將長對話壓縮成簡潔但完整的摘要。',
-        history: [],
-        message: prompt,
-        onChunk: () => {
-          /* No need to handle chunks for compression */
-        },
-        onComplete: (_tokenInfo, finalResponse) => {
-          resolve(finalResponse);
-        },
-      }).catch(reject);
+    // 使用 ProviderManager 來調用當前設定的 Provider
+    const { ProviderManager } = await import('./llmAdapter');
+    const providerManager = ProviderManager.getInstance();
+
+    // 檢查是否有可用的 Provider
+    const activeProvider = providerManager.getActiveProvider();
+    if (!activeProvider) {
+      throw new Error('No active LLM provider available for compression');
+    }
+
+    if (!activeProvider.isAvailable()) {
+      throw new Error(
+        `Active provider ${activeProvider.displayName} is not available for compression`,
+      );
+    }
+
+    // 使用 ProviderManager 的 streamChat 方法，按照 ChatParams 格式
+    const streamResponse = await providerManager.streamChat({
+      systemPrompt: '你是一個專業的對話摘要助手，擅長將長對話壓縮成簡潔但完整的摘要。',
+      history: [], // 空的歷史記錄，因為壓縮是獨立的任務
+      message: prompt, // 使用 message 而不是 messages
+      // 不傳遞 model 參數，讓 Provider 使用其默認配置
     });
+
+    let finalResponse = '';
+
+    // 收集所有的流式響應
+    for await (const chunk of streamResponse) {
+      if (chunk.text) {
+        // 使用 text 而不是 content
+        finalResponse += chunk.text;
+      }
+    }
+
+    if (!finalResponse.trim()) {
+      throw new Error('LLM returned empty response');
+    }
+
+    return finalResponse.trim();
   }
 
   /**

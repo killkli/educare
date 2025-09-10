@@ -26,7 +26,6 @@ function AppContent(): React.JSX.Element {
     triggerRounds: 10,
     preserveLastRounds: 2,
     maxRetries: 2,
-    compressionModel: 'gemini-2.5-flash',
     compressionVersion: '1.0',
   });
 
