@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import QRCode from 'qrcode';
 import { Assistant } from '../../types';
 import { CryptoService } from '../../services/cryptoService';
@@ -23,6 +23,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
     message: string;
   } | null>(null);
   const [selectedProviders, setSelectedProviders] = useState<Set<string>>(new Set());
+  const isGeneratingRef = useRef(false);
 
   // Provider configuration for UI display
   const providerInfo = useMemo(
@@ -96,11 +97,12 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
   // 生成分享連結
   const generateShareLink = useCallback(async () => {
     // 防止重複生成
-    if (isGenerating) {
+    if (isGeneratingRef.current) {
       console.log('⚠️ [SHARE MODAL] Already generating share link, skipping');
       return;
     }
 
+    isGeneratingRef.current = true;
     setIsGenerating(true);
     setShareStatus(null);
 
@@ -115,7 +117,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
         createdAt: assistant.createdAt || Date.now(), // 確保 createdAt 已設定
       });
 
-      let url = `${window.location.origin}/shared/${assistant.id}`;
+      let url = `${window.location.origin}${window.location.pathname}?share=${assistant.id}`;
 
       if (shareWithApiKeys) {
         if (!sharePassword.trim()) {
@@ -209,6 +211,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
         message: `生成分享連結失敗，請檢查 Turso 配置並稍後再試。錯誤: ${error instanceof Error ? error.message : String(error)}`,
       });
     } finally {
+      isGeneratingRef.current = false;
       setIsGenerating(false);
     }
   }, [
@@ -221,6 +224,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
     assistant.createdAt,
     selectedProviders,
     providerInfo,
+    // isGenerating 不應該在依賴中，因為它會導致循環
   ]);
 
   // 複製到剪貼簿
