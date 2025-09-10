@@ -243,7 +243,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                       複製
                     </button>
                   </div>
-                  <pre className='p-4 text-sm overflow-x-auto'>
+                  <pre className='p-4 text-sm overflow-x-auto max-w-full'>
                     <code className={className} {...rest}>
                       {children}
                     </code>
@@ -270,7 +270,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           h3: ({ children }) => (
             <h3 className='text-base font-medium mb-1 text-white'>{children}</h3>
           ),
-          p: ({ children }) => <p className='mb-2 leading-relaxed'>{children}</p>,
+          p: ({ children }) => (
+            <p className='mb-2 leading-relaxed break-words overflow-wrap-anywhere'>{children}</p>
+          ),
           ul: ({ children }) => (
             <ul className='list-disc list-inside mb-2 space-y-1'>{children}</ul>
           ),
@@ -298,7 +300,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           ),
           em: ({ children }) => <em className='italic'>{children}</em>,
           table: ({ children }) => (
-            <div className='overflow-x-auto my-2'>
+            <div className='overflow-x-auto my-2 max-w-full'>
               <table className='min-w-full border-collapse border border-gray-600'>
                 {children}
               </table>
@@ -362,7 +364,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               >
                 {msg.role === 'user' ? (
                   /* User Message - Right Side */
-                  <div className='flex flex-row-reverse gap-3 max-w-4xl'>
+                  <div className='flex flex-row-reverse gap-3 max-w-4xl w-full'>
                     <div className='flex-shrink-0'>
                       <div className='w-10 h-10 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full flex items-center justify-center shadow-lg ring-2 ring-cyan-400/20'>
                         <UserIcon className='w-5 h-5 text-white' />
@@ -370,7 +372,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                     </div>
                     <div className='flex flex-col items-end group'>
                       <div className='bg-gradient-to-br from-cyan-500 to-blue-600 text-white px-5 py-3 rounded-2xl rounded-br-md shadow-lg max-w-lg relative'>
-                        <div className='text-sm leading-relaxed'>
+                        <div className='text-sm leading-relaxed break-words overflow-wrap-anywhere'>
                           {renderMessageContent(msg.content)}
                         </div>
                         {/* Message actions */}
@@ -407,7 +409,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                   </div>
                 ) : (
                   /* Assistant Message - Left Side */
-                  <div className='flex gap-3 max-w-4xl'>
+                  <div className='flex gap-3 max-w-4xl w-full'>
                     <div className='flex-shrink-0'>
                       <div className='w-10 h-10 bg-gradient-to-br from-gray-700 to-gray-600 rounded-full flex items-center justify-center shadow-lg ring-2 ring-gray-600/30'>
                         <GeminiIcon className='w-5 h-5 text-cyan-400' />
@@ -415,7 +417,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                     </div>
                     <div className='flex flex-col group'>
                       <div className='bg-gray-800/80 backdrop-blur-sm text-gray-100 px-5 py-3 rounded-2xl rounded-bl-md shadow-lg border border-gray-700/50 relative'>
-                        <div className='text-sm leading-relaxed'>
+                        <div className='text-sm leading-relaxed break-words overflow-wrap-anywhere'>
                           {renderMessageContent(msg.content)}
                         </div>
                         {/* Message actions */}
@@ -457,7 +459,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             {/* Thinking Placeholder */}
             {isThinking && !streamingResponse && (
               <div className='flex justify-start'>
-                <div className='flex gap-3 max-w-4xl'>
+                <div className='flex gap-3 max-w-4xl w-full'>
                   <div className='flex-shrink-0'>
                     <div className='w-10 h-10 bg-gradient-to-br from-gray-700 to-gray-600 rounded-full flex items-center justify-center shadow-lg ring-2 ring-gray-600/30'>
                       <GeminiIcon className='w-5 h-5 text-cyan-400 animate-pulse' />
@@ -491,7 +493,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             {/* Streaming Response */}
             {streamingResponse && (
               <div className='flex justify-start'>
-                <div className='flex gap-3 max-w-4xl'>
+                <div className='flex gap-3 max-w-4xl w-full'>
                   <div className='flex-shrink-0'>
                     <div className='w-10 h-10 bg-gradient-to-br from-gray-700 to-gray-600 rounded-full flex items-center justify-center shadow-lg ring-2 ring-cyan-400/30'>
                       <GeminiIcon className='w-5 h-5 text-cyan-400' />
@@ -499,7 +501,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                   </div>
                   <div className='flex flex-col group'>
                     <div className='bg-gray-800/80 backdrop-blur-sm text-gray-100 px-5 py-3 rounded-2xl rounded-bl-md shadow-lg border border-gray-700/50 relative'>
-                      <div className='text-sm leading-relaxed'>
+                      <div className='text-sm leading-relaxed break-words overflow-wrap-anywhere'>
                         {renderMessageContent(streamingResponse)}
                         <span className='inline-block w-0.5 h-4 bg-cyan-400 ml-1 animate-pulse'></span>
                       </div>

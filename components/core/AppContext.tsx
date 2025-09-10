@@ -140,6 +140,8 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
     };
     await db.saveSession(newSession);
     dispatch({ type: 'ADD_SESSION', payload: newSession });
+    // 自動設置為當前會話
+    dispatch({ type: 'SET_CURRENT_SESSION', payload: newSession });
   }, []);
 
   // Select an assistant
