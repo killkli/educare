@@ -135,7 +135,7 @@ export default defineConfig(({ mode }) => {
         legalComments: 'none',
         treeShaking: true,
         target: 'es2020',
-        drop: ['console', 'debugger'],
+        // drop: ['console', 'debugger'],
         minifyIdentifiers: true,
         minifySyntax: true,
         minifyWhitespace: true

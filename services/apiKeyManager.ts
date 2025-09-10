@@ -6,6 +6,8 @@
  * 3. 與 providerManager 系統整合 - 也檢查 providerManager 的設定
  */
 
+import { providerManager } from './providerRegistry';
+
 // LocalStorage 鍵值
 const STORAGE_KEYS = {
   // AI Providers
@@ -301,15 +303,13 @@ export class ApiKeyManager {
    */
   private static getProviderApiKey(providerType: string): string | null {
     try {
-      // Lazy import to avoid circular dependencies
-      const { providerManager } = require('./providerRegistry');
       if (!providerManager) {
         return null;
       }
       const settings = providerManager.getSettings();
       return settings?.providers?.[providerType]?.config?.apiKey || null;
-    } catch (_) {
-      console.error(_);
+    } catch (error) {
+      console.error('Error getting provider API key:', error);
       return null;
     }
   }
@@ -319,15 +319,13 @@ export class ApiKeyManager {
    */
   private static getProviderBaseUrl(providerType: string): string | null {
     try {
-      // Lazy import to avoid circular dependencies
-      const { providerManager } = require('./providerRegistry');
       if (!providerManager) {
         return null;
       }
       const settings = providerManager.getSettings();
       return settings?.providers?.[providerType]?.config?.baseUrl || null;
-    } catch (_) {
-      console.error(_);
+    } catch (error) {
+      console.error('Error getting provider base URL:', error);
       return null;
     }
   }
