@@ -1,6 +1,149 @@
 import { createClient } from '@libsql/client';
 import { ApiKeyManager } from './apiKeyManager';
 
+// 重試機制配置
+const RETRY_CONFIG = {
+  maxRetries: 2, // 減少重試次數
+  baseDelay: 2000, // 2 秒
+  maxDelay: 8000, // 8 秒
+};
+
+// 電路斷路器狀態
+interface CircuitBreakerState {
+  failureCount: number;
+  lastFailureTime: number;
+  state: 'CLOSED' | 'OPEN' | 'HALF_OPEN';
+}
+
+const circuitBreaker: CircuitBreakerState = {
+  failureCount: 0,
+  lastFailureTime: 0,
+  state: 'CLOSED',
+};
+
+const CIRCUIT_BREAKER_CONFIG = {
+  failureThreshold: 5, // 5次失敗後開路
+  timeout: 30000, // 30秒後嘗試半開
+};
+
+// 檢查電路斷路器狀態
+const checkCircuitBreaker = (): boolean => {
+  const now = Date.now();
+
+  switch (circuitBreaker.state) {
+    case 'OPEN':
+      if (now - circuitBreaker.lastFailureTime > CIRCUIT_BREAKER_CONFIG.timeout) {
+        circuitBreaker.state = 'HALF_OPEN';
+        console.log('🔄 [CIRCUIT BREAKER] Attempting to half-open circuit');
+        return true;
+      }
+      console.log('🚫 [CIRCUIT BREAKER] Circuit is open, blocking request');
+      return false;
+    case 'HALF_OPEN':
+    case 'CLOSED':
+      return true;
+  }
+};
+
+// 記錄成功
+const recordSuccess = (): void => {
+  if (circuitBreaker.state === 'HALF_OPEN') {
+    circuitBreaker.state = 'CLOSED';
+    circuitBreaker.failureCount = 0;
+    console.log('✅ [CIRCUIT BREAKER] Circuit closed - service recovered');
+  }
+};
+
+// 記錄失敗
+const recordFailure = (): void => {
+  circuitBreaker.failureCount++;
+  circuitBreaker.lastFailureTime = Date.now();
+
+  if (circuitBreaker.failureCount >= CIRCUIT_BREAKER_CONFIG.failureThreshold) {
+    circuitBreaker.state = 'OPEN';
+    console.log(
+      `🚫 [CIRCUIT BREAKER] Circuit opened due to ${circuitBreaker.failureCount} failures`,
+    );
+  }
+};
+
+// 全局請求去重緩存
+const pendingRequests = new Map<string, Promise<unknown>>();
+
+// 指數退避重試函數
+const retryWithExponentialBackoff = async <T>(
+  fn: () => Promise<T>,
+  context: string,
+): Promise<T> => {
+  // 檢查電路斷路器
+  if (!checkCircuitBreaker()) {
+    throw new Error('Service temporarily unavailable - circuit breaker is open');
+  }
+
+  let lastError: Error;
+
+  for (let attempt = 0; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
+    try {
+      if (attempt > 0) {
+        const delay = Math.min(
+          RETRY_CONFIG.baseDelay * Math.pow(2, attempt - 1),
+          RETRY_CONFIG.maxDelay,
+        );
+        console.log(`⏳ [TURSO RETRY] ${context} - Attempt ${attempt + 1}, waiting ${delay}ms`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+
+      const result = await fn();
+      recordSuccess(); // 記錄成功
+      return result;
+    } catch (error) {
+      lastError = error as Error;
+      const errorMessage = (error as Error).message || String(error);
+
+      recordFailure(); // 記錄失敗
+
+      // 如果是資源不足錯誤，立即停止重試
+      if (
+        errorMessage.includes('INSUFFICIENT_RESOURCES') ||
+        errorMessage.includes('ERR_INSUFFICIENT_RESOURCES')
+      ) {
+        console.warn(`🚫 [TURSO RETRY] ${context} - Resource limit hit, stopping retries`);
+        break;
+      } else {
+        console.warn(`⚠️ [TURSO RETRY] ${context} - Attempt ${attempt + 1} failed:`, error);
+      }
+
+      // 如果是最後一次嘗試，直接拋出錯誤
+      if (attempt === RETRY_CONFIG.maxRetries) {
+        break;
+      }
+    }
+  }
+
+  console.error(`❌ [TURSO RETRY] ${context} - All retries exhausted`);
+  throw lastError!;
+};
+
+// 請求去重包裝器
+const withRequestDeduplication = async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+  // 如果已有相同請求在進行中，返回該請求的 Promise
+  if (pendingRequests.has(key)) {
+    console.log(`🔄 [TURSO DEDUP] Reusing existing request: ${key}`);
+    return pendingRequests.get(key) as Promise<T>;
+  }
+
+  // 創建新請求並加入緩存
+  console.log(`🆕 [TURSO DEDUP] Starting new request: ${key}`);
+  const promise = fn().finally(() => {
+    // 請求完成後從緩存中移除
+    pendingRequests.delete(key);
+    console.log(`✅ [TURSO DEDUP] Request completed: ${key}`);
+  });
+
+  pendingRequests.set(key, promise);
+  return promise;
+};
+
 // 建立客戶端實例的工廠函數 - 支援動態配置
 const createTursoClient = (mode: 'read' | 'write') => {
   let config;
@@ -115,41 +258,48 @@ export const initializeDatabase = async (): Promise<void> => {
 
 // 儲存助手到 Turso - 避免使用 INSERT OR REPLACE 防止觸發 CASCADE 刪除 RAG chunks
 export const saveAssistantToTurso = async (assistant: TursoAssistant): Promise<void> => {
-  const client = getWriteClient(); // 需要寫入權限
+  const requestKey = `saveAssistant:${assistant.id}`;
 
-  try {
-    // 首先檢查助手是否已存在
-    const existingResult = await client.execute({
-      sql: 'SELECT id FROM assistants WHERE id = ?',
-      args: [assistant.id],
-    });
+  return withRequestDeduplication(requestKey, async () => {
+    return retryWithExponentialBackoff(async () => {
+      console.log(`💾 [TURSO WRITE] Saving assistant: ${assistant.name} (${assistant.id})`);
+      const client = getWriteClient(); // 需要寫入權限
 
-    if (existingResult.rows.length > 0) {
-      // 如果已存在，只更新名稱、描述和系統提示，保持 created_at 不變
-      await client.execute({
-        sql: `UPDATE assistants 
-              SET name = ?, description = ?, system_prompt = ?
-              WHERE id = ?`,
-        args: [assistant.name, assistant.description, assistant.systemPrompt, assistant.id],
+      // 首先檢查助手是否已存在
+      const existingResult = await client.execute({
+        sql: 'SELECT id FROM assistants WHERE id = ?',
+        args: [assistant.id],
       });
-    } else {
-      // 如果不存在，插入新記錄
-      await client.execute({
-        sql: `INSERT INTO assistants (id, name, description, system_prompt, created_at) 
-              VALUES (?, ?, ?, ?, ?)`,
-        args: [
-          assistant.id,
-          assistant.name,
-          assistant.description,
-          assistant.systemPrompt,
-          assistant.createdAt,
-        ],
-      });
-    }
-  } catch (error) {
-    console.error('Failed to save assistant to Turso:', error);
-    throw error;
-  }
+
+      if (existingResult.rows.length > 0) {
+        // 如果已存在，只更新名稱、描述和系統提示，保持 created_at 不變
+        await client.execute({
+          sql: `UPDATE assistants 
+                SET name = ?, description = ?, system_prompt = ?
+                WHERE id = ?`,
+          args: [assistant.name, assistant.description, assistant.systemPrompt, assistant.id],
+        });
+        console.log(`✅ [TURSO WRITE] Updated existing assistant: ${assistant.name}`);
+      } else {
+        // 如果不存在，插入新記錄
+        await client.execute({
+          sql: `INSERT INTO assistants (id, name, description, system_prompt, created_at) 
+                VALUES (?, ?, ?, ?, ?)`,
+          args: [
+            assistant.id,
+            assistant.name,
+            assistant.description,
+            assistant.systemPrompt,
+            assistant.createdAt,
+          ],
+        });
+        console.log(`✅ [TURSO WRITE] Created new assistant: ${assistant.name}`);
+      }
+    }, `saveAssistantToTurso(${assistant.id})`);
+  }).catch(error => {
+    console.error('❌ [TURSO WRITE] Failed to save assistant to Turso after all retries:', error);
+    throw error; // 對於寫入操作，我們需要拋出錯誤讓調用方知道失敗
+  });
 };
 
 // 儲存 RAG chunk 含向量到 Turso
@@ -230,30 +380,39 @@ export const searchSimilarChunks = async (
 
 // 取得助手資料
 export const getAssistantFromTurso = async (id: string): Promise<TursoAssistant | null> => {
-  try {
-    const client = getReadClient(); // 只需要讀取權限
+  const requestKey = `getAssistant:${id}`;
 
-    const result = await client.execute({
-      sql: 'SELECT * FROM assistants WHERE id = ?',
-      args: [id],
-    });
+  return withRequestDeduplication(requestKey, async () => {
+    return retryWithExponentialBackoff(async () => {
+      console.log(`🔍 [TURSO READ] Getting assistant: ${id}`);
+      const client = getReadClient(); // 只需要讀取權限
 
-    if (result.rows.length === 0) {
-      return null;
-    }
+      const result = await client.execute({
+        sql: 'SELECT * FROM assistants WHERE id = ?',
+        args: [id],
+      });
 
-    const row = result.rows[0];
-    return {
-      id: row.id as string,
-      name: row.name as string,
-      description: (row.description as string) || '', // 提供預設值以防舊資料
-      systemPrompt: row.system_prompt as string,
-      createdAt: row.created_at as number,
-    };
-  } catch (error) {
-    console.error('Failed to get assistant from Turso:', error);
-    return null;
-  }
+      if (result.rows.length === 0) {
+        console.log(`⚠️ [TURSO READ] Assistant not found: ${id}`);
+        return null;
+      }
+
+      const row = result.rows[0];
+      const assistant = {
+        id: row.id as string,
+        name: row.name as string,
+        description: (row.description as string) || '', // 提供預設值以防舊資料
+        systemPrompt: row.system_prompt as string,
+        createdAt: row.created_at as number,
+      };
+
+      console.log(`✅ [TURSO READ] Successfully retrieved assistant: ${assistant.name}`);
+      return assistant;
+    }, `getAssistantFromTurso(${id})`);
+  }).catch(error => {
+    console.error('❌ [TURSO READ] Failed to get assistant from Turso after all retries:', error);
+    return null; // 返回 null 而不是拋出錯誤，讓調用方處理
+  });
 };
 
 // 取得所有助手

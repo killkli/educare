@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { AppContext } from '../core/useAppContext';
 import { initializeProviders, isLLMAvailable } from '../../services/providerRegistry';
 import { getAssistantFromTurso } from '../../services/tursoService';
@@ -12,6 +12,8 @@ interface SharedAssistantProps {
 
 const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
   const { dispatch } = React.useContext(AppContext) as AppContextValue;
+  const loadingRef = useRef(false);
+  const loadedRef = useRef(false);
 
   const checkApiKey = useCallback(async () => {
     await initializeProviders();
@@ -23,19 +25,27 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
   }, [dispatch]);
 
   const loadSharedAssistant = useCallback(async () => {
+    // 防止重複請求
+    if (loadingRef.current || loadedRef.current) {
+      console.log('⚠️ [SHARED ASSISTANT] Skipping duplicate load request');
+      return;
+    }
+
+    loadingRef.current = true;
     dispatch({ type: 'SET_LOADING', payload: true });
     dispatch({ type: 'SET_ERROR', payload: null });
+
     try {
       if (!assistantId) {
         dispatch({ type: 'SET_ERROR', payload: '無效的助理 ID。' });
-        dispatch({ type: 'SET_LOADING', payload: false });
         return;
       }
+
+      console.log('🔄 [SHARED ASSISTANT] Loading assistant:', assistantId);
       const tursoAssistant = await getAssistantFromTurso(assistantId);
 
       if (!tursoAssistant) {
         dispatch({ type: 'SET_ERROR', payload: '找不到助理或無法分享。' });
-        dispatch({ type: 'SET_LOADING', payload: false });
         return;
       }
 
@@ -62,12 +72,19 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
       if (encryptedKeys) {
         dispatch({ type: 'SET_VIEW_MODE', payload: 'api_setup' });
       } else {
-        await checkApiKey();
+        const hasValidKeys = await checkApiKey();
+        if (hasValidKeys) {
+          dispatch({ type: 'SET_VIEW_MODE', payload: 'chat' });
+        }
       }
+
+      loadedRef.current = true;
+      console.log('✅ [SHARED ASSISTANT] Successfully loaded assistant');
     } catch (err) {
-      console.error('Failed to load shared assistant:', err);
-      dispatch({ type: 'SET_ERROR', payload: '無法載-載入分享的助理。請檢查連結。' });
+      console.error('❌ [SHARED ASSISTANT] Failed to load assistant:', err);
+      dispatch({ type: 'SET_ERROR', payload: '無法載入分享的助理。請檢查連結或稍後重試。' });
     } finally {
+      loadingRef.current = false;
       dispatch({ type: 'SET_LOADING', payload: false });
     }
   }, [assistantId, checkApiKey, dispatch]);
