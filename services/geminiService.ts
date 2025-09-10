@@ -1,6 +1,7 @@
 import { GoogleGenAI, Chat, GenerateContentResponse } from '@google/genai';
 import { ChatMessage } from '../types';
 import { ApiKeyManager } from './apiKeyManager';
+import { getLastNRounds, getIncompleteRound } from './conversationUtils';
 
 let ai: GoogleGenAI | null = null;
 let initializationAttempted = false;
@@ -75,9 +76,20 @@ export const streamChat = async ({
     throw new Error('請先在設定中配置 Gemini API KEY 才能使用聊天功能。');
   }
 
-  const MAX_HISTORY_MESSAGES = 20;
-  const truncatedHistory =
-    history.length > MAX_HISTORY_MESSAGES ? history.slice(-MAX_HISTORY_MESSAGES) : history;
+  // 使用對話輪次邏輯取代原來的訊息數量限制
+  const MAX_HISTORY_ROUNDS = 10;
+
+  // 獲取最後 N 輪完整對話
+  const recentRounds = getLastNRounds(history, MAX_HISTORY_ROUNDS);
+
+  // 檢查是否有未完成的對話 (使用者訊息但沒有AI回覆)
+  const incompleteMessage = getIncompleteRound(history);
+
+  // 建構最終的歷史記錄
+  let truncatedHistory = recentRounds;
+  if (incompleteMessage) {
+    truncatedHistory = [...recentRounds, incompleteMessage];
+  }
 
   let finalSystemPrompt = systemPrompt;
   if (ragContext) {
