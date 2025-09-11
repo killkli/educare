@@ -1,7 +1,8 @@
 export interface RagChunk {
   fileName: string;
   content: string;
-  vector: number[];
+  vector?: number[];
+  relevanceScore?: number;
 }
 
 export interface Assistant {

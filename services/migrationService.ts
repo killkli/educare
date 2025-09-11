@@ -123,7 +123,7 @@ export const migrateIndexedDBToTurso = async (
                   content: chunk.content,
                   createdAt: Date.now(),
                 },
-                chunk.vector,
+                chunk.vector || [],
               );
 
               migratedChunks++;
