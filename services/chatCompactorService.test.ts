@@ -1,35 +1,79 @@
-vi.mock('./llmAdapter', () => ({
-  ProviderManager: {
-    getInstance: vi.fn(),
-  },
-}));
-
-import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ChatCompactorService, CompressionConfig } from './chatCompactorService';
 import { CompactContext, ConversationRound } from '../types';
-import { ProviderManager } from './llmAdapter';
+import {
+  ProviderManager,
+  type LLMProvider,
+  type ChatParams,
+  type StreamingResponse,
+  DEFAULT_PROVIDER_SETTINGS,
+} from './llmAdapter';
 
-const mockProvider = {
+const mockInitialize = vi.fn();
+const mockIsAvailable = vi.fn();
+const mockStreamChat = vi.fn<
+  (params: ChatParams) => AsyncIterable<StreamingResponse>
+>() as unknown as MockedFunction<(params: ChatParams) => AsyncIterable<StreamingResponse>>;
+const mockGetAvailableModels = vi.fn();
+const mockReinitialize = vi.fn();
+
+mockIsAvailable.mockReturnValue(true);
+
+const mockProvider: LLMProvider = {
+  name: 'mock',
   displayName: 'Mock Provider',
-  isAvailable: vi.fn().mockReturnValue(true),
-  streamChat: vi.fn(),
+  supportedModels: [],
+  requiresApiKey: false,
+  supportsLocalMode: false,
+  initialize: mockInitialize,
+  isAvailable: mockIsAvailable,
+  streamChat: mockStreamChat,
+  getAvailableModels: mockGetAvailableModels,
+  reinitialize: mockReinitialize,
 };
 
-const mockProviderManager = {
-  getActiveProvider: vi.fn(),
-  streamChat: vi.fn(),
+import type { MockedFunction } from 'vitest';
+
+const mockGetActiveProvider = vi.fn();
+const mockLoadSettings = vi.fn();
+const mockSaveSettings = vi.fn();
+const mockRegisterProvider = vi.fn();
+const mockGetProvider = vi.fn();
+const mockSetActiveProvider = vi.fn();
+const mockGetSettings = vi.fn();
+const mockUpdateProviderConfig = vi.fn();
+const mockEnableProvider = vi.fn();
+const mockIsProviderEnabled = vi.fn();
+const mockGetAvailableProviders = vi.fn();
+
+mockGetActiveProvider.mockReturnValue(mockProvider);
+
+const mockProviderManager: Partial<ProviderManager> & {
+  streamChat: MockedFunction<(params: ChatParams) => AsyncIterable<StreamingResponse>>;
+} = {
+  getActiveProvider: mockGetActiveProvider,
+  streamChat: mockStreamChat,
+  settings: DEFAULT_PROVIDER_SETTINGS,
+  loadSettings: mockLoadSettings,
+  saveSettings: mockSaveSettings,
+  registerProvider: mockRegisterProvider,
+  getProvider: mockGetProvider,
+  setActiveProvider: mockSetActiveProvider,
+  getSettings: mockGetSettings,
+  updateProviderConfig: mockUpdateProviderConfig,
+  enableProvider: mockEnableProvider,
+  isProviderEnabled: mockIsProviderEnabled,
+  getAvailableProviders: mockGetAvailableProviders,
 };
 
 describe('ChatCompactorService', () => {
   let compactorService: ChatCompactorService;
-  let mockStreamChat: Mock;
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockProvider.isAvailable.mockReturnValue(true);
-    mockProviderManager.getActiveProvider.mockReturnValue(mockProvider);
-    ProviderManager.getInstance.mockReturnValue(mockProviderManager);
-    mockStreamChat = mockProviderManager.streamChat;
+    mockGetActiveProvider.mockReturnValue(mockProvider);
+    vi.spyOn(ProviderManager, 'getInstance').mockReturnValue(mockProviderManager);
     compactorService = new ChatCompactorService();
   });
 
@@ -128,8 +172,11 @@ describe('ChatCompactorService', () => {
         createTestRound(2, '今天天氣如何？', '今天天氣很好，陽光明媚'),
       ];
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const tokenCount = (compactorService as any).estimateTokenCount(rounds);
+      const tokenCount = (
+        compactorService as unknown as {
+          estimateTokenCount: (rounds: ConversationRound[]) => number;
+        }
+      ).estimateTokenCount(rounds);
       expect(tokenCount).toBeGreaterThan(0);
       expect(tokenCount).toBeLessThan(100); // Should be reasonable for short Chinese text
     });
@@ -140,8 +187,11 @@ describe('ChatCompactorService', () => {
         createTestRound(2, 'How are you?', 'I am doing well, thank you'),
       ];
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const tokenCount = (compactorService as any).estimateTokenCount(rounds);
+      const tokenCount = (
+        compactorService as unknown as {
+          estimateTokenCount: (rounds: ConversationRound[]) => number;
+        }
+      ).estimateTokenCount(rounds);
       expect(tokenCount).toBeGreaterThan(0);
       expect(tokenCount).toBeLessThan(50);
     });
@@ -150,10 +200,16 @@ describe('ChatCompactorService', () => {
       const rounds = [createTestRound(1, 'Test', 'Response')];
       const existingCompact = createTestCompactContext();
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const withCompact = (compactorService as any).estimateTokenCount(rounds, existingCompact);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const withoutCompact = (compactorService as any).estimateTokenCount(rounds);
+      const withCompact = (
+        compactorService as unknown as {
+          estimateTokenCount: (rounds: ConversationRound[], existing?: CompactContext) => number;
+        }
+      ).estimateTokenCount(rounds, existingCompact);
+      const withoutCompact = (
+        compactorService as unknown as {
+          estimateTokenCount: (rounds: ConversationRound[], existing?: CompactContext) => number;
+        }
+      ).estimateTokenCount(rounds);
 
       expect(withCompact).toBeGreaterThan(withoutCompact);
     });
@@ -166,8 +222,14 @@ describe('ChatCompactorService', () => {
         createTestRound(2, 'Second question', 'Second answer'),
       ];
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const input = (compactorService as any).prepareCompressionInput(rounds);
+      const input = (
+        compactorService as unknown as {
+          prepareCompressionInput: (
+            rounds: ConversationRound[],
+            existing?: CompactContext,
+          ) => string;
+        }
+      ).prepareCompressionInput(rounds);
 
       expect(input).toContain('[CONVERSATION_HISTORY]');
       expect(input).toContain('Round 1:');
@@ -181,8 +243,14 @@ describe('ChatCompactorService', () => {
       const rounds = [createTestRound(1, 'New question', 'New answer')];
       const existingCompact = createTestCompactContext();
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const input = (compactorService as any).prepareCompressionInput(rounds, existingCompact);
+      const input = (
+        compactorService as unknown as {
+          prepareCompressionInput: (
+            rounds: ConversationRound[],
+            existing?: CompactContext,
+          ) => string;
+        }
+      ).prepareCompressionInput(rounds, existingCompact);
 
       expect(input).toContain('[PREVIOUS_COMPRESSED_CONTEXT]');
       expect(input).toContain('Previous compressed conversation summary');
@@ -194,8 +262,9 @@ describe('ChatCompactorService', () => {
   describe('Compression Prompt Generation', () => {
     it('should generate comprehensive compression prompt', () => {
       const input = 'Test conversation input';
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const prompt = (compactorService as any).generateCompressionPrompt(input);
+      const prompt = (
+        compactorService as unknown as { generateCompressionPrompt: (input: string) => string }
+      ).generateCompressionPrompt(input);
 
       expect(prompt).toContain('壓縮成一個簡潔但完整的摘要');
       expect(prompt).toContain('2000 token 以內');
@@ -207,8 +276,9 @@ describe('ChatCompactorService', () => {
 
     it('should use custom target tokens in prompt', () => {
       compactorService.updateConfig({ targetTokens: 1500 });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const prompt = (compactorService as any).generateCompressionPrompt('test');
+      const prompt = (
+        compactorService as unknown as { generateCompressionPrompt: (input: string) => string }
+      ).generateCompressionPrompt('test');
 
       expect(prompt).toContain('1500 token 以內');
 
@@ -221,12 +291,12 @@ describe('ChatCompactorService', () => {
       const existingCompressionInput =
         '[PREVIOUS_COMPRESSED_CONTEXT]\nPrevious summary\n\n[ADDITIONAL_CONVERSATIONS]\nUser: New question\nAssistant: New answer';
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const newPrompt = (compactorService as any).generateCompressionPrompt(newCompressionInput);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const existingPrompt = (compactorService as any).generateCompressionPrompt(
-        existingCompressionInput,
-      );
+      const newPrompt = (
+        compactorService as unknown as { generateCompressionPrompt: (input: string) => string }
+      ).generateCompressionPrompt(newCompressionInput);
+      const existingPrompt = (
+        compactorService as unknown as { generateCompressionPrompt: (input: string) => string }
+      ).generateCompressionPrompt(existingCompressionInput);
 
       // New compression prompt should have first-time instructions
       expect(newPrompt).toContain('這是首次壓縮');
@@ -249,8 +319,13 @@ describe('ChatCompactorService', () => {
       ];
 
       validResults.forEach(result => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        expect((compactorService as any).validateCompressionResult(result)).toBe(true);
+        expect(
+          (
+            compactorService as unknown as {
+              validateCompressionResult: (result: string) => boolean;
+            }
+          ).validateCompressionResult(result),
+        ).toBe(true);
       });
     });
 
@@ -263,8 +338,13 @@ describe('ChatCompactorService', () => {
       ];
 
       invalidResults.forEach(result => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        expect((compactorService as any).validateCompressionResult(result)).toBe(false);
+        expect(
+          (
+            compactorService as unknown as {
+              validateCompressionResult: (result: string) => boolean;
+            }
+          ).validateCompressionResult(result),
+        ).toBe(false);
       });
     });
   });
@@ -275,7 +355,7 @@ describe('ChatCompactorService', () => {
       const responseText =
         '用戶詢問了技術問題，助手提供了詳細的解答和示例代碼。接著討論了最佳實踐和注意事項。';
 
-      mockStreamChat.mockResolvedValue(
+      vi.mocked(mockStreamChat).mockImplementation((_params: ChatParams) =>
         (async function* () {
           yield {
             text: responseText,
@@ -306,7 +386,7 @@ describe('ChatCompactorService', () => {
     it('should handle compression with existing compact context', async () => {
       const responseText = '結合之前的討論和新的問題，用戶繼續探索技術主題...';
 
-      mockStreamChat.mockResolvedValue(
+      vi.mocked(mockStreamChat).mockImplementation((_params: ChatParams) =>
         (async function* () {
           yield {
             text: responseText,
@@ -337,9 +417,13 @@ describe('ChatCompactorService', () => {
     });
 
     it('should handle LLM errors with retry', async () => {
-      mockStreamChat
-        .mockRejectedValueOnce(new Error('Simulated LLM error 1'))
-        .mockRejectedValueOnce(new Error('Simulated LLM error 2'));
+      vi.mocked(mockStreamChat)
+        .mockImplementationOnce((_params: ChatParams) => {
+          throw new Error('Simulated LLM error 1');
+        })
+        .mockImplementationOnce((_params: ChatParams) => {
+          throw new Error('Simulated LLM error 2');
+        });
 
       const rounds = [createTestRound(1, 'Test', 'Response')];
       const result = await compactorService.compressConversationHistory(rounds);
@@ -353,14 +437,14 @@ describe('ChatCompactorService', () => {
       const longResponse = 'Very long response '.repeat(1000) + '用戶助手討論長內容';
       const shortResponse = '用戶詢問問題，助手提供了解答。';
 
-      mockStreamChat
-        .mockResolvedValueOnce(
+      vi.mocked(mockStreamChat)
+        .mockImplementationOnce((_params: ChatParams) =>
           (async function* () {
             yield { text: longResponse, isComplete: false };
             yield { text: '', isComplete: true };
           })(),
         )
-        .mockResolvedValueOnce(
+        .mockImplementationOnce((_params: ChatParams) =>
           (async function* () {
             yield { text: shortResponse, isComplete: false };
             yield { text: '', isComplete: true };
@@ -377,7 +461,9 @@ describe('ChatCompactorService', () => {
     });
 
     it('should fail after max retries', async () => {
-      mockStreamChat.mockRejectedValue(new Error('Persistent LLM error'));
+      vi.mocked(mockStreamChat).mockImplementation((_params: ChatParams) => {
+        throw new Error('Persistent LLM error');
+      });
 
       const rounds = [createTestRound(1, 'Test', 'Response')];
       const result = await compactorService.compressConversationHistory(rounds);
@@ -392,33 +478,31 @@ describe('ChatCompactorService', () => {
     it('should call ProviderManager.streamChat with correct parameters', async () => {
       const responseText = '用戶詢問助手回答的摘要';
 
-      mockStreamChat.mockImplementation(params => {
-        expect(params.systemPrompt).toContain('專業的對話摘要助手');
-        expect(params.history).toEqual([]);
-        expect(params.message).toContain('請將以下對話歷史壓縮');
+      vi.mocked(mockStreamChat).mockImplementation((_params: ChatParams) => {
+        expect(_params.systemPrompt).toContain('專業的對話摘要助手');
+        expect(_params.history).toEqual([]);
+        expect(_params.message).toContain('請將以下對話歷史壓縮');
 
-        return Promise.resolve(
-          (async function* () {
-            yield {
-              text: responseText,
-              isComplete: false,
-            };
-            yield {
-              text: '',
-              isComplete: true,
-            };
-          })(),
-        );
+        return (async function* () {
+          yield {
+            text: responseText,
+            isComplete: false,
+          };
+          yield {
+            text: '',
+            isComplete: true,
+          };
+        })();
       });
 
       const rounds = [createTestRound(1, 'Test question', 'Test answer')];
       await compactorService.compressConversationHistory(rounds);
 
-      expect(mockStreamChat).toHaveBeenCalledTimes(1);
+      expect(mockProviderManager.streamChat).toHaveBeenCalledTimes(1);
     });
 
     it('should handle no active provider', async () => {
-      mockProviderManager.getActiveProvider.mockReturnValue(null);
+      mockGetActiveProvider.mockReturnValue(null);
 
       const rounds = [createTestRound(1, 'Test', 'Response')];
       const result = await compactorService.compressConversationHistory(rounds);

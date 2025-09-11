@@ -38,7 +38,7 @@ const initialState: AppState = {
 function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case 'SET_ACTIVE_PROVIDER':
-      return { ...state };
+      return { ...state, currentProvider: action.payload };
     case 'SET_ASSISTANTS':
       return { ...state, assistants: action.payload };
     case 'SET_CURRENT_ASSISTANT':
@@ -294,7 +294,7 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
                   }
 
                   // 4. Dispatch an action to notify UI components of the change
-                  dispatch({ type: 'SET_ACTIVE_PROVIDER', payload: providerType });
+                  dispatch({ type: 'SET_ACTIVE_PROVIDER', payload: providerType as string });
 
                   // 5. Notify user of success
                   alert(`API 金鑰與 ${providerType} 提供者已成功匯入並啟用！`);

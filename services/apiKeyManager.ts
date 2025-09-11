@@ -307,7 +307,10 @@ export class ApiKeyManager {
         return null;
       }
       const settings = providerManager.getSettings();
-      return settings?.providers?.[providerType]?.config?.apiKey || null;
+      const providers = settings?.providers as
+        | Record<string, { enabled: boolean; config?: { apiKey?: string; baseUrl?: string } }>
+        | undefined;
+      return providers?.[providerType]?.config?.apiKey || null;
     } catch (error) {
       console.error('Error getting provider API key:', error);
       return null;
@@ -323,7 +326,10 @@ export class ApiKeyManager {
         return null;
       }
       const settings = providerManager.getSettings();
-      return settings?.providers?.[providerType]?.config?.baseUrl || null;
+      const providers = settings?.providers as
+        | Record<string, { enabled: boolean; config?: { apiKey?: string; baseUrl?: string } }>
+        | undefined;
+      return providers?.[providerType]?.config?.baseUrl || null;
     } catch (error) {
       console.error('Error getting provider base URL:', error);
       return null;
