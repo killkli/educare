@@ -1,35 +1,36 @@
+vi.mock('./llmAdapter', () => ({
+  ProviderManager: {
+    getInstance: vi.fn(),
+  },
+}));
+
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { ChatCompactorService, CompressionConfig } from './chatCompactorService';
 import { CompactContext, ConversationRound } from '../types';
+import { ProviderManager } from './llmAdapter';
 
-// Mock ProviderManager
 const mockProvider = {
   displayName: 'Mock Provider',
   isAvailable: vi.fn().mockReturnValue(true),
-};
-
-const mockProviderManager = {
-  getActiveProvider: vi.fn().mockReturnValue(mockProvider),
   streamChat: vi.fn(),
 };
 
-vi.mock('./llmAdapter', () => ({
-  ProviderManager: {
-    getInstance: vi.fn().mockReturnValue(mockProviderManager),
-  },
-}));
+const mockProviderManager = {
+  getActiveProvider: vi.fn(),
+  streamChat: vi.fn(),
+};
 
 describe('ChatCompactorService', () => {
   let compactorService: ChatCompactorService;
   let mockStreamChat: Mock;
 
   beforeEach(() => {
-    compactorService = new ChatCompactorService();
-    mockStreamChat = mockProviderManager.streamChat;
     vi.clearAllMocks();
-    // Reset default mock behavior
     mockProvider.isAvailable.mockReturnValue(true);
     mockProviderManager.getActiveProvider.mockReturnValue(mockProvider);
+    ProviderManager.getInstance.mockReturnValue(mockProviderManager);
+    mockStreamChat = mockProviderManager.streamChat;
+    compactorService = new ChatCompactorService();
   });
 
   afterEach(() => {
@@ -336,58 +337,54 @@ describe('ChatCompactorService', () => {
     });
 
     it('should handle LLM errors with retry', async () => {
-      mockStreamChat.mockRejectedValue(
-        new Error('No active LLM provider available for compression'),
-      );
+      mockStreamChat
+        .mockRejectedValueOnce(new Error('Simulated LLM error 1'))
+        .mockRejectedValueOnce(new Error('Simulated LLM error 2'));
 
       const rounds = [createTestRound(1, 'Test', 'Response')];
       const result = await compactorService.compressConversationHistory(rounds);
 
       expect(result.success).toBe(false);
-      expect(result.retryCount).toBe(2); // First attempt + 1 retry = 2 total attempts
-      expect(result.error).toContain('No active LLM provider available for compression');
+      expect(result.retryCount).toBe(2);
+      expect(result.error).toContain('Simulated LLM error 2');
     });
 
     it('should retry when compression result is too long', async () => {
-      let callCount = 0;
+      const longResponse = 'Very long response '.repeat(1000) + '用戶助手討論長內容';
+      const shortResponse = '用戶詢問問題，助手提供了解答。';
 
-      mockStreamChat.mockImplementation(() => {
-        callCount++;
-        // Always return a long response that exceeds target tokens
-        const longResponse = 'Very long response '.repeat(200) + '用戶助手討論';
-
-        return Promise.resolve(
+      mockStreamChat
+        .mockResolvedValueOnce(
           (async function* () {
-            yield {
-              text: longResponse,
-              isComplete: false,
-            };
-            yield {
-              text: '',
-              isComplete: true,
-            };
+            yield { text: longResponse, isComplete: false };
+            yield { text: '', isComplete: true };
+          })(),
+        )
+        .mockResolvedValueOnce(
+          (async function* () {
+            yield { text: shortResponse, isComplete: false };
+            yield { text: '', isComplete: true };
           })(),
         );
-      });
 
       const rounds = [createTestRound(1, 'Test', 'Response')];
       const result = await compactorService.compressConversationHistory(rounds);
 
-      expect(callCount).toBe(1); // Only one call since token count check happens after
-      expect(result.success).toBe(true); // Even if too long, should still succeed
+      expect(mockStreamChat).toHaveBeenCalledTimes(2);
+      expect(result.success).toBe(true);
+      expect(result.retryCount).toBe(1);
+      expect(result.compactContext?.content).toBe(shortResponse);
     });
 
     it('should fail after max retries', async () => {
-      mockStreamChat.mockRejectedValue(
-        new Error('No active LLM provider available for compression'),
-      );
+      mockStreamChat.mockRejectedValue(new Error('Persistent LLM error'));
 
       const rounds = [createTestRound(1, 'Test', 'Response')];
       const result = await compactorService.compressConversationHistory(rounds);
 
       expect(result.success).toBe(false);
-      expect(result.retryCount).toBe(2); // First attempt + 1 retry = 2 total attempts
-      expect(result.error).toContain('No active LLM provider available for compression');
+      expect(result.retryCount).toBe(2);
+      expect(result.error).toContain('Persistent LLM error');
     });
   });
 
@@ -418,6 +415,17 @@ describe('ChatCompactorService', () => {
       await compactorService.compressConversationHistory(rounds);
 
       expect(mockStreamChat).toHaveBeenCalledTimes(1);
+    });
+
+    it('should handle no active provider', async () => {
+      mockProviderManager.getActiveProvider.mockReturnValue(null);
+
+      const rounds = [createTestRound(1, 'Test', 'Response')];
+      const result = await compactorService.compressConversationHistory(rounds);
+
+      expect(result.success).toBe(false);
+      expect(result.retryCount).toBe(2);
+      expect(result.error).toContain('No active LLM provider available');
     });
   });
 });
