@@ -21,6 +21,7 @@ vi.mock('../../../services/cryptoService', () => ({
 }));
 
 // Mock API key manager
+// Mock API key manager - moved to beforeEach for reliability
 vi.mock('../../../services/apiKeyManager', () => ({
   ApiKeyManager: {
     getUserApiKeys: vi.fn().mockReturnValue({
@@ -48,19 +49,8 @@ beforeAll(() => {
     },
   });
 
-  // Mock document.createElement for download link
-  const mockLink = {
-    download: '',
-    href: '',
-    click: vi.fn(),
-  };
-  vi.spyOn(document, 'createElement').mockImplementation(tagName => {
-    if (tagName === 'a') {
-      return mockLink as unknown as HTMLAnchorElement;
-    }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return document.createElement(tagName) as any;
-  });
+  // Remove global mock to avoid recursion issues
+  // Mock will be handled in specific tests
 });
 
 interface ShareModalProps {

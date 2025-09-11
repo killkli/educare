@@ -126,15 +126,27 @@ vi.mock('../../assistant', () => ({
 vi.mock('../../ui/Icons', () => ({
   ChatIcon: ({ className }: { className?: string }) => {
     const React = require('react');
-    return React.createElement('div', { 'data-testid': 'chat-icon', className }, 'Chat');
+    return React.createElement(
+      'svg',
+      { 'data-testid': 'chat-icon', className, viewBox: '0 0 24 24' },
+      null,
+    );
   },
   TrashIcon: ({ className }: { className?: string }) => {
     const React = require('react');
-    return React.createElement('div', { 'data-testid': 'trash-icon', className }, 'Trash');
+    return React.createElement(
+      'svg',
+      { 'data-testid': 'trash-icon', className, viewBox: '0 0 24 24' },
+      null,
+    );
   },
   SettingsIcon: ({ className }: { className?: string }) => {
     const React = require('react');
-    return React.createElement('div', { 'data-testid': 'settings-icon', className }, 'Settings');
+    return React.createElement(
+      'svg',
+      { 'data-testid': 'settings-icon', className, viewBox: '0 0 24 24' },
+      null,
+    );
   },
 }));
 
