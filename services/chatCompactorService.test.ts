@@ -458,13 +458,17 @@ describe('ChatCompactorService', () => {
     });
 
     it('should handle LLM errors with retry', async () => {
-      vi.mocked(mockManagerStreamChat)
-        .mockImplementationOnce(async (_params: ChatParams) => {
+      let callCount = 0;
+      vi.mocked(mockManagerStreamChat).mockImplementation(async (_params: ChatParams) => {
+        callCount++;
+        if (callCount === 1) {
           throw new Error('Simulated LLM error 1');
-        })
-        .mockImplementationOnce(async (_params: ChatParams) => {
+        }
+        if (callCount === 2) {
           throw new Error('Simulated LLM error 2');
-        });
+        }
+        throw new Error('Unexpected call');
+      });
 
       const rounds = [createTestRound(1, 'Test', 'Response')];
       const result = await compactorService.compressConversationHistory(rounds);
@@ -472,25 +476,30 @@ describe('ChatCompactorService', () => {
       expect(result.success).toBe(false);
       expect(result.retryCount).toBe(2);
       expect(result.error).toContain('Simulated LLM error 2');
+      expect(mockManagerStreamChat).toHaveBeenCalledTimes(2);
     });
 
     it('should retry when compression result is too long', async () => {
       const longResponse = 'Very long response '.repeat(1000) + '用戶助手討論長內容';
       const shortResponse = '用戶詢問問題，助手提供了解答。';
+      let callCount = 0;
 
-      vi.mocked(mockManagerStreamChat)
-        .mockImplementationOnce(async (_params: ChatParams) =>
-          (async function* () {
+      vi.mocked(mockManagerStreamChat).mockImplementation(async (_params: ChatParams) => {
+        callCount++;
+        if (callCount === 1) {
+          return (async function* () {
             yield { text: longResponse, isComplete: false };
             yield { text: '', isComplete: true };
-          })(),
-        )
-        .mockImplementationOnce(async (_params: ChatParams) =>
-          (async function* () {
+          })();
+        }
+        if (callCount === 2) {
+          return (async function* () {
             yield { text: shortResponse, isComplete: false };
             yield { text: '', isComplete: true };
-          })(),
-        );
+          })();
+        }
+        throw new Error('Unexpected call');
+      });
 
       const rounds = [createTestRound(1, 'Test', 'Response')];
       const result = await compactorService.compressConversationHistory(rounds);
@@ -512,6 +521,7 @@ describe('ChatCompactorService', () => {
       expect(result.success).toBe(false);
       expect(result.retryCount).toBe(2);
       expect(result.error).toContain('Persistent LLM error');
+      expect(mockManagerStreamChat).toHaveBeenCalledTimes(2);
     });
   });
 
