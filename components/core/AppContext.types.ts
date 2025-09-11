@@ -32,6 +32,7 @@ export interface AppState {
   modelLoadingProgress: ModelLoadingProgress | null;
   isShareModalOpen: boolean;
   assistantToShare: Assistant | null;
+  currentProvider?: string;
 }
 
 export type AppAction =
@@ -53,7 +54,8 @@ export type AppAction =
   | { type: 'ADD_SESSION'; payload: ChatSession }
   | { type: 'UPDATE_SESSION'; payload: ChatSession }
   | { type: 'DELETE_SESSION'; payload: string }
-  | { type: 'DELETE_ASSISTANT'; payload: string };
+  | { type: 'DELETE_ASSISTANT'; payload: string }
+  | { type: 'SET_ACTIVE_PROVIDER'; payload: string };
 
 export interface AppContextValue {
   state: AppState;

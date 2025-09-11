@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import { Assistant } from '../../types';
 import { CryptoService } from '../../services/cryptoService';
 import { ApiKeyManager } from '../../services/apiKeyManager';
+import { ProviderSettings } from '../../services/llmAdapter';
 import { saveAssistantToTurso } from '../../services/tursoService';
 import { providerManager } from '../../services/providerRegistry';
 
@@ -90,7 +91,10 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
   useEffect(() => {
     if (isOpen) {
       // Default to the current provider, or the first available one
-      const currentProvider = providerManager.getSettings().currentProvider;
+      const settings = providerManager.getSettings() as ProviderSettings & {
+        currentProvider: string;
+      };
+      const currentProvider = settings.currentProvider;
       if (currentProvider && availableProviders.some(p => p.providerKey === currentProvider)) {
         setSelectedProvider(currentProvider);
       } else if (availableProviders.length > 0) {
@@ -193,8 +197,12 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
 
           // Include the current model for this provider
           const settings = providerManager.getSettings();
-          const providerConfig =
-            settings.providers[selectedProvider as keyof typeof settings.providers];
+          const providerConfig = (
+            settings.providers as Record<
+              string,
+              { enabled: boolean; config?: { apiKey?: string; baseUrl?: string; model?: string } }
+            >
+          )?.[selectedProvider];
           if (providerConfig?.config?.model) {
             apiKeysToEncrypt.model = providerConfig.config.model;
           }

@@ -165,12 +165,14 @@ export const AssistantEditor: React.FC<AssistantEditorProps> = ({
         {/* Right side - Save and Cancel buttons */}
         <div className='flex space-x-4'>
           <button
+            data-testid='cancel-button'
             onClick={onCancel}
             className='px-6 py-3 rounded-xl bg-gray-600/80 hover:bg-gray-500 text-white font-semibold transition-all duration-300 hover:shadow-lg hover:transform hover:-translate-y-0.5'
           >
             取消
           </button>
           <button
+            data-testid='save-button'
             onClick={handleSave}
             className='px-8 py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 text-white font-bold transition-all duration-300 hover:shadow-xl hover:transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:transform-none'
             disabled={isSaving}

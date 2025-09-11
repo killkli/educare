@@ -231,15 +231,27 @@ describe('AssistantContainer', () => {
 
       render(<AssistantContainer {...propsWithNoAssistants} />);
 
-      const saveButton = screen.getByTestId('save-button');
+      // Wait for editor to render
+      await waitFor(() => {
+        expect(screen.getByText('新增助理')).toBeInTheDocument();
+      });
+
+      const saveButton = screen.getByRole('button', { name: /保存助理/i });
       fireEvent.click(saveButton);
 
       await waitFor(() => {
-        expect(mockProps.onAssistantSave).toHaveBeenCalled();
+        expect(mockProps.onAssistantSave).toHaveBeenCalledWith(
+          expect.objectContaining({
+            name: '',
+            description: '',
+            systemPrompt: '您是一個有用且專業的 AI 助理。',
+            ragChunks: [],
+          }),
+        );
       });
     });
 
-    it('handles cancel in new mode', () => {
+    it('handles cancel in new mode', async () => {
       const propsWithNoAssistants = {
         ...mockProps,
         assistants: [],
@@ -247,30 +259,50 @@ describe('AssistantContainer', () => {
 
       render(<AssistantContainer {...propsWithNoAssistants} />);
 
-      const cancelButton = screen.getByTestId('cancel-button');
+      // Wait for editor to render
+      await waitFor(() => {
+        expect(screen.getByText('新增助理')).toBeInTheDocument();
+      });
+
+      const cancelButton = screen.getByRole('button', { name: /取消/i });
       fireEvent.click(cancelButton);
 
-      // The editor should be visible, and since there are no assistants, cancel should not change the view.
+      // Since no assistants, should stay in new mode
       expect(screen.getByTestId('assistant-editor')).toBeInTheDocument();
       expect(screen.getByText('新增助理')).toBeInTheDocument();
+
+      // Test passes without expecting onCancel call, as component doesn't use this prop
+      // The cancel action simply switches view mode based on assistants count
     });
 
     it('handles save in edit mode', async () => {
-      const propsWithSelected = {
+      // First render in list mode to trigger edit
+      render(<AssistantContainer {...mockProps} />);
+
+      // Note: This test needs adjustment as edit mode is triggered by AssistantList
+      // For now, test the editor directly via props
+      const mockAssistant = { ...TEST_ASSISTANTS.basic, id: 'edit-test' };
+      const testProps = {
         ...mockProps,
-        selectedAssistant: TEST_ASSISTANTS.basic,
-        assistants: [],
+        assistants: [mockAssistant],
+        selectedAssistant: mockAssistant,
       };
+      render(<AssistantContainer {...testProps} />);
 
-      render(<AssistantContainer {...propsWithSelected} />);
+      await waitFor(() => {
+        expect(screen.getByText('編輯助理')).toBeInTheDocument();
+      });
 
-      expect(screen.getByTestId('assistant-editor')).toBeInTheDocument();
-
-      const saveButton = screen.getByTestId('save-button');
+      const saveButton = screen.getByRole('button', { name: /保存助理/i });
       fireEvent.click(saveButton);
 
       await waitFor(() => {
-        expect(mockProps.onAssistantSave).toHaveBeenCalled();
+        expect(testProps.onAssistantSave).toHaveBeenCalledWith(
+          expect.objectContaining({
+            id: mockAssistant.id,
+            name: mockAssistant.name,
+          }),
+        );
       });
     });
 
@@ -398,13 +430,25 @@ describe('AssistantContainer', () => {
 
       render(<AssistantContainer {...propsWithFailingSave} />);
 
-      const saveButton = screen.getByTestId('save-button');
+      await waitFor(() => {
+        expect(screen.getByText('新增助理')).toBeInTheDocument();
+      });
+
+      const saveButton = screen.getByRole('button', { name: /保存助理/i });
       fireEvent.click(saveButton);
 
-      // Component should handle error gracefully
-      await waitFor(() => {
-        expect(propsWithFailingSave.onAssistantSave).toHaveBeenCalled();
-      });
+      // Should call onSave even if it rejects, but handle error
+      await waitFor(
+        () => {
+          expect(propsWithFailingSave.onAssistantSave).toHaveBeenCalled();
+        },
+        { timeout: 2000 },
+      );
+
+      // Check if alert was called (mocked in test-utils)
+      expect(testEnvironment.alertSpy).toHaveBeenCalledWith(
+        expect.stringContaining('助理名稱為必填'),
+      );
     });
   });
 
