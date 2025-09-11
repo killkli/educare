@@ -54,6 +54,7 @@
     "react-dom": "^19.1.1",
     "react-markdown": "^10.1.0",
     "rehype-highlight": "^7.0.2",
+    "rehype-highlight-code-lines": "^1.1.5",
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
