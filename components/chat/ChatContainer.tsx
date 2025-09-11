@@ -8,6 +8,8 @@ import StreamingResponse from './StreamingResponse';
 import { generateEmbedding, cosineSimilarity, rerankChunks } from '../../services/embeddingService';
 import { searchSimilarChunks } from '../../services/tursoService';
 import { streamChat } from '../../services/llmService';
+import { getRagSettingsService } from '../../services/ragSettingsService';
+import { RagSettingsModal } from '../settings';
 import { ChatMessage, RagChunk } from '../../types';
 
 const ChatContainer: React.FC<ChatContainerProps> = ({
@@ -27,6 +29,7 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
   const [statusText, setStatusText] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [currentSession, setCurrentSession] = useState(session);
+  const [showRagSettings, setShowRagSettings] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -47,32 +50,59 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
       setStatusText('🔍 生成查詢嵌入...');
       const queryVector = await generateEmbedding(message, 'query');
 
+      // 取得 RAG 設定
+      const ragSettings = getRagSettingsService();
+      const vectorSearchLimit = ragSettings.getVectorSearchLimit();
+      const enableReranking = ragSettings.isRerankingEnabled();
+      const rerankLimit = ragSettings.getRerankLimit();
+      const minSimilarity = ragSettings.getMinSimilarity();
+
+      console.log(
+        `⚙️ [RAG SETTINGS] Vector search: ${vectorSearchLimit}, Rerank: ${enableReranking ? rerankLimit : 'disabled'}, Min similarity: ${minSimilarity}`,
+      );
+
       // 優先使用 Turso 向量搜尋
       setStatusText('🌐 搜尋知識庫 (Turso)...');
       console.log('🔍 [RAG QUERY] Attempting Turso vector search first...');
-      const tursoResults = await searchSimilarChunks(assistantId, queryVector, 20);
+      const tursoResults = await searchSimilarChunks(assistantId, queryVector, vectorSearchLimit);
 
       if (tursoResults.length > 0) {
-        // 使用 Turso 搜尋結果 - 先抓 top 50
+        // 使用 Turso 搜尋結果
         setStatusText(`🔍 取得 ${tursoResults.length} 個候選文件...`);
         console.log(`📊 [RAG QUERY] Using TURSO results - Found ${tursoResults.length} chunks`);
-        const topChunks = tursoResults.filter(chunk => chunk.similarity > 0.3);
-        console.log(`📊 [RAG QUERY] Filtered to ${topChunks.length} chunks with similarity > 0.3`);
+        const topChunks = tursoResults.filter(chunk => chunk.similarity > minSimilarity);
+        console.log(
+          `📊 [RAG QUERY] Filtered to ${topChunks.length} chunks with similarity > ${minSimilarity}`,
+        );
 
-        // Apply re-ranking to get top 5
-        setStatusText('🔄 重新排序相關內容...');
-        console.log(`🔄 [RAG QUERY] Starting rerank with ${topChunks.length} chunks`);
-        // Convert SimilarChunk to RagChunk for reranking
-        const ragChunks = topChunks.map((chunk, index) => ({
-          id: `${chunk.fileName}-${index}`,
-          fileName: chunk.fileName,
-          content: chunk.content,
-          chunkIndex: index,
-        }));
-        const reRanked = await rerankChunks(message, ragChunks, 5);
-        console.log(`🔄 [RAG QUERY] Re-ranked to ${reRanked.length} top chunks`);
+        let finalChunks = topChunks;
 
-        const contextString = reRanked
+        // 如果啟用重新排序，進行 reranking
+        if (enableReranking && topChunks.length > 0) {
+          setStatusText('🔄 重新排序相關內容...');
+          console.log(`🔄 [RAG QUERY] Starting rerank with ${topChunks.length} chunks`);
+          // Convert SimilarChunk to RagChunk for reranking
+          const ragChunks = topChunks.map((chunk, index) => ({
+            id: `${chunk.fileName}-${index}`,
+            fileName: chunk.fileName,
+            content: chunk.content,
+            chunkIndex: index,
+          }));
+          const reRanked = await rerankChunks(message, ragChunks, rerankLimit);
+          console.log(`🔄 [RAG QUERY] Re-ranked to ${reRanked.length} top chunks`);
+
+          // Convert back to format with similarity score
+          finalChunks = reRanked.map(chunk => ({
+            ...chunk,
+            similarity: chunk.relevanceScore || 0,
+          }));
+        } else {
+          // 如果不使用 reranking，直接取前 N 個
+          finalChunks = topChunks.slice(0, rerankLimit);
+          console.log(`📊 [RAG QUERY] Reranking disabled, using top ${finalChunks.length} chunks`);
+        }
+
+        const contextString = finalChunks
           .map(chunk => `From ${chunk.fileName}:\n${chunk.content}`)
           .join('\n\n---\n\n');
 
@@ -95,23 +125,37 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
         }));
 
         scoredChunks.sort((a, b) => b.similarity - a.similarity);
-        const topChunks = scoredChunks.slice(0, 20); // Get more for re-ranking
-        const relevantChunks = topChunks.filter(chunk => chunk.similarity > 0.3); // Lower threshold for re-ranking
+        const topChunks = scoredChunks.slice(0, vectorSearchLimit);
+        const relevantChunks = topChunks.filter(chunk => chunk.similarity > minSimilarity);
 
         console.log(
-          `📊 [RAG QUERY] IndexedDB filtered to ${relevantChunks.length} chunks for re-ranking`,
+          `📊 [RAG QUERY] IndexedDB filtered to ${relevantChunks.length} chunks with similarity > ${minSimilarity}`,
         );
 
-        // Apply re-ranking
-        setStatusText('🔄 重新排序相關內容...');
-        const reRanked = await rerankChunks(
-          message,
-          relevantChunks.filter(c => c.vector),
-          5,
-        );
-        console.log(`🔄 [RAG QUERY] Re-ranked to ${reRanked.length} top chunks`);
+        let finalChunks = relevantChunks;
 
-        const contextString = reRanked
+        // 如果啟用重新排序，進行 reranking
+        if (enableReranking && relevantChunks.length > 0) {
+          setStatusText('🔄 重新排序相關內容...');
+          const reRanked = await rerankChunks(
+            message,
+            relevantChunks.filter(c => c.vector),
+            rerankLimit,
+          );
+          console.log(`🔄 [RAG QUERY] Re-ranked to ${reRanked.length} top chunks`);
+
+          // Convert reRanked results back to the same format as relevantChunks
+          finalChunks = reRanked.map(chunk => ({
+            ...chunk,
+            similarity: chunk.relevanceScore || 0,
+          }));
+        } else {
+          // 如果不使用 reranking，直接取前 N 個
+          finalChunks = relevantChunks.slice(0, rerankLimit);
+          console.log(`📊 [RAG QUERY] Reranking disabled, using top ${finalChunks.length} chunks`);
+        }
+
+        const contextString = finalChunks
           .map(chunk => `From ${chunk.fileName}:\n${chunk.content}`)
           .join('\n\n---\n\n');
 
@@ -241,7 +285,28 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
       {/* Optional Header */}
       {!hideHeader && (
         <div className='p-4 border-b border-gray-700 flex-shrink-0 bg-gray-800'>
-          <h2 className='text-xl font-semibold text-white'>{assistantName}</h2>
+          <div className='flex items-center justify-between'>
+            <h2 className='text-xl font-semibold text-white'>{assistantName}</h2>
+            <button
+              onClick={() => setShowRagSettings(true)}
+              className={`flex items-center space-x-2 px-3 py-1.5 rounded-md transition-colors text-sm font-medium ${
+                sharedMode
+                  ? 'bg-blue-700 hover:bg-blue-600 text-blue-100 hover:text-white'
+                  : 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white'
+              }`}
+              title={sharedMode ? '全域 RAG 搜尋設定' : 'RAG 搜尋設定'}
+            >
+              <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                <path
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  strokeWidth={2}
+                  d='M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z'
+                />
+              </svg>
+              <span>RAG 設定</span>
+            </button>
+          </div>
         </div>
       )}
 
@@ -288,6 +353,9 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
         currentSession={currentSession}
         disabled={false}
       />
+
+      {/* RAG Settings Modal */}
+      <RagSettingsModal isOpen={showRagSettings} onClose={() => setShowRagSettings(false)} />
     </div>
   );
 };
