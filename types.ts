@@ -55,3 +55,17 @@ export interface ChatSession {
   compactContext?: CompactContext; // 壓縮的對話上下文
   lastCompactionAt?: string; // 最後壓縮時間 (ISO string)
 }
+
+/**
+ * RAG 設定介面 - 使用者可配置的全域 RAG 設定
+ */
+export interface RagSettings {
+  /** 向量搜尋結果數量 (預設: 20) */
+  vectorSearchLimit: number;
+  /** 是否啟用重新排序 (預設: true) */
+  enableReranking: boolean;
+  /** 重新排序後保留的結果數量 (預設: 5) */
+  rerankLimit: number;
+  /** 最低相似度閾值 (預設: 0.3) */
+  minSimilarity: number;
+}

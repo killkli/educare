@@ -220,6 +220,7 @@ function AppContent(): React.JSX.Element {
           assistantId={state.currentAssistant.id}
           ragChunks={state.currentAssistant.ragChunks ?? []}
           onNewMessage={handleNewMessage}
+          sharedMode={state.isShared}
         />
       )}
 
