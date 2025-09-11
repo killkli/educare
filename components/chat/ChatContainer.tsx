@@ -5,7 +5,7 @@ import ChatInput from './ChatInput';
 import WelcomeMessage from './WelcomeMessage';
 import ThinkingIndicator from './ThinkingIndicator';
 import StreamingResponse from './StreamingResponse';
-import { generateEmbedding, cosineSimilarity } from '../../services/embeddingService';
+import { generateEmbedding, cosineSimilarity, rerankChunks } from '../../services/embeddingService';
 import { searchSimilarChunks } from '../../services/tursoService';
 import { streamChat } from '../../services/llmService';
 import { ChatMessage, RagChunk } from '../../types';
@@ -50,18 +50,29 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
       // 優先使用 Turso 向量搜尋
       setStatusText('🌐 搜尋知識庫 (Turso)...');
       console.log('🔍 [RAG QUERY] Attempting Turso vector search first...');
-      const tursoResults = await searchSimilarChunks(assistantId, queryVector, 5);
+      const tursoResults = await searchSimilarChunks(assistantId, queryVector, 20);
 
       if (tursoResults.length > 0) {
-        // 使用 Turso 搜尋結果
-        setStatusText(`✅ 處理 ${tursoResults.length} 個相關文件...`);
-        console.log(`✅ [RAG QUERY] Using TURSO results - Found ${tursoResults.length} chunks`);
-        const relevantChunks = tursoResults.filter(chunk => chunk.similarity > 0.5);
-        console.log(
-          `📊 [RAG QUERY] Filtered to ${relevantChunks.length} chunks with similarity > 0.5`,
-        );
+        // 使用 Turso 搜尋結果 - 先抓 top 50
+        setStatusText(`🔍 取得 ${tursoResults.length} 個候選文件...`);
+        console.log(`📊 [RAG QUERY] Using TURSO results - Found ${tursoResults.length} chunks`);
+        const topChunks = tursoResults.filter(chunk => chunk.similarity > 0.3);
+        console.log(`📊 [RAG QUERY] Filtered to ${topChunks.length} chunks with similarity > 0.3`);
 
-        const contextString = relevantChunks
+        // Apply re-ranking to get top 5
+        setStatusText('🔄 重新排序相關內容...');
+        console.log(`🔄 [RAG QUERY] Starting rerank with ${topChunks.length} chunks`);
+        // Convert SimilarChunk to RagChunk for reranking
+        const ragChunks = topChunks.map((chunk, index) => ({
+          id: `${chunk.fileName}-${index}`,
+          fileName: chunk.fileName,
+          content: chunk.content,
+          chunkIndex: index,
+        }));
+        const reRanked = await rerankChunks(message, ragChunks, 5);
+        console.log(`🔄 [RAG QUERY] Re-ranked to ${reRanked.length} top chunks`);
+
+        const contextString = reRanked
           .map(chunk => `From ${chunk.fileName}:\n${chunk.content}`)
           .join('\n\n---\n\n');
 
@@ -80,18 +91,27 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
 
         const scoredChunks = (ragChunks as RagChunk[]).map(chunk => ({
           ...chunk,
-          similarity: cosineSimilarity(queryVector, chunk.vector),
+          similarity: chunk.vector ? cosineSimilarity(queryVector, chunk.vector) : 0,
         }));
 
         scoredChunks.sort((a, b) => b.similarity - a.similarity);
-        const topChunks = scoredChunks.slice(0, 5);
-        const relevantChunks = topChunks.filter(chunk => chunk.similarity > 0.5);
+        const topChunks = scoredChunks.slice(0, 20); // Get more for re-ranking
+        const relevantChunks = topChunks.filter(chunk => chunk.similarity > 0.3); // Lower threshold for re-ranking
 
         console.log(
-          `📊 [RAG QUERY] IndexedDB filtered to ${relevantChunks.length} chunks with similarity > 0.5`,
+          `📊 [RAG QUERY] IndexedDB filtered to ${relevantChunks.length} chunks for re-ranking`,
         );
 
-        const contextString = relevantChunks
+        // Apply re-ranking
+        setStatusText('🔄 重新排序相關內容...');
+        const reRanked = await rerankChunks(
+          message,
+          relevantChunks.filter(c => c.vector),
+          5,
+        );
+        console.log(`🔄 [RAG QUERY] Re-ranked to ${reRanked.length} top chunks`);
+
+        const contextString = reRanked
           .map(chunk => `From ${chunk.fileName}:\n${chunk.content}`)
           .join('\n\n---\n\n');
 
