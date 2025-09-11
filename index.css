@@ -70,3 +70,20 @@ html {
   word-break: break-all;
   overflow-wrap: anywhere;
 }
+
+.highlighted-code-line {
+  background-color: var(--color-highlighted-line);
+  border-left: 4px solid var(--color-highlighted-line-indicator);
+}
+
+.numbered-code-line::before {
+  content: attr(data-line-number);
+
+  margin-left: -8px;
+  margin-right: 16px;
+  width: 1rem;
+  color: var(--color-text-weak);
+  text-align: right;
+
+  display: inline-block;
+}

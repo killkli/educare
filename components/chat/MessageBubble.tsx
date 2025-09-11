@@ -4,35 +4,59 @@ import { UserIcon, GeminiIcon } from '../ui/Icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
+import rehypeHighlightCodeLines from 'rehype-highlight-code-lines';
 import 'highlight.js/styles/github-dark.css';
+
+const getPlainText = (children: React.ReactNode): string => {
+  if (typeof children === 'string') {
+    return children;
+  }
+  if (Array.isArray(children)) {
+    return children.map(getPlainText).join('');
+  }
+  if (React.isValidElement(children)) {
+    const element = children as React.ReactElement<{ children?: React.ReactNode }>;
+    const innerChildren = element.props.children ?? '';
+    return getPlainText(innerChildren as React.ReactNode);
+  }
+  return '';
+};
 
 const MessageBubble: React.FC<MessageBubbleProps> = ({ message, index: _index }) => {
   const renderMessageContent = (content: string) => {
     return (
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeHighlight]}
+        rehypePlugins={[rehypeHighlight, [rehypeHighlightCodeLines]]}
         components={{
           // 自定義 code 區塊樣式
-          code(props: React.ComponentProps<'code'>) {
+          code(props) {
             const { className, children, ...rest } = props;
             const match = /language-(\w+)/.exec(className || '');
             const language = match ? match[1] : '';
 
-            if (match) {
+            // check position
+            const node = rest.node;
+            const position = node?.position;
+            const start_line = position?.start.line || 0;
+            const end_line = position?.end.line || 0;
+            const checker = end_line - start_line;
+
+            if (match || checker) {
               // 多行代碼塊
+              const code_text = getPlainText(children);
               return (
-                <div className='bg-gray-900 rounded-md my-2 overflow-hidden'>
+                <div className='bg-gray-900 rounded-md my-2 overflow-x-auto w-full max-w-sm sm:max-w-md md:max-w-lg lg:max-w-2xl mx-auto'>
                   <div className='flex justify-between items-center px-4 py-2 bg-gray-700 text-xs'>
                     <span className='text-gray-300'>{language || 'code'}</span>
                     <button
-                      onClick={() => navigator.clipboard.writeText(String(children))}
+                      onClick={() => navigator.clipboard.writeText(code_text)}
                       className='text-gray-400 hover:text-white transition-colors'
                     >
                       複製
                     </button>
                   </div>
-                  <pre className='p-4 text-sm overflow-x-auto'>
+                  <pre className='p-4 text-sm mx-auto'>
                     <code className={className} {...rest}>
                       {children}
                     </code>
