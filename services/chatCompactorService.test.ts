@@ -6,55 +6,96 @@ import {
   type LLMProvider,
   type ChatParams,
   type StreamingResponse,
+  type ProviderSettings,
+  type ProviderType,
+  type ProviderConfig,
   DEFAULT_PROVIDER_SETTINGS,
 } from './llmAdapter';
 
-const mockInitialize = vi.fn();
-const mockIsAvailable = vi.fn();
-const mockStreamChat = vi.fn<
-  (params: ChatParams) => AsyncIterable<StreamingResponse>
->() as unknown as MockedFunction<(params: ChatParams) => AsyncIterable<StreamingResponse>>;
-const mockGetAvailableModels = vi.fn();
-const mockReinitialize = vi.fn();
+import type { MockedFunction } from 'vitest';
+
+const mockInitialize = vi
+  .fn<(config: ProviderConfig) => Promise<void>>()
+  .mockResolvedValue(undefined) as unknown as MockedFunction<
+  (config: ProviderConfig) => Promise<void>
+>;
+const mockIsAvailable = vi.fn<() => boolean>().mockReturnValue(true) as MockedFunction<
+  () => boolean
+>;
+const mockGetAvailableModels = vi
+  .fn<() => Promise<string[]>>()
+  .mockResolvedValue([]) as MockedFunction<() => Promise<string[]>>;
+const mockReinitialize = vi.fn<() => void>().mockReturnValue(undefined) as MockedFunction<
+  () => void
+>;
+const mockManagerStreamChat = vi
+  .fn<(params: ChatParams) => Promise<AsyncIterable<StreamingResponse>>>()
+  .mockResolvedValue(
+    (async function* () {
+      yield { text: '', isComplete: true };
+    })(),
+  ) as MockedFunction<(params: ChatParams) => Promise<AsyncIterable<StreamingResponse>>>;
 
 mockIsAvailable.mockReturnValue(true);
 
 const mockProvider: LLMProvider = {
-  name: 'mock',
+  name: 'gemini' as ProviderType,
   displayName: 'Mock Provider',
   supportedModels: [],
   requiresApiKey: false,
   supportsLocalMode: false,
-  initialize: mockInitialize,
-  isAvailable: mockIsAvailable,
-  streamChat: mockStreamChat,
-  getAvailableModels: mockGetAvailableModels,
-  reinitialize: mockReinitialize,
+  initialize: async (config: ProviderConfig) => await mockInitialize(config),
+  isAvailable: () => mockIsAvailable(),
+  streamChat: async function* (_params: ChatParams) {
+    yield { text: '', isComplete: true };
+  },
+  getAvailableModels: async () => await mockGetAvailableModels(),
+  reinitialize: () => mockReinitialize(),
 };
 
-import type { MockedFunction } from 'vitest';
+const mockGetActiveProvider = vi
+  .fn<() => LLMProvider | null>()
+  .mockReturnValue(mockProvider) as MockedFunction<() => LLMProvider | null>;
+const mockRegisterProvider = vi
+  .fn<(type: ProviderType, provider: LLMProvider) => void>()
+  .mockReturnValue(undefined) as MockedFunction<
+  (type: ProviderType, provider: LLMProvider) => void
+>;
+const mockGetProvider = vi
+  .fn<(type?: ProviderType) => LLMProvider | null>()
+  .mockReturnValue(mockProvider) as MockedFunction<(type?: ProviderType) => LLMProvider | null>;
+const mockSetActiveProvider = vi
+  .fn<(type: ProviderType) => void>()
+  .mockReturnValue(undefined) as MockedFunction<(type: ProviderType) => void>;
+const mockGetSettings = vi
+  .fn<() => ProviderSettings>()
+  .mockReturnValue(DEFAULT_PROVIDER_SETTINGS) as MockedFunction<() => ProviderSettings>;
+const mockUpdateProviderConfig = vi
+  .fn<(type: ProviderType, config: Partial<ProviderConfig>) => void>()
+  .mockReturnValue(undefined) as MockedFunction<
+  (type: ProviderType, config: Partial<ProviderConfig>) => void
+>;
+const mockEnableProvider = vi
+  .fn<(type: ProviderType, enabled?: boolean) => void>()
+  .mockReturnValue(undefined) as MockedFunction<(type: ProviderType, enabled?: boolean) => void>;
+const mockIsProviderEnabled = vi
+  .fn<(type: ProviderType) => boolean>()
+  .mockReturnValue(true) as MockedFunction<(type: ProviderType) => boolean>;
+const mockSaveSettings = vi.fn<() => void>().mockReturnValue(undefined) as MockedFunction<
+  () => void
+>;
 
-const mockGetActiveProvider = vi.fn();
-const mockLoadSettings = vi.fn();
-const mockSaveSettings = vi.fn();
-const mockRegisterProvider = vi.fn();
-const mockGetProvider = vi.fn();
-const mockSetActiveProvider = vi.fn();
-const mockGetSettings = vi.fn();
-const mockUpdateProviderConfig = vi.fn();
-const mockEnableProvider = vi.fn();
-const mockIsProviderEnabled = vi.fn();
-const mockGetAvailableProviders = vi.fn();
+const mockGetAvailableProviders = vi
+  .fn<() => Array<{ type: ProviderType; provider: LLMProvider }>>()
+  .mockReturnValue([{ type: 'gemini' as ProviderType, provider: mockProvider }]) as MockedFunction<
+  () => Array<{ type: ProviderType; provider: LLMProvider }>
+>;
 
 mockGetActiveProvider.mockReturnValue(mockProvider);
 
-const mockProviderManager: Partial<ProviderManager> & {
-  streamChat: MockedFunction<(params: ChatParams) => AsyncIterable<StreamingResponse>>;
-} = {
+const mockProviderManager = {
   getActiveProvider: mockGetActiveProvider,
-  streamChat: mockStreamChat,
-  settings: DEFAULT_PROVIDER_SETTINGS,
-  loadSettings: mockLoadSettings,
+  streamChat: mockManagerStreamChat,
   saveSettings: mockSaveSettings,
   registerProvider: mockRegisterProvider,
   getProvider: mockGetProvider,
@@ -64,14 +105,14 @@ const mockProviderManager: Partial<ProviderManager> & {
   enableProvider: mockEnableProvider,
   isProviderEnabled: mockIsProviderEnabled,
   getAvailableProviders: mockGetAvailableProviders,
-};
+} as unknown as ProviderManager;
 
 describe('ChatCompactorService', () => {
   let compactorService: ChatCompactorService;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockProvider.isAvailable.mockReturnValue(true);
+    mockIsAvailable.mockReturnValue(true);
     mockGetActiveProvider.mockReturnValue(mockProvider);
     vi.spyOn(ProviderManager, 'getInstance').mockReturnValue(mockProviderManager);
     compactorService = new ChatCompactorService();
@@ -355,7 +396,7 @@ describe('ChatCompactorService', () => {
       const responseText =
         '用戶詢問了技術問題，助手提供了詳細的解答和示例代碼。接著討論了最佳實踐和注意事項。';
 
-      vi.mocked(mockStreamChat).mockImplementation((_params: ChatParams) =>
+      vi.mocked(mockManagerStreamChat).mockImplementation(async (_params: ChatParams) =>
         (async function* () {
           yield {
             text: responseText,
@@ -386,7 +427,7 @@ describe('ChatCompactorService', () => {
     it('should handle compression with existing compact context', async () => {
       const responseText = '結合之前的討論和新的問題，用戶繼續探索技術主題...';
 
-      vi.mocked(mockStreamChat).mockImplementation((_params: ChatParams) =>
+      vi.mocked(mockManagerStreamChat).mockImplementation(async (_params: ChatParams) =>
         (async function* () {
           yield {
             text: responseText,
@@ -417,11 +458,11 @@ describe('ChatCompactorService', () => {
     });
 
     it('should handle LLM errors with retry', async () => {
-      vi.mocked(mockStreamChat)
-        .mockImplementationOnce((_params: ChatParams) => {
+      vi.mocked(mockManagerStreamChat)
+        .mockImplementationOnce(async (_params: ChatParams) => {
           throw new Error('Simulated LLM error 1');
         })
-        .mockImplementationOnce((_params: ChatParams) => {
+        .mockImplementationOnce(async (_params: ChatParams) => {
           throw new Error('Simulated LLM error 2');
         });
 
@@ -437,14 +478,14 @@ describe('ChatCompactorService', () => {
       const longResponse = 'Very long response '.repeat(1000) + '用戶助手討論長內容';
       const shortResponse = '用戶詢問問題，助手提供了解答。';
 
-      vi.mocked(mockStreamChat)
-        .mockImplementationOnce((_params: ChatParams) =>
+      vi.mocked(mockManagerStreamChat)
+        .mockImplementationOnce(async (_params: ChatParams) =>
           (async function* () {
             yield { text: longResponse, isComplete: false };
             yield { text: '', isComplete: true };
           })(),
         )
-        .mockImplementationOnce((_params: ChatParams) =>
+        .mockImplementationOnce(async (_params: ChatParams) =>
           (async function* () {
             yield { text: shortResponse, isComplete: false };
             yield { text: '', isComplete: true };
@@ -454,14 +495,14 @@ describe('ChatCompactorService', () => {
       const rounds = [createTestRound(1, 'Test', 'Response')];
       const result = await compactorService.compressConversationHistory(rounds);
 
-      expect(mockStreamChat).toHaveBeenCalledTimes(2);
+      expect(mockManagerStreamChat).toHaveBeenCalledTimes(2);
       expect(result.success).toBe(true);
       expect(result.retryCount).toBe(1);
       expect(result.compactContext?.content).toBe(shortResponse);
     });
 
     it('should fail after max retries', async () => {
-      vi.mocked(mockStreamChat).mockImplementation((_params: ChatParams) => {
+      vi.mocked(mockManagerStreamChat).mockImplementation(async (_params: ChatParams) => {
         throw new Error('Persistent LLM error');
       });
 
@@ -478,7 +519,7 @@ describe('ChatCompactorService', () => {
     it('should call ProviderManager.streamChat with correct parameters', async () => {
       const responseText = '用戶詢問助手回答的摘要';
 
-      vi.mocked(mockStreamChat).mockImplementation((_params: ChatParams) => {
+      vi.mocked(mockManagerStreamChat).mockImplementation(async (_params: ChatParams) => {
         expect(_params.systemPrompt).toContain('專業的對話摘要助手');
         expect(_params.history).toEqual([]);
         expect(_params.message).toContain('請將以下對話歷史壓縮');
@@ -498,7 +539,7 @@ describe('ChatCompactorService', () => {
       const rounds = [createTestRound(1, 'Test question', 'Test answer')];
       await compactorService.compressConversationHistory(rounds);
 
-      expect(mockProviderManager.streamChat).toHaveBeenCalledTimes(1);
+      expect(mockManagerStreamChat).toHaveBeenCalledTimes(1);
     });
 
     it('should handle no active provider', async () => {
