@@ -13,7 +13,6 @@ export interface Assistant {
   ragChunks?: RagChunk[];
   createdAt: number;
   isShared?: boolean;
-  shareId?: string;
 }
 
 export interface ChatMessage {

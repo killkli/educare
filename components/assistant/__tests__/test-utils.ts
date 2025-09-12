@@ -40,7 +40,6 @@ export const createMockAssistantWithRag = (overrides: Partial<Assistant> = {}): 
 export const createMockSharedAssistant = (overrides: Partial<Assistant> = {}): Assistant => ({
   ...createMockAssistant(),
   isShared: true,
-  shareId: 'share-123',
   ...overrides,
 });
 
