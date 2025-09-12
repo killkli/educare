@@ -5,6 +5,17 @@ export interface RagChunk {
   relevanceScore?: number;
 }
 
+export interface QueryCacheEntry {
+  id: string; // UUID
+  queryText: string; // 原始查詢文字
+  queryEmbedding: number[]; // 查詢的向量表示
+  rerankedResults: RagChunk[]; // rerank 後的結果
+  assistantId: string; // 所屬助手ID
+  timestamp: number; // 創建時間戳
+  hitCount: number; // 命中次數
+  lastAccessTime: number; // 最後訪問時間
+}
+
 export interface Assistant {
   id: string;
   name: string;

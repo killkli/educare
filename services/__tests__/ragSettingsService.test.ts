@@ -7,10 +7,10 @@ import {
 
 // Mock localStorage
 const localStorageMock = {
-  getItem: vi.fn(),
-  setItem: vi.fn(),
-  removeItem: vi.fn(),
-  clear: vi.fn(),
+  getItem: vi.fn().mockReturnValue(null) as unknown as typeof localStorage.getItem,
+  setItem: vi.fn() as unknown as typeof localStorage.setItem,
+  removeItem: vi.fn() as unknown as typeof localStorage.removeItem,
+  clear: vi.fn() as unknown as typeof localStorage.clear,
 };
 
 Object.defineProperty(window, 'localStorage', {
@@ -29,7 +29,7 @@ describe('RagSettingsService', () => {
 
     // Create a new service instance for each test
     // Note: We need to reset the singleton for testing
-    (RagSettingsService as any).instance = undefined;
+    (RagSettingsService as unknown as { instance?: unknown }).instance = undefined;
     service = getRagSettingsService();
   });
 
@@ -85,7 +85,7 @@ describe('RagSettingsService', () => {
       localStorageMock.getItem.mockReturnValue(JSON.stringify(savedSettings));
 
       // Create a new instance to test loading
-      (RagSettingsService as any).instance = undefined;
+      (RagSettingsService as unknown as { instance?: unknown }).instance = undefined;
       const newService = getRagSettingsService();
 
       expect(newService.getSettings()).toEqual(savedSettings);
@@ -122,7 +122,7 @@ describe('RagSettingsService', () => {
 
     it('should validate boolean values', () => {
       service.updateSettings({
-        enableReranking: 'true' as any, // Invalid
+        enableReranking: 'true' as unknown, // Invalid
       });
 
       const settings = service.getSettings();
@@ -199,7 +199,7 @@ describe('RagSettingsService', () => {
       });
 
       // Create a new instance to test loading error
-      (RagSettingsService as any).instance = undefined;
+      (RagSettingsService as unknown as { instance?: unknown }).instance = undefined;
       const newService = getRagSettingsService();
 
       // Should fall back to default settings
@@ -213,7 +213,7 @@ describe('RagSettingsService', () => {
       localStorageMock.getItem.mockReturnValue('invalid json');
 
       // Create a new instance to test malformed JSON error
-      (RagSettingsService as any).instance = undefined;
+      (RagSettingsService as unknown as { instance?: unknown }).instance = undefined;
       const newService = getRagSettingsService();
 
       // Should fall back to default settings

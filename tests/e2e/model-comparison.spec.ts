@@ -402,9 +402,15 @@ test.describe('Model Comparison Testing Suite', () => {
     console.log(`  HTML: ${htmlPath}`);
   }
 
-  function groupResultsByModel(results: ModelTestResult[], testPrompts: ComparisonTest[]) {
-    const grouped: Record<string, any> = {};
+  interface GroupedModel {
+    modelName: string;
+    tests: Record<string, unknown>;
+    averageResponseTime: number;
+    successRate: number;
+  }
 
+  function groupResultsByModel(results: ModelTestResult[], testPrompts: ComparisonTest[]) {
+    const grouped: Record<string, GroupedModel> = {};
     results.forEach((result, index) => {
       const testIndex = index % testPrompts.length;
       const testPrompt = testPrompts[testIndex];
@@ -430,12 +436,11 @@ test.describe('Model Comparison Testing Suite', () => {
     });
 
     // Calculate averages
-    Object.values(grouped).forEach((modelData: any) => {
-      const tests = Object.values(modelData.tests);
+    Object.values(grouped).forEach(modelData => {
+      const tests = Object.values(modelData.tests) as ModelTestResult[];
       modelData.averageResponseTime =
-        tests.reduce((sum: number, test: any) => sum + test.responseTime, 0) / tests.length;
-      modelData.successRate =
-        (tests.filter((test: any) => !test.error).length / tests.length) * 100;
+        tests.reduce((sum, test) => sum + test.responseTime, 0) / tests.length;
+      modelData.successRate = (tests.filter(test => !test.error).length / tests.length) * 100;
     });
 
     return grouped;
@@ -480,7 +485,7 @@ test.describe('Model Comparison Testing Suite', () => {
     };
   }
 
-  function generateHTMLReport(reportData: Record<string, any>): string {
+  function generateHTMLReport(reportData: Record<string, unknown>): string {
     return `<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -541,7 +546,7 @@ test.describe('Model Comparison Testing Suite', () => {
 
         ${Object.values(reportData.modelResults)
           .map(
-            (model: any) => `
+            model => `
         <div class="model-section">
             <div class="model-header">
                 <h2>${model.modelName}</h2>
@@ -550,7 +555,7 @@ test.describe('Model Comparison Testing Suite', () => {
             <div class="model-content">
                 ${Object.values(model.tests)
                   .map(
-                    (test: any) => `
+                    test => `
                 <div class="test-result">
                     <div class="test-header">
                         <div class="test-title">${test.prompt}</div>

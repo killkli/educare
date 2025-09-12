@@ -7,6 +7,7 @@ import WelcomeMessage from './WelcomeMessage';
 import ThinkingIndicator from './ThinkingIndicator';
 import StreamingResponse from './StreamingResponse';
 import { generateEmbedding, cosineSimilarity, rerankChunks } from '../../services/embeddingService';
+import { ragCacheManager } from '../../services/ragCacheManager';
 import { searchSimilarChunks } from '../../services/tursoService';
 import { streamChat } from '../../services/llmService';
 import { getRagSettingsService } from '../../services/ragSettingsService';
@@ -48,9 +49,8 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
 
   const findRelevantContext = async (message: string): Promise<string> => {
     try {
-      console.log(`🎯 [RAG QUERY] Starting context search for query: "${message}"`);
-      setStatusText('🔍 生成查詢嵌入...');
-      const queryVector = await generateEmbedding(message, 'query');
+      console.log(`🎯 [RAG QUERY] Starting cached context search for query: "${message}"`);
+      setStatusText('🔍 檢查查詢緩存...');
 
       // 取得 RAG 設定
       const ragSettings = getRagSettingsService();
@@ -63,116 +63,136 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
         `⚙️ [RAG SETTINGS] Vector search: ${vectorSearchLimit}, Rerank: ${enableReranking ? rerankLimit : 'disabled'}, Min similarity: ${minSimilarity}`,
       );
 
-      // 優先使用 Turso 向量搜尋
-      setStatusText('🌐 搜尋知識庫 (Turso)...');
-      console.log('🔍 [RAG QUERY] Attempting Turso vector search first...');
-      const tursoResults = await searchSimilarChunks(assistantId, queryVector, vectorSearchLimit);
+      // Use cached RAG manager for the query
+      const cacheResult = await ragCacheManager.performCachedRagQuery(
+        message,
+        assistantId,
+        ragChunks,
+        {
+          similarityThreshold: 0.9, // High threshold for cache hits
+          rerankLimit,
+          enableReranking,
+          enableCache: true,
+        },
+      );
 
-      if (tursoResults.length > 0) {
-        // 使用 Turso 搜尋結果
-        setStatusText(`🔍 取得 ${tursoResults.length} 個候選文件...`);
-        console.log(`📊 [RAG QUERY] Using TURSO results - Found ${tursoResults.length} chunks`);
-        const topChunks = tursoResults.filter(chunk => chunk.similarity > minSimilarity);
+      const { results, fromCache, queryTime, cacheStats } = cacheResult;
+
+      if (fromCache && cacheStats) {
+        setStatusText(`✨ 緩存命中！相似度: ${(cacheStats.similarity || 0).toFixed(3)}`);
         console.log(
-          `📊 [RAG QUERY] Filtered to ${topChunks.length} chunks with similarity > ${minSimilarity}`,
+          `🎯 [CACHE HIT] Query "${message}" matched "${cacheStats.originalQuery}" with similarity ${(cacheStats.similarity || 0).toFixed(4)} in ${queryTime}ms`,
         );
-
-        let finalChunks = topChunks;
-
-        // 如果啟用重新排序，進行 reranking
-        if (enableReranking && topChunks.length > 0) {
-          setStatusText('🔄 重新排序相關內容...');
-          console.log(`🔄 [RAG QUERY] Starting rerank with ${topChunks.length} chunks`);
-          // Convert SimilarChunk to RagChunk for reranking
-          const ragChunks = topChunks.map((chunk, index) => ({
-            id: `${chunk.fileName}-${index}`,
-            fileName: chunk.fileName,
-            content: chunk.content,
-            chunkIndex: index,
-          }));
-          const reRanked = await rerankChunks(message, ragChunks, rerankLimit);
-          console.log(`🔄 [RAG QUERY] Re-ranked to ${reRanked.length} top chunks`);
-
-          // Convert back to format with similarity score
-          finalChunks = reRanked.map(chunk => ({
-            ...chunk,
-            similarity: chunk.relevanceScore || 0,
-          }));
-        } else {
-          // 如果不使用 reranking，直接取前 N 個
-          finalChunks = topChunks.slice(0, rerankLimit);
-          console.log(`📊 [RAG QUERY] Reranking disabled, using top ${finalChunks.length} chunks`);
-        }
-
-        const contextString = finalChunks
-          .map(chunk => `From ${chunk.fileName}:\n${chunk.content}`)
-          .join('\n\n---\n\n');
-
-        console.log(`📝 [RAG QUERY] Final context length: ${contextString.length} characters`);
-        return contextString;
+      } else {
+        setStatusText(`💾 完整 RAG 查詢完成 (${queryTime}ms)`);
+        console.log(`📊 [CACHE MISS] Performed full RAG query in ${queryTime}ms`);
       }
 
-      // 後備：如果 Turso 搜尋失敗，使用本地 ragChunks
-      setStatusText('🗄️ 搜尋本地知識庫...');
-      console.log('⚠️ [RAG QUERY] Turso search returned no results, falling back to IndexedDB...');
-      if (ragChunks.length > 0) {
-        setStatusText(`📊 分析 ${ragChunks.length} 個本地文件...`);
-        console.log(
-          `🔍 [RAG QUERY] Using INDEXEDDB fallback - Processing ${ragChunks.length} local chunks`,
-        );
-
-        const scoredChunks = (ragChunks as RagChunk[]).map(chunk => ({
-          ...chunk,
-          similarity: chunk.vector ? cosineSimilarity(queryVector, chunk.vector) : 0,
-        }));
-
-        scoredChunks.sort((a, b) => b.similarity - a.similarity);
-        const topChunks = scoredChunks.slice(0, vectorSearchLimit);
-        const relevantChunks = topChunks.filter(chunk => chunk.similarity > minSimilarity);
-
-        console.log(
-          `📊 [RAG QUERY] IndexedDB filtered to ${relevantChunks.length} chunks with similarity > ${minSimilarity}`,
-        );
-
-        let finalChunks = relevantChunks;
-
-        // 如果啟用重新排序，進行 reranking
-        if (enableReranking && relevantChunks.length > 0) {
-          setStatusText('🔄 重新排序相關內容...');
-          const reRanked = await rerankChunks(
-            message,
-            relevantChunks.filter(c => c.vector),
-            rerankLimit,
-          );
-          console.log(`🔄 [RAG QUERY] Re-ranked to ${reRanked.length} top chunks`);
-
-          // Convert reRanked results back to the same format as relevantChunks
-          finalChunks = reRanked.map(chunk => ({
-            ...chunk,
-            similarity: chunk.relevanceScore || 0,
-          }));
-        } else {
-          // 如果不使用 reranking，直接取前 N 個
-          finalChunks = relevantChunks.slice(0, rerankLimit);
-          console.log(`📊 [RAG QUERY] Reranking disabled, using top ${finalChunks.length} chunks`);
-        }
-
-        const contextString = finalChunks
-          .map(chunk => `From ${chunk.fileName}:\n${chunk.content}`)
-          .join('\n\n---\n\n');
-
-        console.log(`📝 [RAG QUERY] Final context length: ${contextString.length} characters`);
-        return contextString;
+      // Convert results to context string
+      if (results.length === 0) {
+        console.log('❌ [RAG QUERY] No relevant context found');
+        return '';
       }
+
+      const contextString = results
+        .map(chunk => `From ${chunk.fileName}:\n${chunk.content}`)
+        .join('\n\n---\n\n');
 
       console.log(
-        '❌ [RAG QUERY] No context found - neither Turso nor IndexedDB had relevant data',
+        `📝 [RAG QUERY] Final context: ${results.length} chunks, ${contextString.length} characters`,
       );
-      return '';
+      console.log(`📈 [CACHE STATS] From cache: ${fromCache}, Query time: ${queryTime}ms`);
+
+      return contextString;
     } catch (error) {
-      console.error('❌ [RAG QUERY] Error finding relevant context:', error);
-      setStatusText('❌ 搜尋知識庫時發生錯誤');
-      return ''; // Return empty context on error
+      console.error('❌ [RAG QUERY] Error in cached context search:', error);
+
+      // Fallback to original implementation on cache error
+      try {
+        setStatusText('🔄 緩存錯誤，使用傳統方法...');
+        console.log('⚠️ [RAG FALLBACK] Cache failed, falling back to original RAG implementation');
+
+        const queryVector = await generateEmbedding(message, 'query');
+        const ragSettings = getRagSettingsService();
+        const vectorSearchLimit = ragSettings.getVectorSearchLimit();
+        const enableReranking = ragSettings.isRerankingEnabled();
+        const rerankLimit = ragSettings.getRerankLimit();
+        const minSimilarity = ragSettings.getMinSimilarity();
+
+        // 優先使用 Turso 向量搜尋
+        setStatusText('🌐 搜尋知識庫 (Turso)...');
+        const tursoResults = await searchSimilarChunks(assistantId, queryVector, vectorSearchLimit);
+
+        if (tursoResults.length > 0) {
+          const topChunks = tursoResults.filter(chunk => chunk.similarity > minSimilarity);
+          let finalChunks = topChunks;
+
+          if (enableReranking && topChunks.length > 0) {
+            setStatusText('🔄 重新排序相關內容...');
+            const ragChunks = topChunks.map((chunk, index) => ({
+              id: `${chunk.fileName}-${index}`,
+              fileName: chunk.fileName,
+              content: chunk.content,
+              chunkIndex: index,
+            }));
+            const reRanked = await rerankChunks(message, ragChunks, rerankLimit);
+            finalChunks = reRanked.map(chunk => ({
+              ...chunk,
+              similarity: chunk.relevanceScore || 0,
+            }));
+          } else {
+            finalChunks = topChunks.slice(0, rerankLimit);
+          }
+
+          const contextString = finalChunks
+            .map(chunk => `From ${chunk.fileName}:\n${chunk.content}`)
+            .join('\n\n---\n\n');
+
+          return contextString;
+        }
+
+        // IndexedDB fallback
+        if (ragChunks.length > 0) {
+          setStatusText('📄 搜尋本地知識庫...');
+          const scoredChunks = (ragChunks as RagChunk[]).map(chunk => ({
+            ...chunk,
+            similarity: chunk.vector ? cosineSimilarity(queryVector, chunk.vector) : 0,
+          }));
+
+          scoredChunks.sort((a, b) => b.similarity - a.similarity);
+          const topChunks = scoredChunks.slice(0, vectorSearchLimit);
+          const relevantChunks = topChunks.filter(chunk => chunk.similarity > minSimilarity);
+
+          let finalChunks = relevantChunks;
+
+          if (enableReranking && relevantChunks.length > 0) {
+            setStatusText('🔄 重新排序相關內容...');
+            const reRanked = await rerankChunks(
+              message,
+              relevantChunks.filter(c => c.vector),
+              rerankLimit,
+            );
+            finalChunks = reRanked.map(chunk => ({
+              ...chunk,
+              similarity: chunk.relevanceScore || 0,
+            }));
+          } else {
+            finalChunks = relevantChunks.slice(0, rerankLimit);
+          }
+
+          const contextString = finalChunks
+            .map(chunk => `From ${chunk.fileName}:\n${chunk.content}`)
+            .join('\n\n---\n\n');
+
+          return contextString;
+        }
+
+        return '';
+      } catch (fallbackError) {
+        console.error('❌ [RAG FALLBACK] Fallback also failed:', fallbackError);
+        setStatusText('❌ 搜尋知識庫時發生錯誤');
+        return '';
+      }
     }
   };
 
