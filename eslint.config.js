@@ -139,6 +139,7 @@ export default [
       'coverage/**',
       '.vite/**',
       'public/js/pdf.worker.js',
+      'playwright-report/**',
     ],
   },
 ]
