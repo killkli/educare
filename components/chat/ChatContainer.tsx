@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChatContainerProps } from './types';
+import { useAppContext } from '../core/useAppContext';
 import MessageBubble from './MessageBubble';
 import ChatInput from './ChatInput';
 import WelcomeMessage from './WelcomeMessage';
@@ -23,6 +24,7 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
   sharedMode = false,
   assistantDescription,
 }) => {
+  const { actions } = useAppContext();
   const [input, setInput] = useState('');
   const [streamingResponse, setStreamingResponse] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -287,25 +289,49 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
         <div className='p-4 border-b border-gray-700 flex-shrink-0 bg-gray-800'>
           <div className='flex items-center justify-between'>
             <h2 className='text-xl font-semibold text-white'>{assistantName}</h2>
-            <button
-              onClick={() => setShowRagSettings(true)}
-              className={`flex items-center space-x-2 px-3 py-1.5 rounded-md transition-colors text-sm font-medium ${
-                sharedMode
-                  ? 'bg-blue-700 hover:bg-blue-600 text-blue-100 hover:text-white'
-                  : 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white'
-              }`}
-              title={sharedMode ? '全域 RAG 搜尋設定' : 'RAG 搜尋設定'}
-            >
-              <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth={2}
-                  d='M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z'
-                />
-              </svg>
-              <span>RAG 設定</span>
-            </button>
+            <div className='flex items-center space-x-3'>
+              {sharedMode && (
+                <button
+                  onClick={async () => {
+                    // Create new session for shared mode
+                    await actions.createNewSession(assistantId);
+                    // Reset local state for new conversation
+                    setCurrentSession({ ...currentSession, messages: [], tokenCount: 0 });
+                    setStreamingResponse('');
+                    setIsThinking(false);
+                    setStatusText('');
+                    setInput('');
+                  }}
+                  className='flex items-center space-x-2 px-3 py-1.5 rounded-md transition-colors text-sm font-medium bg-purple-700 hover:bg-purple-600 text-purple-100 hover:text-white'
+                  title='開啟新對話'
+                >
+                  <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                    <path
+                      strokeLinecap='round'
+                      strokeLinejoin='round'
+                      strokeWidth={2}
+                      d='M12 4v16m8-8H4'
+                    />
+                  </svg>
+                  <span>新對話</span>
+                </button>
+              )}
+              <button
+                onClick={() => setShowRagSettings(true)}
+                className={`flex items-center space-x-2 px-3 py-1.5 rounded-md transition-colors text-sm font-medium ${sharedMode ? 'bg-blue-700 hover:bg-blue-600 text-blue-100 hover:text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white'}`}
+                title={sharedMode ? '全域 RAG 搜尋設定' : 'RAG 搜尋設定'}
+              >
+                <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                  <path
+                    strokeLinecap='round'
+                    strokeLinejoin='round'
+                    strokeWidth={2}
+                    d='M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z'
+                  />
+                </svg>
+                <span>RAG 設定</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -321,7 +347,6 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
               sharedMode={sharedMode}
             />
           )}
-
           {/* Message List */}
           <div className='space-y-8'>
             {currentSession.messages.map((msg, index) => (
