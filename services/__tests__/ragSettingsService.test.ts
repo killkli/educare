@@ -7,10 +7,10 @@ import {
 
 // Mock localStorage
 const localStorageMock = {
-  getItem: vi.fn().mockReturnValue(null) as unknown as typeof localStorage.getItem,
-  setItem: vi.fn() as unknown as typeof localStorage.setItem,
-  removeItem: vi.fn() as unknown as typeof localStorage.removeItem,
-  clear: vi.fn() as unknown as typeof localStorage.clear,
+  getItem: vi.fn().mockReturnValue(null),
+  setItem: vi.fn(),
+  removeItem: vi.fn(),
+  clear: vi.fn(),
 };
 
 Object.defineProperty(window, 'localStorage', {
@@ -122,7 +122,7 @@ describe('RagSettingsService', () => {
 
     it('should validate boolean values', () => {
       service.updateSettings({
-        enableReranking: 'true' as unknown, // Invalid
+        enableReranking: 'true' as unknown as boolean, // Invalid type to test validation
       });
 
       const settings = service.getSettings();

@@ -227,6 +227,7 @@ export async function rerankChunks(
     relevanceScore: scores[i][0] || 0,
   }));
 
+  console.log(scoredChunks);
   // Sort by relevance score (descending) and return top-K
   return scoredChunks
     .sort((a, b) => (b.relevanceScore ?? 0) - (a.relevanceScore ?? 0))

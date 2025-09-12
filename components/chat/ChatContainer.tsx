@@ -6,13 +6,12 @@ import ChatInput from './ChatInput';
 import WelcomeMessage from './WelcomeMessage';
 import ThinkingIndicator from './ThinkingIndicator';
 import StreamingResponse from './StreamingResponse';
-import { generateEmbedding, cosineSimilarity, rerankChunks } from '../../services/embeddingService';
-import { ragCacheManager } from '../../services/ragCacheManager';
-import { searchSimilarChunks } from '../../services/tursoService';
+import { ragCacheManagerV2 } from '../../services/ragCacheManagerV2';
+import { ragQueryService } from '../../services/ragQueryService';
 import { streamChat } from '../../services/llmService';
 import { getRagSettingsService } from '../../services/ragSettingsService';
 import { RagSettingsModal } from '../settings';
-import { ChatMessage, RagChunk } from '../../types';
+import { ChatMessage } from '../../types';
 
 const ChatContainer: React.FC<ChatContainerProps> = ({
   session,
@@ -63,20 +62,24 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
         `⚙️ [RAG SETTINGS] Vector search: ${vectorSearchLimit}, Rerank: ${enableReranking ? rerankLimit : 'disabled'}, Min similarity: ${minSimilarity}`,
       );
 
-      // Use cached RAG manager for the query
-      const cacheResult = await ragCacheManager.performCachedRagQuery(
+      // Use modular cached RAG manager
+      const cacheResult = await ragCacheManagerV2.performCachedRagQuery(
         message,
         assistantId,
         ragChunks,
         {
-          similarityThreshold: 0.9, // High threshold for cache hits
+          // Pass RAG settings to the core RAG service
+          vectorSearchLimit,
           rerankLimit,
           enableReranking,
+          minSimilarity,
+          // Cache-specific settings
+          similarityThreshold: 0.9, // High threshold for cache hits
           enableCache: true,
         },
       );
 
-      const { results, fromCache, queryTime, cacheStats } = cacheResult;
+      const { results, fromCache, queryTime, cacheStats, ragMetadata } = cacheResult;
 
       if (fromCache && cacheStats) {
         setStatusText(`✨ 緩存命中！相似度: ${(cacheStats.similarity || 0).toFixed(3)}`);
@@ -84,19 +87,16 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
           `🎯 [CACHE HIT] Query "${message}" matched "${cacheStats.originalQuery}" with similarity ${(cacheStats.similarity || 0).toFixed(4)} in ${queryTime}ms`,
         );
       } else {
-        setStatusText(`💾 完整 RAG 查詢完成 (${queryTime}ms)`);
-        console.log(`📊 [CACHE MISS] Performed full RAG query in ${queryTime}ms`);
+        const source = ragMetadata?.source || 'unknown';
+        setStatusText(`💾 完整 RAG 查詢完成 (${queryTime}ms, 來源: ${source})`);
+        console.log(`📊 [CACHE MISS] Performed full RAG query in ${queryTime}ms from ${source}`);
+        console.log(
+          `📈 [RAG METADATA] Candidates: ${ragMetadata?.totalCandidates}, Filtered: ${ragMetadata?.filteredCandidates}, Final: ${ragMetadata?.finalResults}`,
+        );
       }
 
-      // Convert results to context string
-      if (results.length === 0) {
-        console.log('❌ [RAG QUERY] No relevant context found');
-        return '';
-      }
-
-      const contextString = results
-        .map(chunk => `From ${chunk.fileName}:\n${chunk.content}`)
-        .join('\n\n---\n\n');
+      // Convert results to context string using the shared utility
+      const contextString = ragCacheManagerV2.resultsToContextString(results);
 
       console.log(
         `📝 [RAG QUERY] Final context: ${results.length} chunks, ${contextString.length} characters`,
@@ -107,89 +107,34 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
     } catch (error) {
       console.error('❌ [RAG QUERY] Error in cached context search:', error);
 
-      // Fallback to original implementation on cache error
+      // Fallback to core RAG service directly (without cache) on error
       try {
-        setStatusText('🔄 緩存錯誤，使用傳統方法...');
-        console.log('⚠️ [RAG FALLBACK] Cache failed, falling back to original RAG implementation');
+        setStatusText('🔄 緩存錯誤，使用核心 RAG 服務...');
+        console.log('⚠️ [RAG FALLBACK] Cache failed, falling back to core RAG service');
 
-        const queryVector = await generateEmbedding(message, 'query');
+        // Get settings
         const ragSettings = getRagSettingsService();
         const vectorSearchLimit = ragSettings.getVectorSearchLimit();
         const enableReranking = ragSettings.isRerankingEnabled();
         const rerankLimit = ragSettings.getRerankLimit();
         const minSimilarity = ragSettings.getMinSimilarity();
 
-        // 優先使用 Turso 向量搜尋
-        setStatusText('🌐 搜尋知識庫 (Turso)...');
-        const tursoResults = await searchSimilarChunks(assistantId, queryVector, vectorSearchLimit);
+        // Use core RAG service directly
+        const ragResult = await ragQueryService.performRagQuery(message, assistantId, ragChunks, {
+          vectorSearchLimit,
+          rerankLimit,
+          enableReranking,
+          minSimilarity,
+        });
 
-        if (tursoResults.length > 0) {
-          const topChunks = tursoResults.filter(chunk => chunk.similarity > minSimilarity);
-          let finalChunks = topChunks;
+        const contextString = ragQueryService.resultsToContextString(ragResult.results);
 
-          if (enableReranking && topChunks.length > 0) {
-            setStatusText('🔄 重新排序相關內容...');
-            const ragChunks = topChunks.map((chunk, index) => ({
-              id: `${chunk.fileName}-${index}`,
-              fileName: chunk.fileName,
-              content: chunk.content,
-              chunkIndex: index,
-            }));
-            const reRanked = await rerankChunks(message, ragChunks, rerankLimit);
-            finalChunks = reRanked.map(chunk => ({
-              ...chunk,
-              similarity: chunk.relevanceScore || 0,
-            }));
-          } else {
-            finalChunks = topChunks.slice(0, rerankLimit);
-          }
-
-          const contextString = finalChunks
-            .map(chunk => `From ${chunk.fileName}:\n${chunk.content}`)
-            .join('\n\n---\n\n');
-
-          return contextString;
-        }
-
-        // IndexedDB fallback
-        if (ragChunks.length > 0) {
-          setStatusText('📄 搜尋本地知識庫...');
-          const scoredChunks = (ragChunks as RagChunk[]).map(chunk => ({
-            ...chunk,
-            similarity: chunk.vector ? cosineSimilarity(queryVector, chunk.vector) : 0,
-          }));
-
-          scoredChunks.sort((a, b) => b.similarity - a.similarity);
-          const topChunks = scoredChunks.slice(0, vectorSearchLimit);
-          const relevantChunks = topChunks.filter(chunk => chunk.similarity > minSimilarity);
-
-          let finalChunks = relevantChunks;
-
-          if (enableReranking && relevantChunks.length > 0) {
-            setStatusText('🔄 重新排序相關內容...');
-            const reRanked = await rerankChunks(
-              message,
-              relevantChunks.filter(c => c.vector),
-              rerankLimit,
-            );
-            finalChunks = reRanked.map(chunk => ({
-              ...chunk,
-              similarity: chunk.relevanceScore || 0,
-            }));
-          } else {
-            finalChunks = relevantChunks.slice(0, rerankLimit);
-          }
-
-          const contextString = finalChunks
-            .map(chunk => `From ${chunk.fileName}:\n${chunk.content}`)
-            .join('\n\n---\n\n');
-
-          return contextString;
-        }
-
-        return '';
+        console.log(
+          `📊 [RAG FALLBACK] Completed from ${ragResult.source} in ${ragResult.queryTime}ms`,
+        );
+        return contextString;
       } catch (fallbackError) {
-        console.error('❌ [RAG FALLBACK] Fallback also failed:', fallbackError);
+        console.error('❌ [RAG FALLBACK] Core RAG service also failed:', fallbackError);
         setStatusText('❌ 搜尋知識庫時發生錯誤');
         return '';
       }

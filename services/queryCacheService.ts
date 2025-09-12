@@ -1,9 +1,6 @@
 /// <reference lib="dom" />
-/// <reference lib="web" />
 
 /* global indexedDB, IDBOpenDBRequest, IDBDatabase, IDBRequest, IDBKeyRange */
-/// <reference lib="dom" />
-/// <reference lib="web" />
 
 import { QueryCacheEntry, RagChunk } from '../types';
 import { cosineSimilarity } from './embeddingService';

@@ -1,6 +1,7 @@
 import { RagChunk } from '../types';
-import { generateEmbedding, rerankChunks } from './embeddingService';
+import { generateEmbedding } from './embeddingService';
 import { queryCacheService } from './queryCacheService';
+import { ragQueryService, RagQueryOptions } from './ragQueryService';
 
 /**
  * Performance metrics for monitoring cache effectiveness
@@ -16,8 +17,8 @@ interface CacheMetrics {
 }
 
 /**
- * RAG Cache Manager - High-level interface for cached RAG operations
- * Handles the complete flow of query caching, similarity search, and reranking
+ * Cached RAG Manager - Acts as a caching decorator around the core RAG service
+ * This maintains separation of concerns: RAG logic vs Cache logic
  */
 export class RagCacheManager {
   private metrics: CacheMetrics = {
@@ -35,16 +36,15 @@ export class RagCacheManager {
   private totalFullRagTime = 0;
 
   /**
-   * Cached RAG query - checks cache first, falls back to full RAG if needed
+   * Cached RAG query - checks cache first, delegates to core RAG service if needed
+   * This preserves the original Turso → IndexedDB fallback behavior
    */
   async performCachedRagQuery(
     query: string,
     assistantId: string,
     ragChunks: RagChunk[],
-    options: {
+    options: RagQueryOptions & {
       similarityThreshold?: number;
-      rerankLimit?: number;
-      enableReranking?: boolean;
       enableCache?: boolean;
     } = {},
   ): Promise<{
@@ -55,37 +55,45 @@ export class RagCacheManager {
       similarity?: number;
       originalQuery?: string;
     };
+    ragMetadata?: {
+      source: 'turso' | 'indexeddb' | 'empty';
+      totalCandidates: number;
+      filteredCandidates: number;
+      finalResults: number;
+    };
   }> {
     const startTime = Date.now();
     this.metrics.totalQueries++;
 
-    const {
-      similarityThreshold = 0.9,
-      rerankLimit = 5,
-      enableReranking = true,
-      enableCache = true,
-    } = options;
+    const { similarityThreshold = 0.9, enableCache = true, ...ragOptions } = options;
 
     try {
       if (!enableCache) {
-        // Skip cache, go directly to full RAG
-        const results = await this.performFullRag(
+        // Skip cache, go directly to core RAG service
+        const ragResult = await ragQueryService.performRagQuery(
           query,
           assistantId,
           ragChunks,
-          rerankLimit,
-          enableReranking,
+          ragOptions,
         );
+
         const queryTime = Date.now() - startTime;
         this.updateMetrics(false, queryTime);
+
         return {
-          results,
+          results: ragResult.results,
           fromCache: false,
           queryTime,
+          ragMetadata: {
+            source: ragResult.source,
+            totalCandidates: ragResult.metadata.totalCandidates,
+            filteredCandidates: ragResult.metadata.filteredCandidates,
+            finalResults: ragResult.metadata.finalResults,
+          },
         };
       }
 
-      // Step 1: Generate query embedding
+      // Step 1: Generate query embedding for cache lookup
       const queryEmbedding = await generateEmbedding(query, 'query');
 
       // Step 2: Search for similar cached queries
@@ -115,19 +123,25 @@ export class RagCacheManager {
         };
       }
 
-      // Cache miss - perform full RAG and cache the result
+      // Cache miss - perform full RAG using the core service and cache the result
       console.log(`💾 RAG Cache Miss - performing full RAG for: "${query}"`);
 
-      const results = await this.performFullRag(
+      const ragResult = await ragQueryService.performRagQuery(
         query,
         assistantId,
         ragChunks,
-        rerankLimit,
-        enableReranking,
+        ragOptions,
       );
 
-      // Cache the results for future queries
-      await queryCacheService.cacheQueryResult(query, queryEmbedding, results, assistantId);
+      // Cache the results for future queries (only if we got meaningful results)
+      if (ragResult.results.length > 0) {
+        await queryCacheService.cacheQueryResult(
+          query,
+          queryEmbedding,
+          ragResult.results,
+          assistantId,
+        );
+      }
 
       const queryTime = Date.now() - startTime;
       this.updateMetrics(false, queryTime);
@@ -135,29 +149,41 @@ export class RagCacheManager {
       console.log(`✅ RAG query completed and cached in ${queryTime}ms`);
 
       return {
-        results,
+        results: ragResult.results,
         fromCache: false,
         queryTime,
+        ragMetadata: {
+          source: ragResult.source,
+          totalCandidates: ragResult.metadata.totalCandidates,
+          filteredCandidates: ragResult.metadata.filteredCandidates,
+          finalResults: ragResult.metadata.finalResults,
+        },
       };
     } catch (error) {
       console.error('Error in cached RAG query:', error);
 
-      // Fallback to full RAG without caching on error
+      // Fallback to core RAG service without caching on error
       try {
-        const results = await this.performFullRag(
+        const ragResult = await ragQueryService.performRagQuery(
           query,
           assistantId,
           ragChunks,
-          rerankLimit,
-          enableReranking,
+          ragOptions,
         );
+
         const queryTime = Date.now() - startTime;
         this.updateMetrics(false, queryTime);
 
         return {
-          results,
+          results: ragResult.results,
           fromCache: false,
           queryTime,
+          ragMetadata: {
+            source: ragResult.source,
+            totalCandidates: ragResult.metadata.totalCandidates,
+            filteredCandidates: ragResult.metadata.filteredCandidates,
+            finalResults: ragResult.metadata.finalResults,
+          },
         };
       } catch (fallbackError) {
         console.error('Fallback RAG query also failed:', fallbackError);
@@ -167,53 +193,10 @@ export class RagCacheManager {
   }
 
   /**
-   * Perform full RAG query (similarity search + optional reranking)
+   * Convert results to context string using the core service
    */
-  private async performFullRag(
-    query: string,
-    assistantId: string,
-    ragChunks: RagChunk[],
-    rerankLimit: number,
-    enableReranking: boolean,
-  ): Promise<RagChunk[]> {
-    // Generate query embedding
-    const queryEmbedding = await generateEmbedding(query, 'query');
-
-    // Search for similar chunks using cosine similarity
-    let similarChunks: RagChunk[] = [];
-    const maxSimilarities = 20;
-    for (const chunk of ragChunks) {
-      if (!chunk.vector) {
-        continue;
-      }
-      const similarity = this.calculateSimilarity(queryEmbedding, chunk.vector);
-      if (similarity > 0.5) {
-        // Basic threshold
-        similarChunks.push({ ...chunk, relevanceScore: similarity });
-      }
-    }
-
-    // Sort by relevance
-    similarChunks.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
-    similarChunks = similarChunks.slice(0, maxSimilarities);
-
-    if (similarChunks.length === 0) {
-      console.log('No relevant chunks found for query');
-      return [];
-    }
-
-    console.log(`🔍 Found ${similarChunks.length} similar chunks`);
-
-    if (!enableReranking) {
-      return similarChunks.slice(0, rerankLimit);
-    }
-
-    // Rerank the similar chunks
-    const rerankedChunks = await rerankChunks(query, similarChunks, rerankLimit);
-
-    console.log(`🔄 Reranked to top ${rerankedChunks.length} chunks`);
-
-    return rerankedChunks;
+  resultsToContextString(results: RagChunk[]): string {
+    return ragQueryService.resultsToContextString(results);
   }
 
   /**
@@ -378,5 +361,5 @@ export class RagCacheManager {
   }
 }
 
-// Singleton instance for global use
-export const ragCacheManager = new RagCacheManager();
+// Singleton instance for global use - NEW VERSION
+export const ragCacheManagerV2 = new RagCacheManager();

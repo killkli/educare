@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ragCacheManager } from '../../services/ragCacheManager';
+import { ragCacheManagerV2 } from '../../services/ragCacheManagerV2';
 
 interface CacheStats {
   performanceMetrics: {
@@ -29,7 +29,7 @@ export const CacheManagement: React.FC = () => {
   const refreshStats = async () => {
     setLoading(true);
     try {
-      const cacheStats = await ragCacheManager.getCacheStats();
+      const cacheStats = await ragCacheManagerV2.getCacheStats();
       setStats(cacheStats);
       setLastUpdated(new Date());
     } catch (error) {
@@ -42,7 +42,7 @@ export const CacheManagement: React.FC = () => {
   const performMaintenance = async () => {
     setLoading(true);
     try {
-      const result = await ragCacheManager.performMaintenance();
+      const result = await ragCacheManagerV2.performMaintenance();
       console.log('Maintenance completed:', result);
       await refreshStats(); // Refresh stats after maintenance
     } catch (error) {
@@ -55,7 +55,7 @@ export const CacheManagement: React.FC = () => {
   const clearAssistantCache = async (assistantId: string) => {
     setClearingCache(true);
     try {
-      const deletedCount = await ragCacheManager.clearAssistantCache(assistantId);
+      const deletedCount = await ragCacheManagerV2.clearAssistantCache(assistantId);
       console.log(`Cleared ${deletedCount} entries for assistant ${assistantId}`);
       await refreshStats();
     } catch (error) {
@@ -66,14 +66,14 @@ export const CacheManagement: React.FC = () => {
   };
 
   const updateSimilarityThreshold = () => {
-    ragCacheManager.configureCacheSettings({
+    ragCacheManagerV2.configureCacheSettings({
       similarityThreshold,
     });
     console.log(`Similarity threshold updated to ${similarityThreshold}`);
   };
 
   const resetMetrics = () => {
-    ragCacheManager.resetMetrics();
+    ragCacheManagerV2.resetMetrics();
     refreshStats();
   };
 
@@ -319,7 +319,7 @@ export const CacheManagement: React.FC = () => {
               <button
                 onClick={() => {
                   console.log('Current cache stats:', stats);
-                  console.log('RagCacheManager instance:', ragCacheManager);
+                  console.log('RagCacheManagerV2 instance:', ragCacheManagerV2);
                 }}
                 className='w-full px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700'
               >
