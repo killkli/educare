@@ -588,7 +588,6 @@ export const TEST_ASSISTANTS = {
     name: 'Shared Assistant',
     description: 'A publicly shared assistant',
     isShared: true,
-    shareId: 'share-123',
   }),
 };
 

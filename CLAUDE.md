@@ -67,7 +67,7 @@ This is a Gemini Professional Assistant application - a React-based web app that
 
 ### Data Models
 
-- **Assistant**: Has id, name, description, systemPrompt, ragChunks (for context), isShared, shareId, and timestamps
+- **Assistant**: Has id, name, description, systemPrompt, ragChunks (for context), isShared and timestamps
 - **ChatSession**: Belongs to assistant, contains message history, token counts, and session metadata
 - **RagChunk**: Enhanced with file metadata, chunk type, and vector embeddings
 - **ShareData**: Public sharing configuration with QR codes and access controls
