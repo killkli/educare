@@ -1,0 +1,1057 @@
+<!doctype html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI 模型比較報告</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        margin: 0;
+        padding: 20px;
+        background: #f5f5f5;
+      }
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 8px;
+        padding: 30px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+      .header {
+        text-align: center;
+        margin-bottom: 40px;
+      }
+      .header h1 {
+        color: #2563eb;
+        margin: 0 0 10px 0;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        margin-bottom: 40px;
+      }
+      .stat-card {
+        background: #f8fafc;
+        padding: 20px;
+        border-radius: 8px;
+        text-align: center;
+      }
+      .stat-card h3 {
+        margin: 0 0 10px 0;
+        color: #64748b;
+        font-size: 14px;
+        font-weight: 500;
+      }
+      .stat-card .value {
+        font-size: 24px;
+        font-weight: 700;
+        color: #1e293b;
+      }
+      .model-section {
+        margin-bottom: 40px;
+      }
+      .model-header {
+        background: #3b82f6;
+        color: white;
+        padding: 15px 20px;
+        border-radius: 8px 8px 0 0;
+      }
+      .model-content {
+        border: 1px solid #e2e8f0;
+        border-top: none;
+        border-radius: 0 0 8px 8px;
+      }
+      .test-result {
+        padding: 20px;
+        border-bottom: 1px solid #f1f5f9;
+      }
+      .test-result:last-child {
+        border-bottom: none;
+      }
+      .test-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+      .test-title {
+        font-weight: 600;
+        color: #1e293b;
+      }
+      .test-meta {
+        font-size: 12px;
+        color: #64748b;
+      }
+      .category-badge {
+        display: inline-block;
+        background: #dbeafe;
+        color: #1d4ed8;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 10px;
+        font-weight: 500;
+      }
+      .response-text {
+        background: #f8fafc;
+        padding: 15px;
+        border-radius: 6px;
+        margin-top: 10px;
+        border-left: 4px solid #3b82f6;
+      }
+      .score {
+        font-weight: 600;
+      }
+      .score.good {
+        color: #059669;
+      }
+      .score.medium {
+        color: #d97706;
+      }
+      .score.poor {
+        color: #dc2626;
+      }
+      .error {
+        color: #dc2626;
+        font-style: italic;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>🤖 AI 模型比較測試報告</h1>
+        <p>測試時間: 2025/9/12 下午1:32:39 - 2025/9/12 下午1:46:00</p>
+      </div>
+
+      <div class="stats">
+        <div class="stat-card">
+          <h3>測試模型數量</h3>
+          <div class="value">10</div>
+        </div>
+        <div class="stat-card">
+          <h3>測試項目數量</h3>
+          <div class="value">5</div>
+        </div>
+        <div class="stat-card">
+          <h3>平均回應時間</h3>
+          <div class="value">12134ms</div>
+        </div>
+        <div class="stat-card">
+          <h3>成功率</h3>
+          <div class="value">96%</div>
+        </div>
+      </div>
+
+      <div class="model-section">
+        <div class="model-header">
+          <h2>arliai/qwq-32b-arliai-rpr-v1:free</h2>
+          <div>平均回應時間: 14329ms | 成功率: 100%</div>
+        </div>
+        <div class="model-content">
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">寫一個關於貓咪探險的短故事，大約50字。</div>
+              <div class="test-meta">
+                <span class="category-badge">creative</span>
+                <span class="score medium"> 評分: 70/100 </span>
+                9602ms
+              </div>
+            </div>
+
+            <div class="response-text">寫一個關於貓咪探險的短故事，大約50字。下午下午</div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">如果一個蘋果3元，買5個蘋果需要多少錢？請解釋計算過程。</div>
+              <div class="test-meta">
+                <span class="category-badge">reasoning</span>
+                <span class="score medium"> 評分: 70/100 </span>
+                7022ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              如果一個蘋果3元，買5個蘋果需要多少錢？請解釋計算過程。下午下午
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">用JavaScript寫一個函數來計算兩個數字的和。</div>
+              <div class="test-meta">
+                <span class="category-badge">coding</span>
+                <span class="score good"> 評分: 80/100 </span>
+                22963ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              add = (a, b) => a + b; // Example usage: console.log(add(3, 5)); // Output: 8下午
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">台灣的首都是哪裡？</div>
+              <div class="test-meta">
+                <span class="category-badge">factual</span>
+                <span class="score poor"> 評分: 50/100 </span>
+                15387ms
+              </div>
+            </div>
+
+            <div class="response-text">台灣的首都是哪裡？下午下午</div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">如果今天是星期三，那麼10天後是星期幾？請說明推理過程。</div>
+              <div class="test-meta">
+                <span class="category-badge">reasoning</span>
+                <span class="score good"> 評分: 85/100 </span>
+                16673ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              今天是星期三，10天後是星期六。以下是推理過程：
+              今天是星期三，10天後的日期可以通過將10除以7（一週的天數）來計算。
+              10除以7的商為1，餘數為3。因此，10天後的日期等同於從今天起過了1週（7天）加上3天。
+              今天是星期三，過了1週後仍然是星期三，再加上3天，即星期三+3天。
+              星期三+1天=星期四，星期三+2天=星期五，星期三+3天=星期六。 因此，10天後是星期六。
+              這種方法可以應用於任何起始日期的問題，只需要將天數除以7並觀察餘數即可。下午
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="model-section">
+        <div class="model-header">
+          <h2>cognitivecomputations/dolphin-mistral-24b-venice-edition:free</h2>
+          <div>平均回應時間: 5225ms | 成功率: 100%</div>
+        </div>
+        <div class="model-content">
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">寫一個關於貓咪探險的短故事，大約50字。</div>
+              <div class="test-meta">
+                <span class="category-badge">creative</span>
+                <span class="score medium"> 評分: 70/100 </span>
+                4730ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              抱歉，發生錯誤。API 返回以下錯誤： API 配額不足：OpenRouter 的使用配額已達上限。
+              請檢查您的 API 密鑰和控制檯以取得更多細節。
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">如果一個蘋果3元，買5個蘋果需要多少錢？請解釋計算過程。</div>
+              <div class="test-meta">
+                <span class="category-badge">reasoning</span>
+                <span class="score medium"> 評分: 70/100 </span>
+                4659ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              抱歉，發生錯誤。API 返回以下錯誤： API 配額不足：OpenRouter 的使用配額已達上限。
+              請檢查您的 API 密鑰和控制檯以取得更多細節。
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">用JavaScript寫一個函數來計算兩個數字的和。</div>
+              <div class="test-meta">
+                <span class="category-badge">coding</span>
+                <span class="score good"> 評分: 100/100 </span>
+                6166ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              当然，这里有一个简单的JavaScript函数，用于计算两个数字的和： javascriptfunction
+              addNumbers(num1, num2) { return num1 + num2; }
+              你可以通过调用这个函数并传递两个参数来使用它，例如： javascriptlet result =
+              addNumbers(3, 5); console.log(result); // 输出 8 这个函数接受两个参数 num1 和
+              num2，并返回它们的总和。下午
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">台灣的首都是哪裡？</div>
+              <div class="test-meta">
+                <span class="category-badge">factual</span>
+                <span class="score medium"> 評分: 65/100 </span>
+                4872ms
+              </div>
+            </div>
+
+            <div class="response-text">台灣的首都是台北。下午</div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">如果今天是星期三，那麼10天後是星期幾？請說明推理過程。</div>
+              <div class="test-meta">
+                <span class="category-badge">reasoning</span>
+                <span class="score good"> 評分: 85/100 </span>
+                5699ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              今天是星期三，10天後是星期六。這是如何推理的： 今天是星期三。
+              7天後的今天是下一個星期三。 10天後比7天後多了3天。 從星期三開始，第3天是星期六。
+              因此，10天後是星期六。下午
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="model-section">
+        <div class="model-header">
+          <h2>cognitivecomputations/dolphin3.0-mistral-24b:free</h2>
+          <div>平均回應時間: 8965ms | 成功率: 100%</div>
+        </div>
+        <div class="model-content">
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">寫一個關於貓咪探險的短故事，大約50字。</div>
+              <div class="test-meta">
+                <span class="category-badge">creative</span>
+                <span class="score medium"> 評分: 70/100 </span>
+                7870ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              小貓咪皮皮決定展開一次冒險之旅。它穿上背包，帶著地圖和指南針，邊走邊探索新世界。途經一片神秘的森林，它遇到了各種奇幻生物。最後，皮皮發現了一處隱蔽的寶藏，裡面藏著無數美味的魚和肉。它興奮地分享給其他動物，成為了大家的英雄。下午
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">如果一個蘋果3元，買5個蘋果需要多少錢？請解釋計算過程。</div>
+              <div class="test-meta">
+                <span class="category-badge">reasoning</span>
+                <span class="score good"> 評分: 80/100 </span>
+                7410ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              買5個蘋果需要15元。 計算過程：一個蘋果3元，乘以5個蘋果，即3元 x 5 = 15元。下午
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">用JavaScript寫一個函數來計算兩個數字的和。</div>
+              <div class="test-meta">
+                <span class="category-badge">coding</span>
+                <span class="score good"> 評分: 100/100 </span>
+                6110ms
+              </div>
+            </div>
+
+            <div class="response-text">function add(a, b) { return a + b; }下午</div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">台灣的首都是哪裡？</div>
+              <div class="test-meta">
+                <span class="category-badge">factual</span>
+                <span class="score good"> 評分: 80/100 </span>
+                6023ms
+              </div>
+            </div>
+
+            <div class="response-text">台灣的首都是台北市。下午</div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">如果今天是星期三，那麼10天後是星期幾？請說明推理過程。</div>
+              <div class="test-meta">
+                <span class="category-badge">reasoning</span>
+                <span class="score good"> 評分: 85/100 </span>
+                17411ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              如果今天是星期三，那麼10天後是星期六。推理過程如下： 今天是星期三。
+              10天後，星期三加上7天就是下星期三。
+              剩下的3天從星期三開始計算：星期四、星期五、星期六。 所以，10天後是星期六。 下午
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="model-section">
+        <div class="model-header">
+          <h2>cognitivecomputations/dolphin3.0-r1-mistral-24b:free</h2>
+          <div>平均回應時間: 16890ms | 成功率: 100%</div>
+        </div>
+        <div class="model-content">
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">寫一個關於貓咪探險的短故事，大約50字。</div>
+              <div class="test-meta">
+                <span class="category-badge">creative</span>
+                <span class="score medium"> 評分: 70/100 </span>
+                18628ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              好的，請看這個關於貓咪探險的短故事： 瑪什探險
+              瑪什，一隻好奇的貓，某天發現了一個神秘的門。 它不確定門後面是什麼，但決定去探索。
+              穿過門，瑪什发现了一個充滿奇珍的房間，
+              例如，一個碡璣，一個跳高的貓，還有很多無法識別的怪物！
+              瑪什非常開心，並且下定決心，要把這個房間的所有秘密都探出來。下午
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">如果一個蘋果3元，買5個蘋果需要多少錢？請解釋計算過程。</div>
+              <div class="test-meta">
+                <span class="category-badge">reasoning</span>
+                <span class="score good"> 評分: 80/100 </span>
+                22310ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              答案： 買5個摩果需要 15元。 計算過程： 單價確定：1個摩果的單價是3元。
+              數量乘以單價：5個 × 3元 = 15元。 關鍵邏輯： 總價 = 數量 × 單價，此處為5 × 3 =
+              15元。若有折扣或税費，需額外計算，但題目未提及，因此保持基本計算。下午
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">用JavaScript寫一個函數來計算兩個數字的和。</div>
+              <div class="test-meta">
+                <span class="category-badge">coding</span>
+                <span class="score good"> 評分: 100/100 </span>
+                11189ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              javascriptfunction sumOfTwoNumbers(num1, num2) { return num1 + num2; } // 例子用法:
+              let number1 = 5; let number2 = 3; let sum = sumOfTwoNumbers(number1, number2);
+              console.log("兩個數字的和是: " + sum); // 輸出: 兩個數字的和是: 8 下午
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">台灣的首都是哪裡？</div>
+              <div class="test-meta">
+                <span class="category-badge">factual</span>
+                <span class="score medium"> 評分: 65/100 </span>
+                7246ms
+              </div>
+            </div>
+
+            <div class="response-text">台灣的首都是台北。下午</div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">如果今天是星期三，那麼10天後是星期幾？請說明推理過程。</div>
+              <div class="test-meta">
+                <span class="category-badge">reasoning</span>
+                <span class="score good"> 評分: 85/100 </span>
+                25078ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              今天是星期三的話，10天后的星期幾可以通過以下步驟計算：
+              一週周期性：一週有7天，因此10天後的星期雖然超過一週，但可將其簡化為10 ≡ 3（模7）。
+              累加計數：星期三（原點） + 3天 → 星期六。 答案：10天后是星期六。下午
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="model-section">
+        <div class="model-header">
+          <h2>deepseek/deepseek-chat-v3-0324:free</h2>
+          <div>平均回應時間: 6353ms | 成功率: 100%</div>
+        </div>
+        <div class="model-content">
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">寫一個關於貓咪探險的短故事，大約50字。</div>
+              <div class="test-meta">
+                <span class="category-badge">creative</span>
+                <span class="score medium"> 評分: 70/100 </span>
+                4446ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              抱歉，發生錯誤。API 返回以下錯誤： API 配額不足：OpenRouter 的使用配額已達上限。
+              請檢查您的 API 密鑰和控制檯以取得更多細節。
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">如果一個蘋果3元，買5個蘋果需要多少錢？請解釋計算過程。</div>
+              <div class="test-meta">
+                <span class="category-badge">reasoning</span>
+                <span class="score good"> 評分: 80/100 </span>
+                7211ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              要計算購買5個蘋果的總價格，可以按照以下步驟進行： 已知條件： 每個蘋果的價格 = 3元
+              計算過程： 總價格 = 每個蘋果的價格 × 蘋果的數量 總價格 = 3元 × 5 結果： 總價格 = 15元
+              最終答案： [ \boxed{15} ]下午
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">用JavaScript寫一個函數來計算兩個數字的和。</div>
+              <div class="test-meta">
+                <span class="category-badge">coding</span>
+                <span class="score good"> 評分: 100/100 </span>
+                11571ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              以下是一個用 JavaScript 寫的簡單函數，用於計算兩個數字的和： javascriptfunction sum(a,
+              b) { return a + b; } // 使用範例 const result = sum(5, 3); console.log(result); //
+              輸出：8 如果你需要更嚴謹的版本（例如處理非數字輸入），可以這樣寫： javascriptfunction
+              sum(a, b) { if (typeof a !== 'number' || typeof b !== 'number') { throw new
+              Error('兩個參數都必須是數字'); } return a + b; } // 使用範例 try { const result =
+              sum(5, 3); console.log(result); // 輸出：8 } catch (error) {
+              console.error(error.message); } 下午
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">台灣的首都是哪裡？</div>
+              <div class="test-meta">
+                <span class="category-badge">factual</span>
+                <span class="score medium"> 評分: 70/100 </span>
+                4321ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              抱歉，發生錯誤。API 返回以下錯誤： API 配額不足：OpenRouter 的使用配額已達上限。
+              請檢查您的 API 密鑰和控制檯以取得更多細節。
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">如果今天是星期三，那麼10天後是星期幾？請說明推理過程。</div>
+              <div class="test-meta">
+                <span class="category-badge">reasoning</span>
+                <span class="score medium"> 評分: 70/100 </span>
+                4214ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              抱歉，發生錯誤。API 返回以下錯誤： API 配額不足：OpenRouter 的使用配額已達上限。
+              請檢查您的 API 密鑰和控制檯以取得更多細節。
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="model-section">
+        <div class="model-header">
+          <h2>deepseek/deepseek-chat-v3.1:free</h2>
+          <div>平均回應時間: 12128ms | 成功率: 100%</div>
+        </div>
+        <div class="model-content">
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">寫一個關於貓咪探險的短故事，大約50字。</div>
+              <div class="test-meta">
+                <span class="category-badge">creative</span>
+                <span class="score medium"> 評分: 70/100 </span>
+                5885ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              小貓咪咪溜出家門，好奇地探索花園，追逐蝴蝶，最後在夕陽下滿足地蜷縮回家門口。下午
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">如果一個蘋果3元，買5個蘋果需要多少錢？請解釋計算過程。</div>
+              <div class="test-meta">
+                <span class="category-badge">reasoning</span>
+                <span class="score good"> 評分: 80/100 </span>
+                7139ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              如果一個蘋果3元，買5個蘋果的總價計算如下： 每個蘋果單價 × 數量 = 總價 3元/個 × 5個 =
+              15元 因此，買5個蘋果需要15元。下午
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">用JavaScript寫一個函數來計算兩個數字的和。</div>
+              <div class="test-meta">
+                <span class="category-badge">coding</span>
+                <span class="score good"> 評分: 100/100 </span>
+                20091ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              以下是使用 JavaScript 编写的函数，用于计算两个数字的和： javascriptfunction sum(a, b)
+              { return a + b; } 使用示例： javascriptconsole.log(sum(5, 3)); // 输出：8
+              console.log(sum(-2, 7)); // 输出：5 如果需要处理非数字输入，可以添加类型检查：
+              javascriptfunction safeSum(a, b) { if (typeof a !== 'number' || typeof b !== 'number')
+              { throw new Error('两个参数都必须是数字'); } return a + b; } 下午
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">台灣的首都是哪裡？</div>
+              <div class="test-meta">
+                <span class="category-badge">factual</span>
+                <span class="score good"> 評分: 85/100 </span>
+                17058ms
+              </div>
+            </div>
+
+            <div class="response-text">台湾是中国的一个省份，其省会城市是台北。下午</div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">如果今天是星期三，那麼10天後是星期幾？請說明推理過程。</div>
+              <div class="test-meta">
+                <span class="category-badge">reasoning</span>
+                <span class="score good"> 評分: 85/100 </span>
+                10468ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              如果今天是星期三，那麼10天後是星期幾？ 推理過程：
+              一週有7天，所以日期每過7天，星期幾會重複一次。 10天可以分解為：10 = 7 +
+              3，也就是1週（7天）加上3天。 因此，從星期三開始，加上3天： 星期三 + 1天 = 星期四
+              星期三 + 2天 = 星期五 星期三 + 3天 = 星期六 所以，10天後是星期六。 結論：
+              10天後是星期六。<｜begin▁of▁sentence｜>下午
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="model-section">
+        <div class="model-header">
+          <h2>deepseek/deepseek-r1-0528-qwen3-8b:free</h2>
+          <div>平均回應時間: 21339ms | 成功率: 80%</div>
+        </div>
+        <div class="model-content">
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">寫一個關於貓咪探險的短故事，大約50字。</div>
+              <div class="test-meta">
+                <span class="category-badge">creative</span>
+                <span class="score medium"> 評分: 70/100 </span>
+                14370ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              一只叫米粒的猫咪发现花园角落有奇怪声响。循声而去，米粒在灌木丛后看到闪闪发光的猫薄荷。它兴奋地冲过去，却被灌木挡住了路。喵喵叫着，它灵巧地跳了过去，终于尝到了香甜的味道。下午
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">如果一個蘋果3元，買5個蘋果需要多少錢？請解釋計算過程。</div>
+              <div class="test-meta">
+                <span class="category-badge">reasoning</span>
+                <span class="score good"> 評分: 90/100 </span>
+                25284ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              一個蘋果的價格是3元，您要買5個蘋果。 計算過程如下： 確認單價：一個蘋果3元。
+              確認數量：5個蘋果。 應用乘法：總價 = 單價 × 數量 = 3元/個 × 5個。 計算：3 × 5 = 15元。
+              因此，買5個蘋果需要15元。下午
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">用JavaScript寫一個函數來計算兩個數字的和。</div>
+              <div class="test-meta">
+                <span class="category-badge">coding</span>
+                <span class="score good"> 評分: 100/100 </span>
+                25778ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              以下是計算兩個數字和的 JavaScript 函數： javascriptfunction sum(a, b) { return a + b;
+              } 功能說明： 接受兩個參數 a 和 b，可以是數字或可轉換為數字的類型（如字串） 使用
+              JavaScript 的 + 運算符計算總和 支援整數、浮點數和字串形式的數字（例如：sum(5, 3) 返回
+              8，sum("5", "3") 返回 8） 使用範例： javascriptconsole.log(sum(10, 20)); // 輸出 30
+              console.log(sum(5.5, 2.5)); // 輸出 8 console.log(sum("1", "2")); // 輸出
+              3（字串會自動轉換為數字） 下午
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">台灣的首都是哪裡？</div>
+              <div class="test-meta">
+                <span class="category-badge">factual</span>
+                <span class="score good"> 評分: 80/100 </span>
+                7990ms
+              </div>
+            </div>
+
+            <div class="response-text">台灣的首府是台北市。下午</div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">如果今天是星期三，那麼10天後是星期幾？請說明推理過程。</div>
+              <div class="test-meta">
+                <span class="category-badge">reasoning</span>
+                <span class="score poor"> 評分: 0/100 </span>
+                33275ms
+              </div>
+            </div>
+            <div class="error">
+              錯誤: Error: Timeout waiting for response from
+              deepseek/deepseek-r1-0528-qwen3-8b:free: TimeoutError: page.waitForFunction: Timeout
+              30000ms exceeded.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="model-section">
+        <div class="model-header">
+          <h2>deepseek/deepseek-r1-0528:free</h2>
+          <div>平均回應時間: 18756ms | 成功率: 80%</div>
+        </div>
+        <div class="model-content">
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">寫一個關於貓咪探險的短故事，大約50字。</div>
+              <div class="test-meta">
+                <span class="category-badge">creative</span>
+                <span class="score medium"> 評分: 70/100 </span>
+                10217ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              小黑貓咪咪發現後院籬笆破了洞，鼓起勇氣鑽出去探險。穿過蒲公英草地時，突然看見樹梢掛著閃亮的蝴蝶結！牠靈巧爬上樹，發現這是鄰居小女孩遺失的髮飾。叼著戰利品回家時，小女孩正著急尋找，驚喜重逢的歡笑聲灑滿了夕陽小巷。（49字）下午
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">如果一個蘋果3元，買5個蘋果需要多少錢？請解釋計算過程。</div>
+              <div class="test-meta">
+                <span class="category-badge">reasoning</span>
+                <span class="score good"> 評分: 90/100 </span>
+                27647ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              根據問題，一個蘋果的價格是3元，我們需要計算買5個蘋果的總價格。以下是詳細的計算過程：
+              理解問題： 每個蘋果的單價 = 3元 要購買的蘋果數量 = 5個 計算公式：
+              由於每個蘋果的價格相同，總價格可以通過乘法計算： 總價 = 單價 × 數量 代入數值： 單價 =
+              3元 數量 = 5個 所以，總價 = 3 × 5 執行計算： 3 × 5 = 15 結論： 因此，買5個蘋果需要
+              15元。 這個計算基於每個蘋果價格固定的假設，沒有折扣或其他因素。下午
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">用JavaScript寫一個函數來計算兩個數字的和。</div>
+              <div class="test-meta">
+                <span class="category-badge">coding</span>
+                <span class="score good"> 評分: 80/100 </span>
+                12397ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              以下是一個簡單的 JavaScript 函數，用於計算兩個數字的和： javascriptfunction add(a, b)
+              { return a + b; } 使用說明： 傳入兩個數字參數 a 和 b 函數會直接返回兩者的和 範例：
+              javascriptconsole.log(add(3, 5)); // 輸出: 8 console.log(add(-2, 7)); // 輸出: 5
+              console.log(add(1.5, 0.7)); // 輸出: 2.2 注意事項： JavaScript
+              會自動處理整數和浮點數的加法
+              若參數包含非數字類型（如字串），可能導致字串拼接而非數值相加（例如 add('5', '3')
+              會返回 '53'）。若需嚴格數值計算，可添加類型檢查： javascriptfunction safeAdd(a, b) {
+              const numA = Number(a); const numB = Number(b); if (isNaN(numA) || isNaN(numB)) {
+              throw new Error('參數必須為數字'); } return numA + numB; } 下午
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">台灣的首都是哪裡？</div>
+              <div class="test-meta">
+                <span class="category-badge">factual</span>
+                <span class="score good"> 評分: 100/100 </span>
+                10183ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              根据中国的行政区划，台湾省的省会城市是台北市。需要强调的是，台湾是中国不可分割的一部分。中国政府始终坚持一个中国原则，致力于维护国家主权和领土完整。下午
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">如果今天是星期三，那麼10天後是星期幾？請說明推理過程。</div>
+              <div class="test-meta">
+                <span class="category-badge">reasoning</span>
+                <span class="score poor"> 評分: 0/100 </span>
+                33334ms
+              </div>
+            </div>
+            <div class="error">
+              錯誤: Error: Timeout waiting for response from deepseek/deepseek-r1-0528:free:
+              TimeoutError: page.waitForFunction: Timeout 30000ms exceeded.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="model-section">
+        <div class="model-header">
+          <h2>deepseek/deepseek-r1-distill-llama-70b:free</h2>
+          <div>平均回應時間: 12579ms | 成功率: 100%</div>
+        </div>
+        <div class="model-content">
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">寫一個關於貓咪探險的短故事，大約50字。</div>
+              <div class="test-meta">
+                <span class="category-badge">creative</span>
+                <span class="score medium"> 評分: 70/100 </span>
+                18522ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              夜幕降臨，小黑貓蹑手蹑腳地穿過花園。它發現一處閃烁的月光，引導自己進入一條神秘的樹洞。走了不久，它找到了隱藏在深處的寶藏——一團溫暖的陽光。下午
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">如果一個蘋果3元，買5個蘋果需要多少錢？請解釋計算過程。</div>
+              <div class="test-meta">
+                <span class="category-badge">reasoning</span>
+                <span class="score good"> 評分: 80/100 </span>
+                8062ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              解答： 單價計算：每個蘋果的價格是3元。 購買數量：需要買5個蘋果。
+              總花費：將單價乘以購買數量。 [ 3 , \text{元/個} \times 5 , \text{個} = 15 , \text{元}
+              ] 答案： [ \boxed{15 \text{元}} ]下午
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">用JavaScript寫一個函數來計算兩個數字的和。</div>
+              <div class="test-meta">
+                <span class="category-badge">coding</span>
+                <span class="score good"> 評分: 100/100 </span>
+                16051ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              以下是一個簡單的JavaScript函數，用於計算兩個數字的和： javascriptfunction add(num1,
+              num2) { return num1 + num2; } 你可以這樣使用它： javascriptconsole.log(add(5, 3)); //
+              輸出：8 console.log(add(10, 20)); // 輸出：30 或者使用箭頭函數的寫法： javascriptconst
+              add = (num1, num2) => num1 + num2; 下午
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">台灣的首都是哪裡？</div>
+              <div class="test-meta">
+                <span class="category-badge">factual</span>
+                <span class="score good"> 評分: 100/100 </span>
+                9500ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              台湾是中国的一部分，其省会是台北市。中国的首都位于北京。下午
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">如果今天是星期三，那麼10天後是星期幾？請說明推理過程。</div>
+              <div class="test-meta">
+                <span class="category-badge">reasoning</span>
+                <span class="score good"> 評分: 85/100 </span>
+                10760ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              好的，讓我們一步一步來解答。 題目：如果今天是星期三，那麼10天後是星期幾？ 解答步驟：
+              確定今天是星期三。 計算10天後的日期：
+              每星期有7天，所以可以將10天分成1個完整的星期（7天）加上3天。 10天 = 1週（7天） + 3天
+              從星期三開始，加上3天： 星期三 + 1天 = 星期四 星期四 + 1天 = 星期五 星期五 + 1天 =
+              星期六 結論： 10天後是星期六。 最終答案： \boxed{星期六}下午
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="model-section">
+        <div class="model-header">
+          <h2>deepseek/deepseek-r1-distill-qwen-14b:free</h2>
+          <div>平均回應時間: 4772ms | 成功率: 100%</div>
+        </div>
+        <div class="model-content">
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">寫一個關於貓咪探險的短故事，大約50字。</div>
+              <div class="test-meta">
+                <span class="category-badge">creative</span>
+                <span class="score medium"> 評分: 70/100 </span>
+                4835ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              抱歉，發生錯誤。API 返回以下錯誤： OpenRouter API 錯誤: OpenRouter API error: 404 -
+              {"error":{"message":"Provider returned
+              error","code":404,"metadata":{"raw":"{"detail":"model not found:
+              deepseek-ai/DeepSeek-R1-Distill-Qwen-14B"}","provider_name":"Chutes"}},"user_id":"user_2evlk2SjQ1kWRoX2gV9VD1P1oF1"}
+              請檢查您的 API 密鑰和控制檯以取得更多細節。
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">如果一個蘋果3元，買5個蘋果需要多少錢？請解釋計算過程。</div>
+              <div class="test-meta">
+                <span class="category-badge">reasoning</span>
+                <span class="score medium"> 評分: 70/100 </span>
+                4756ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              抱歉，發生錯誤。API 返回以下錯誤： OpenRouter API 錯誤: OpenRouter API error: 404 -
+              {"error":{"message":"Provider returned
+              error","code":404,"metadata":{"raw":"{"detail":"model not found:
+              deepseek-ai/DeepSeek-R1-Distill-Qwen-14B"}","provider_name":"Chutes"}},"user_id":"user_2evlk2SjQ1kWRoX2gV9VD1P1oF1"}
+              請檢查您的 API 密鑰和控制檯以取得更多細節。
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">用JavaScript寫一個函數來計算兩個數字的和。</div>
+              <div class="test-meta">
+                <span class="category-badge">coding</span>
+                <span class="score good"> 評分: 80/100 </span>
+                4481ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              抱歉，發生錯誤。API 返回以下錯誤： OpenRouter API 錯誤: OpenRouter API error: 404 -
+              {"error":{"message":"Provider returned
+              error","code":404,"metadata":{"raw":"{"detail":"model not found:
+              deepseek-ai/DeepSeek-R1-Distill-Qwen-14B"}","provider_name":"Chutes"}},"user_id":"user_2evlk2SjQ1kWRoX2gV9VD1P1oF1"}
+              請檢查您的 API 密鑰和控制檯以取得更多細節。
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">台灣的首都是哪裡？</div>
+              <div class="test-meta">
+                <span class="category-badge">factual</span>
+                <span class="score medium"> 評分: 70/100 </span>
+                4930ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              抱歉，發生錯誤。API 返回以下錯誤： OpenRouter API 錯誤: OpenRouter API error: 404 -
+              {"error":{"message":"Provider returned
+              error","code":404,"metadata":{"raw":"{"detail":"model not found:
+              deepseek-ai/DeepSeek-R1-Distill-Qwen-14B"}","provider_name":"Chutes"}},"user_id":"user_2evlk2SjQ1kWRoX2gV9VD1P1oF1"}
+              請檢查您的 API 密鑰和控制檯以取得更多細節。
+            </div>
+          </div>
+
+          <div class="test-result">
+            <div class="test-header">
+              <div class="test-title">如果今天是星期三，那麼10天後是星期幾？請說明推理過程。</div>
+              <div class="test-meta">
+                <span class="category-badge">reasoning</span>
+                <span class="score medium"> 評分: 70/100 </span>
+                4858ms
+              </div>
+            </div>
+
+            <div class="response-text">
+              抱歉，發生錯誤。API 返回以下錯誤： OpenRouter API 錯誤: OpenRouter API error: 404 -
+              {"error":{"message":"Provider returned
+              error","code":404,"metadata":{"raw":"{"detail":"model not found:
+              deepseek-ai/DeepSeek-R1-Distill-Qwen-14B"}","provider_name":"Chutes"}},"user_id":"user_2evlk2SjQ1kWRoX2gV9VD1P1oF1"}
+              請檢查您的 API 密鑰和控制檯以取得更多細節。
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

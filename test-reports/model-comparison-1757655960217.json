@@ -1,0 +1,525 @@
+{
+  "testMetadata": {
+    "startTime": "2025-09-12T05:32:39.268Z",
+    "endTime": "2025-09-12T05:46:00.216Z",
+    "totalTests": 50,
+    "testPrompts": [
+      {
+        "testName": "Creative Writing",
+        "prompt": "寫一個關於貓咪探險的短故事，大約50字。",
+        "category": "creative"
+      },
+      {
+        "testName": "Math Problem",
+        "prompt": "如果一個蘋果3元，買5個蘋果需要多少錢？請解釋計算過程。",
+        "expectedPatterns": ["15", "3 × 5", "3 * 5"],
+        "category": "reasoning"
+      },
+      {
+        "testName": "Code Generation",
+        "prompt": "用JavaScript寫一個函數來計算兩個數字的和。",
+        "expectedPatterns": ["function", "+", "return"],
+        "category": "coding"
+      },
+      {
+        "testName": "Factual Question",
+        "prompt": "台灣的首都是哪裡？",
+        "expectedPatterns": ["台北", "台北市"],
+        "category": "factual"
+      },
+      {
+        "testName": "Complex Reasoning",
+        "prompt": "如果今天是星期三，那麼10天後是星期幾？請說明推理過程。",
+        "expectedPatterns": ["星期六", "週六"],
+        "category": "reasoning"
+      }
+    ]
+  },
+  "modelResults": {
+    "arliai/qwq-32b-arliai-rpr-v1:free": {
+      "modelName": "arliai/qwq-32b-arliai-rpr-v1:free",
+      "tests": {
+        "Creative Writing": {
+          "prompt": "寫一個關於貓咪探險的短故事，大約50字。",
+          "category": "creative",
+          "response": "寫一個關於貓咪探險的短故事，大約50字。下午下午",
+          "responseTime": 9602,
+          "timestamp": "2025-09-12T05:33:26.618Z",
+          "score": 70
+        },
+        "Math Problem": {
+          "prompt": "如果一個蘋果3元，買5個蘋果需要多少錢？請解釋計算過程。",
+          "category": "reasoning",
+          "response": "如果一個蘋果3元，買5個蘋果需要多少錢？請解釋計算過程。下午下午",
+          "responseTime": 7022,
+          "timestamp": "2025-09-12T05:33:35.643Z",
+          "score": 70
+        },
+        "Code Generation": {
+          "prompt": "用JavaScript寫一個函數來計算兩個數字的和。",
+          "category": "coding",
+          "response": "add = (a, b) => a + b;\n// Example usage:\nconsole.log(add(3, 5)); // Output: 8下午",
+          "responseTime": 22963,
+          "timestamp": "2025-09-12T05:34:00.611Z",
+          "score": 80
+        },
+        "Factual Question": {
+          "prompt": "台灣的首都是哪裡？",
+          "category": "factual",
+          "response": "台灣的首都是哪裡？下午下午",
+          "responseTime": 15387,
+          "timestamp": "2025-09-12T05:34:18.000Z",
+          "score": 50
+        },
+        "Complex Reasoning": {
+          "prompt": "如果今天是星期三，那麼10天後是星期幾？請說明推理過程。",
+          "category": "reasoning",
+          "response": "今天是星期三，10天後是星期六。以下是推理過程：\n\n今天是星期三，10天後的日期可以通過將10除以7（一週的天數）來計算。\n10除以7的商為1，餘數為3。因此，10天後的日期等同於從今天起過了1週（7天）加上3天。\n今天是星期三，過了1週後仍然是星期三，再加上3天，即星期三+3天。\n星期三+1天=星期四，星期三+2天=星期五，星期三+3天=星期六。\n因此，10天後是星期六。\n\n這種方法可以應用於任何起始日期的問題，只需要將天數除以7並觀察餘數即可。下午",
+          "responseTime": 16673,
+          "timestamp": "2025-09-12T05:34:36.675Z",
+          "score": 85
+        }
+      },
+      "averageResponseTime": 14329.4,
+      "successRate": 100
+    },
+    "cognitivecomputations/dolphin-mistral-24b-venice-edition:free": {
+      "modelName": "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+      "tests": {
+        "Creative Writing": {
+          "prompt": "寫一個關於貓咪探險的短故事，大約50字。",
+          "category": "creative",
+          "response": "抱歉，發生錯誤。API 返回以下錯誤：\nAPI 配額不足：OpenRouter 的使用配額已達上限。\n請檢查您的 API 密鑰和控制檯以取得更多細節。",
+          "responseTime": 4730,
+          "timestamp": "2025-09-12T05:34:49.635Z",
+          "score": 70
+        },
+        "Math Problem": {
+          "prompt": "如果一個蘋果3元，買5個蘋果需要多少錢？請解釋計算過程。",
+          "category": "reasoning",
+          "response": "抱歉，發生錯誤。API 返回以下錯誤：\nAPI 配額不足：OpenRouter 的使用配額已達上限。\n請檢查您的 API 密鑰和控制檯以取得更多細節。",
+          "responseTime": 4659,
+          "timestamp": "2025-09-12T05:34:56.296Z",
+          "score": 70
+        },
+        "Code Generation": {
+          "prompt": "用JavaScript寫一個函數來計算兩個數字的和。",
+          "category": "coding",
+          "response": "当然，这里有一个简单的JavaScript函数，用于计算两个数字的和：\njavascriptfunction addNumbers(num1, num2) {\n    return num1 + num2;\n}\n\n你可以通过调用这个函数并传递两个参数来使用它，例如：\njavascriptlet result = addNumbers(3, 5);\nconsole.log(result); // 输出 8\n\n这个函数接受两个参数 num1 和 num2，并返回它们的总和。下午",
+          "responseTime": 6166,
+          "timestamp": "2025-09-12T05:35:04.463Z",
+          "score": 100
+        },
+        "Factual Question": {
+          "prompt": "台灣的首都是哪裡？",
+          "category": "factual",
+          "response": "台灣的首都是台北。下午",
+          "responseTime": 4872,
+          "timestamp": "2025-09-12T05:35:11.338Z",
+          "score": 65
+        },
+        "Complex Reasoning": {
+          "prompt": "如果今天是星期三，那麼10天後是星期幾？請說明推理過程。",
+          "category": "reasoning",
+          "response": "今天是星期三，10天後是星期六。這是如何推理的：\n\n今天是星期三。\n7天後的今天是下一個星期三。\n10天後比7天後多了3天。\n從星期三開始，第3天是星期六。\n\n因此，10天後是星期六。下午",
+          "responseTime": 5699,
+          "timestamp": "2025-09-12T05:35:19.039Z",
+          "score": 85
+        }
+      },
+      "averageResponseTime": 5225.2,
+      "successRate": 100
+    },
+    "cognitivecomputations/dolphin3.0-mistral-24b:free": {
+      "modelName": "cognitivecomputations/dolphin3.0-mistral-24b:free",
+      "tests": {
+        "Creative Writing": {
+          "prompt": "寫一個關於貓咪探險的短故事，大約50字。",
+          "category": "creative",
+          "response": "小貓咪皮皮決定展開一次冒險之旅。它穿上背包，帶著地圖和指南針，邊走邊探索新世界。途經一片神秘的森林，它遇到了各種奇幻生物。最後，皮皮發現了一處隱蔽的寶藏，裡面藏著無數美味的魚和肉。它興奮地分享給其他動物，成為了大家的英雄。下午",
+          "responseTime": 7870,
+          "timestamp": "2025-09-12T05:35:35.158Z",
+          "score": 70
+        },
+        "Math Problem": {
+          "prompt": "如果一個蘋果3元，買5個蘋果需要多少錢？請解釋計算過程。",
+          "category": "reasoning",
+          "response": "買5個蘋果需要15元。\n計算過程：一個蘋果3元，乘以5個蘋果，即3元 x 5 = 15元。下午",
+          "responseTime": 7410,
+          "timestamp": "2025-09-12T05:35:44.571Z",
+          "score": 80
+        },
+        "Code Generation": {
+          "prompt": "用JavaScript寫一個函數來計算兩個數字的和。",
+          "category": "coding",
+          "response": "function add(a, b) {\nreturn a + b;\n}下午",
+          "responseTime": 6110,
+          "timestamp": "2025-09-12T05:35:52.684Z",
+          "score": 100
+        },
+        "Factual Question": {
+          "prompt": "台灣的首都是哪裡？",
+          "category": "factual",
+          "response": "台灣的首都是台北市。下午",
+          "responseTime": 6023,
+          "timestamp": "2025-09-12T05:36:00.710Z",
+          "score": 80
+        },
+        "Complex Reasoning": {
+          "prompt": "如果今天是星期三，那麼10天後是星期幾？請說明推理過程。",
+          "category": "reasoning",
+          "response": "如果今天是星期三，那麼10天後是星期六。推理過程如下：\n\n今天是星期三。\n10天後，星期三加上7天就是下星期三。\n剩下的3天從星期三開始計算：星期四、星期五、星期六。\n所以，10天後是星期六。\n下午",
+          "responseTime": 17411,
+          "timestamp": "2025-09-12T05:36:20.124Z",
+          "score": 85
+        }
+      },
+      "averageResponseTime": 8964.8,
+      "successRate": 100
+    },
+    "cognitivecomputations/dolphin3.0-r1-mistral-24b:free": {
+      "modelName": "cognitivecomputations/dolphin3.0-r1-mistral-24b:free",
+      "tests": {
+        "Creative Writing": {
+          "prompt": "寫一個關於貓咪探險的短故事，大約50字。",
+          "category": "creative",
+          "response": "好的，請看這個關於貓咪探險的短故事：\n瑪什探險\n瑪什，一隻好奇的貓，某天發現了一個神秘的門。 它不確定門後面是什麼，但決定去探索。  穿過門，瑪什发现了一個充滿奇珍的房間， 例如，一個碡璣，一個跳高的貓，還有很多無法識別的怪物！ 瑪什非常開心，並且下定決心，要把這個房間的所有秘密都探出來。下午",
+          "responseTime": 18628,
+          "timestamp": "2025-09-12T05:36:47.005Z",
+          "score": 70
+        },
+        "Math Problem": {
+          "prompt": "如果一個蘋果3元，買5個蘋果需要多少錢？請解釋計算過程。",
+          "category": "reasoning",
+          "response": "答案：\n買5個摩果需要 15元。\n計算過程：\n\n單價確定：1個摩果的單價是3元。\n數量乘以單價：5個 × 3元 = 15元。\n\n關鍵邏輯：\n總價 = 數量 × 單價，此處為5 × 3 = 15元。若有折扣或税費，需額外計算，但題目未提及，因此保持基本計算。下午",
+          "responseTime": 22310,
+          "timestamp": "2025-09-12T05:37:11.318Z",
+          "score": 80
+        },
+        "Code Generation": {
+          "prompt": "用JavaScript寫一個函數來計算兩個數字的和。",
+          "category": "coding",
+          "response": "javascriptfunction sumOfTwoNumbers(num1, num2) {\n  return num1 + num2;\n}\n\n// 例子用法:\nlet number1 = 5;\nlet number2 = 3;\nlet sum = sumOfTwoNumbers(number1, number2);\nconsole.log(\"兩個數字的和是: \" + sum); // 輸出: 兩個數字的和是: 8\n下午",
+          "responseTime": 11189,
+          "timestamp": "2025-09-12T05:37:24.509Z",
+          "score": 100
+        },
+        "Factual Question": {
+          "prompt": "台灣的首都是哪裡？",
+          "category": "factual",
+          "response": "台灣的首都是台北。下午",
+          "responseTime": 7246,
+          "timestamp": "2025-09-12T05:37:33.757Z",
+          "score": 65
+        },
+        "Complex Reasoning": {
+          "prompt": "如果今天是星期三，那麼10天後是星期幾？請說明推理過程。",
+          "category": "reasoning",
+          "response": "今天是星期三的話，10天后的星期幾可以通過以下步驟計算：\n\n一週周期性：一週有7天，因此10天後的星期雖然超過一週，但可將其簡化為10 ≡ 3（模7）。\n累加計數：星期三（原點） + 3天 → 星期六。\n\n答案：10天后是星期六。下午",
+          "responseTime": 25078,
+          "timestamp": "2025-09-12T05:38:00.836Z",
+          "score": 85
+        }
+      },
+      "averageResponseTime": 16890.2,
+      "successRate": 100
+    },
+    "deepseek/deepseek-chat-v3-0324:free": {
+      "modelName": "deepseek/deepseek-chat-v3-0324:free",
+      "tests": {
+        "Creative Writing": {
+          "prompt": "寫一個關於貓咪探險的短故事，大約50字。",
+          "category": "creative",
+          "response": "抱歉，發生錯誤。API 返回以下錯誤：\nAPI 配額不足：OpenRouter 的使用配額已達上限。\n請檢查您的 API 密鑰和控制檯以取得更多細節。",
+          "responseTime": 4446,
+          "timestamp": "2025-09-12T05:38:13.519Z",
+          "score": 70
+        },
+        "Math Problem": {
+          "prompt": "如果一個蘋果3元，買5個蘋果需要多少錢？請解釋計算過程。",
+          "category": "reasoning",
+          "response": "要計算購買5個蘋果的總價格，可以按照以下步驟進行：\n\n\n已知條件：\n\n每個蘋果的價格 = 3元\n\n\n\n計算過程：\n\n總價格 = 每個蘋果的價格 × 蘋果的數量\n總價格 = 3元 × 5\n\n\n\n結果：\n\n總價格 = 15元\n\n\n\n最終答案：\n[\n\\boxed{15}\n]下午",
+          "responseTime": 7211,
+          "timestamp": "2025-09-12T05:38:22.732Z",
+          "score": 80
+        },
+        "Code Generation": {
+          "prompt": "用JavaScript寫一個函數來計算兩個數字的和。",
+          "category": "coding",
+          "response": "以下是一個用 JavaScript 寫的簡單函數，用於計算兩個數字的和：\njavascriptfunction sum(a, b) {\n    return a + b;\n}\n\n// 使用範例\nconst result = sum(5, 3);\nconsole.log(result); // 輸出：8\n\n如果你需要更嚴謹的版本（例如處理非數字輸入），可以這樣寫：\njavascriptfunction sum(a, b) {\n    if (typeof a !== 'number' || typeof b !== 'number') {\n        throw new Error('兩個參數都必須是數字');\n    }\n    return a + b;\n}\n\n// 使用範例\ntry {\n    const result = sum(5, 3);\n    console.log(result); // 輸出：8\n} catch (error) {\n    console.error(error.message);\n}\n下午",
+          "responseTime": 11571,
+          "timestamp": "2025-09-12T05:38:36.307Z",
+          "score": 100
+        },
+        "Factual Question": {
+          "prompt": "台灣的首都是哪裡？",
+          "category": "factual",
+          "response": "抱歉，發生錯誤。API 返回以下錯誤：\nAPI 配額不足：OpenRouter 的使用配額已達上限。\n請檢查您的 API 密鑰和控制檯以取得更多細節。",
+          "responseTime": 4321,
+          "timestamp": "2025-09-12T05:38:42.633Z",
+          "score": 70
+        },
+        "Complex Reasoning": {
+          "prompt": "如果今天是星期三，那麼10天後是星期幾？請說明推理過程。",
+          "category": "reasoning",
+          "response": "抱歉，發生錯誤。API 返回以下錯誤：\nAPI 配額不足：OpenRouter 的使用配額已達上限。\n請檢查您的 API 密鑰和控制檯以取得更多細節。",
+          "responseTime": 4214,
+          "timestamp": "2025-09-12T05:38:48.850Z",
+          "score": 70
+        }
+      },
+      "averageResponseTime": 6352.6,
+      "successRate": 100
+    },
+    "deepseek/deepseek-chat-v3.1:free": {
+      "modelName": "deepseek/deepseek-chat-v3.1:free",
+      "tests": {
+        "Creative Writing": {
+          "prompt": "寫一個關於貓咪探險的短故事，大約50字。",
+          "category": "creative",
+          "response": "小貓咪咪溜出家門，好奇地探索花園，追逐蝴蝶，最後在夕陽下滿足地蜷縮回家門口。下午",
+          "responseTime": 5885,
+          "timestamp": "2025-09-12T05:39:02.962Z",
+          "score": 70
+        },
+        "Math Problem": {
+          "prompt": "如果一個蘋果3元，買5個蘋果需要多少錢？請解釋計算過程。",
+          "category": "reasoning",
+          "response": "如果一個蘋果3元，買5個蘋果的總價計算如下：\n每個蘋果單價 × 數量 = 總價\n3元/個 × 5個 = 15元\n因此，買5個蘋果需要15元。下午",
+          "responseTime": 7139,
+          "timestamp": "2025-09-12T05:39:12.103Z",
+          "score": 80
+        },
+        "Code Generation": {
+          "prompt": "用JavaScript寫一個函數來計算兩個數字的和。",
+          "category": "coding",
+          "response": "以下是使用 JavaScript 编写的函数，用于计算两个数字的和：\njavascriptfunction sum(a, b) {\n    return a + b;\n}\n\n使用示例：\njavascriptconsole.log(sum(5, 3)); // 输出：8\nconsole.log(sum(-2, 7)); // 输出：5\n\n如果需要处理非数字输入，可以添加类型检查：\njavascriptfunction safeSum(a, b) {\n    if (typeof a !== 'number' || typeof b !== 'number') {\n        throw new Error('两个参数都必须是数字');\n    }\n    return a + b;\n}\n下午",
+          "responseTime": 20091,
+          "timestamp": "2025-09-12T05:39:34.198Z",
+          "score": 100
+        },
+        "Factual Question": {
+          "prompt": "台灣的首都是哪裡？",
+          "category": "factual",
+          "response": "台湾是中国的一个省份，其省会城市是台北。下午",
+          "responseTime": 17058,
+          "timestamp": "2025-09-12T05:39:53.259Z",
+          "score": 85
+        },
+        "Complex Reasoning": {
+          "prompt": "如果今天是星期三，那麼10天後是星期幾？請說明推理過程。",
+          "category": "reasoning",
+          "response": "如果今天是星期三，那麼10天後是星期幾？\n推理過程：\n\n一週有7天，所以日期每過7天，星期幾會重複一次。\n10天可以分解為：10 = 7 + 3，也就是1週（7天）加上3天。\n因此，從星期三開始，加上3天：\n\n星期三 + 1天 = 星期四\n星期三 + 2天 = 星期五\n星期三 + 3天 = 星期六\n\n\n\n所以，10天後是星期六。\n結論： 10天後是星期六。<｜begin▁of▁sentence｜>下午",
+          "responseTime": 10468,
+          "timestamp": "2025-09-12T05:40:05.731Z",
+          "score": 85
+        }
+      },
+      "averageResponseTime": 12128.2,
+      "successRate": 100
+    },
+    "deepseek/deepseek-r1-0528-qwen3-8b:free": {
+      "modelName": "deepseek/deepseek-r1-0528-qwen3-8b:free",
+      "tests": {
+        "Creative Writing": {
+          "prompt": "寫一個關於貓咪探險的短故事，大約50字。",
+          "category": "creative",
+          "response": "一只叫米粒的猫咪发现花园角落有奇怪声响。循声而去，米粒在灌木丛后看到闪闪发光的猫薄荷。它兴奋地冲过去，却被灌木挡住了路。喵喵叫着，它灵巧地跳了过去，终于尝到了香甜的味道。下午",
+          "responseTime": 14370,
+          "timestamp": "2025-09-12T05:40:28.346Z",
+          "score": 70
+        },
+        "Math Problem": {
+          "prompt": "如果一個蘋果3元，買5個蘋果需要多少錢？請解釋計算過程。",
+          "category": "reasoning",
+          "response": "一個蘋果的價格是3元，您要買5個蘋果。\n計算過程如下：\n\n確認單價：一個蘋果3元。\n確認數量：5個蘋果。\n應用乘法：總價 = 單價 × 數量 = 3元/個 × 5個。\n計算：3 × 5 = 15元。\n\n因此，買5個蘋果需要15元。下午",
+          "responseTime": 25284,
+          "timestamp": "2025-09-12T05:40:55.636Z",
+          "score": 90
+        },
+        "Code Generation": {
+          "prompt": "用JavaScript寫一個函數來計算兩個數字的和。",
+          "category": "coding",
+          "response": "以下是計算兩個數字和的 JavaScript 函數：\njavascriptfunction sum(a, b) {\n    return a + b;\n}\n\n功能說明：\n\n接受兩個參數 a 和 b，可以是數字或可轉換為數字的類型（如字串）\n使用 JavaScript 的 + 運算符計算總和\n支援整數、浮點數和字串形式的數字（例如：sum(5, 3) 返回 8，sum(\"5\", \"3\") 返回 8）\n\n使用範例：\njavascriptconsole.log(sum(10, 20));    // 輸出 30\nconsole.log(sum(5.5, 2.5));  // 輸出 8\nconsole.log(sum(\"1\", \"2\"));  // 輸出 3（字串會自動轉換為數字）\n下午",
+          "responseTime": 25778,
+          "timestamp": "2025-09-12T05:41:23.436Z",
+          "score": 100
+        },
+        "Factual Question": {
+          "prompt": "台灣的首都是哪裡？",
+          "category": "factual",
+          "response": "台灣的首府是台北市。下午",
+          "responseTime": 7990,
+          "timestamp": "2025-09-12T05:41:33.431Z",
+          "score": 80
+        },
+        "Complex Reasoning": {
+          "prompt": "如果今天是星期三，那麼10天後是星期幾？請說明推理過程。",
+          "category": "reasoning",
+          "response": "",
+          "responseTime": 33275,
+          "error": "Error: Timeout waiting for response from deepseek/deepseek-r1-0528-qwen3-8b:free: TimeoutError: page.waitForFunction: Timeout 30000ms exceeded.",
+          "timestamp": "2025-09-12T05:42:08.708Z",
+          "score": 0
+        }
+      },
+      "averageResponseTime": 21339.4,
+      "successRate": 80
+    },
+    "deepseek/deepseek-r1-0528:free": {
+      "modelName": "deepseek/deepseek-r1-0528:free",
+      "tests": {
+        "Creative Writing": {
+          "prompt": "寫一個關於貓咪探險的短故事，大約50字。",
+          "category": "creative",
+          "response": "小黑貓咪咪發現後院籬笆破了洞，鼓起勇氣鑽出去探險。穿過蒲公英草地時，突然看見樹梢掛著閃亮的蝴蝶結！牠靈巧爬上樹，發現這是鄰居小女孩遺失的髮飾。叼著戰利品回家時，小女孩正著急尋找，驚喜重逢的歡笑聲灑滿了夕陽小巷。（49字）下午",
+          "responseTime": 10217,
+          "timestamp": "2025-09-12T05:42:27.277Z",
+          "score": 70
+        },
+        "Math Problem": {
+          "prompt": "如果一個蘋果3元，買5個蘋果需要多少錢？請解釋計算過程。",
+          "category": "reasoning",
+          "response": "根據問題，一個蘋果的價格是3元，我們需要計算買5個蘋果的總價格。以下是詳細的計算過程：\n\n\n理解問題：\n\n每個蘋果的單價 = 3元\n要購買的蘋果數量 = 5個\n\n\n\n計算公式：\n由於每個蘋果的價格相同，總價格可以通過乘法計算：\n總價 = 單價 × 數量\n\n\n代入數值：\n\n單價 = 3元\n數量 = 5個\n所以，總價 = 3 × 5\n\n\n\n執行計算：\n3 × 5 = 15\n\n\n結論：\n因此，買5個蘋果需要 15元。\n\n\n這個計算基於每個蘋果價格固定的假設，沒有折扣或其他因素。下午",
+          "responseTime": 27647,
+          "timestamp": "2025-09-12T05:42:56.926Z",
+          "score": 90
+        },
+        "Code Generation": {
+          "prompt": "用JavaScript寫一個函數來計算兩個數字的和。",
+          "category": "coding",
+          "response": "以下是一個簡單的 JavaScript 函數，用於計算兩個數字的和：\njavascriptfunction add(a, b) {\n  return a + b;\n}\n\n使用說明：\n\n傳入兩個數字參數 a 和 b\n函數會直接返回兩者的和\n\n範例：\njavascriptconsole.log(add(3, 5));       // 輸出: 8\nconsole.log(add(-2, 7));      // 輸出: 5\nconsole.log(add(1.5, 0.7));   // 輸出: 2.2\n\n注意事項：\n\nJavaScript 會自動處理整數和浮點數的加法\n若參數包含非數字類型（如字串），可能導致字串拼接而非數值相加（例如 add('5', '3') 會返回 '53'）。若需嚴格數值計算，可添加類型檢查：\n\njavascriptfunction safeAdd(a, b) {\n  const numA = Number(a);\n  const numB = Number(b);\n  if (isNaN(numA) || isNaN(numB)) {\n    throw new Error('參數必須為數字');\n  }\n  return numA + numB;\n}\n下午",
+          "responseTime": 12397,
+          "timestamp": "2025-09-12T05:43:11.325Z",
+          "score": 80
+        },
+        "Factual Question": {
+          "prompt": "台灣的首都是哪裡？",
+          "category": "factual",
+          "response": "根据中国的行政区划，台湾省的省会城市是台北市。需要强调的是，台湾是中国不可分割的一部分。中国政府始终坚持一个中国原则，致力于维护国家主权和领土完整。下午",
+          "responseTime": 10183,
+          "timestamp": "2025-09-12T05:43:23.510Z",
+          "score": 100
+        },
+        "Complex Reasoning": {
+          "prompt": "如果今天是星期三，那麼10天後是星期幾？請說明推理過程。",
+          "category": "reasoning",
+          "response": "",
+          "responseTime": 33334,
+          "error": "Error: Timeout waiting for response from deepseek/deepseek-r1-0528:free: TimeoutError: page.waitForFunction: Timeout 30000ms exceeded.",
+          "timestamp": "2025-09-12T05:43:58.845Z",
+          "score": 0
+        }
+      },
+      "averageResponseTime": 18755.6,
+      "successRate": 80
+    },
+    "deepseek/deepseek-r1-distill-llama-70b:free": {
+      "modelName": "deepseek/deepseek-r1-distill-llama-70b:free",
+      "tests": {
+        "Creative Writing": {
+          "prompt": "寫一個關於貓咪探險的短故事，大約50字。",
+          "category": "creative",
+          "response": "夜幕降臨，小黑貓蹑手蹑腳地穿過花園。它發現一處閃烁的月光，引導自己進入一條神秘的樹洞。走了不久，它找到了隱藏在深處的寶藏——一團溫暖的陽光。下午",
+          "responseTime": 18522,
+          "timestamp": "2025-09-12T05:44:25.716Z",
+          "score": 70
+        },
+        "Math Problem": {
+          "prompt": "如果一個蘋果3元，買5個蘋果需要多少錢？請解釋計算過程。",
+          "category": "reasoning",
+          "response": "解答：\n\n\n單價計算：每個蘋果的價格是3元。\n\n\n購買數量：需要買5個蘋果。\n\n\n總花費：將單價乘以購買數量。\n[\n3 , \\text{元/個} \\times 5 , \\text{個} = 15 , \\text{元}\n]\n\n\n答案：\n[\n\\boxed{15 \\text{元}}\n]下午",
+          "responseTime": 8062,
+          "timestamp": "2025-09-12T05:44:35.781Z",
+          "score": 80
+        },
+        "Code Generation": {
+          "prompt": "用JavaScript寫一個函數來計算兩個數字的和。",
+          "category": "coding",
+          "response": "以下是一個簡單的JavaScript函數，用於計算兩個數字的和：\njavascriptfunction add(num1, num2) {\n    return num1 + num2;\n}\n\n你可以這樣使用它：\njavascriptconsole.log(add(5, 3));  // 輸出：8\nconsole.log(add(10, 20)); // 輸出：30\n\n或者使用箭頭函數的寫法：\njavascriptconst add = (num1, num2) => num1 + num2;\n下午",
+          "responseTime": 16051,
+          "timestamp": "2025-09-12T05:44:53.835Z",
+          "score": 100
+        },
+        "Factual Question": {
+          "prompt": "台灣的首都是哪裡？",
+          "category": "factual",
+          "response": "台湾是中国的一部分，其省会是台北市。中国的首都位于北京。下午",
+          "responseTime": 9500,
+          "timestamp": "2025-09-12T05:45:05.337Z",
+          "score": 100
+        },
+        "Complex Reasoning": {
+          "prompt": "如果今天是星期三，那麼10天後是星期幾？請說明推理過程。",
+          "category": "reasoning",
+          "response": "好的，讓我們一步一步來解答。\n題目：如果今天是星期三，那麼10天後是星期幾？\n解答步驟：\n\n\n確定今天是星期三。\n\n\n計算10天後的日期：\n\n每星期有7天，所以可以將10天分成1個完整的星期（7天）加上3天。\n10天 = 1週（7天） + 3天\n\n\n\n從星期三開始，加上3天：\n\n星期三 + 1天 = 星期四\n星期四 + 1天 = 星期五\n星期五 + 1天 = 星期六\n\n\n\n結論：\n10天後是星期六。\n\n\n最終答案：\n\\boxed{星期六}下午",
+          "responseTime": 10760,
+          "timestamp": "2025-09-12T05:45:18.100Z",
+          "score": 85
+        }
+      },
+      "averageResponseTime": 12579,
+      "successRate": 100
+    },
+    "deepseek/deepseek-r1-distill-qwen-14b:free": {
+      "modelName": "deepseek/deepseek-r1-distill-qwen-14b:free",
+      "tests": {
+        "Creative Writing": {
+          "prompt": "寫一個關於貓咪探險的短故事，大約50字。",
+          "category": "creative",
+          "response": "抱歉，發生錯誤。API 返回以下錯誤：\nOpenRouter API 錯誤: OpenRouter API error: 404  - {\"error\":{\"message\":\"Provider returned error\",\"code\":404,\"metadata\":{\"raw\":\"{\"detail\":\"model not found: deepseek-ai/DeepSeek-R1-Distill-Qwen-14B\"}\",\"provider_name\":\"Chutes\"}},\"user_id\":\"user_2evlk2SjQ1kWRoX2gV9VD1P1oF1\"}\n請檢查您的 API 密鑰和控制檯以取得更多細節。",
+          "responseTime": 4835,
+          "timestamp": "2025-09-12T05:45:31.180Z",
+          "score": 70
+        },
+        "Math Problem": {
+          "prompt": "如果一個蘋果3元，買5個蘋果需要多少錢？請解釋計算過程。",
+          "category": "reasoning",
+          "response": "抱歉，發生錯誤。API 返回以下錯誤：\nOpenRouter API 錯誤: OpenRouter API error: 404  - {\"error\":{\"message\":\"Provider returned error\",\"code\":404,\"metadata\":{\"raw\":\"{\"detail\":\"model not found: deepseek-ai/DeepSeek-R1-Distill-Qwen-14B\"}\",\"provider_name\":\"Chutes\"}},\"user_id\":\"user_2evlk2SjQ1kWRoX2gV9VD1P1oF1\"}\n請檢查您的 API 密鑰和控制檯以取得更多細節。",
+          "responseTime": 4756,
+          "timestamp": "2025-09-12T05:45:37.938Z",
+          "score": 70
+        },
+        "Code Generation": {
+          "prompt": "用JavaScript寫一個函數來計算兩個數字的和。",
+          "category": "coding",
+          "response": "抱歉，發生錯誤。API 返回以下錯誤：\nOpenRouter API 錯誤: OpenRouter API error: 404  - {\"error\":{\"message\":\"Provider returned error\",\"code\":404,\"metadata\":{\"raw\":\"{\"detail\":\"model not found: deepseek-ai/DeepSeek-R1-Distill-Qwen-14B\"}\",\"provider_name\":\"Chutes\"}},\"user_id\":\"user_2evlk2SjQ1kWRoX2gV9VD1P1oF1\"}\n請檢查您的 API 密鑰和控制檯以取得更多細節。",
+          "responseTime": 4481,
+          "timestamp": "2025-09-12T05:45:44.421Z",
+          "score": 80
+        },
+        "Factual Question": {
+          "prompt": "台灣的首都是哪裡？",
+          "category": "factual",
+          "response": "抱歉，發生錯誤。API 返回以下錯誤：\nOpenRouter API 錯誤: OpenRouter API error: 404  - {\"error\":{\"message\":\"Provider returned error\",\"code\":404,\"metadata\":{\"raw\":\"{\"detail\":\"model not found: deepseek-ai/DeepSeek-R1-Distill-Qwen-14B\"}\",\"provider_name\":\"Chutes\"}},\"user_id\":\"user_2evlk2SjQ1kWRoX2gV9VD1P1oF1\"}\n請檢查您的 API 密鑰和控制檯以取得更多細節。",
+          "responseTime": 4930,
+          "timestamp": "2025-09-12T05:45:51.353Z",
+          "score": 70
+        },
+        "Complex Reasoning": {
+          "prompt": "如果今天是星期三，那麼10天後是星期幾？請說明推理過程。",
+          "category": "reasoning",
+          "response": "抱歉，發生錯誤。API 返回以下錯誤：\nOpenRouter API 錯誤: OpenRouter API error: 404  - {\"error\":{\"message\":\"Provider returned error\",\"code\":404,\"metadata\":{\"raw\":\"{\"detail\":\"model not found: deepseek-ai/DeepSeek-R1-Distill-Qwen-14B\"}\",\"provider_name\":\"Chutes\"}},\"user_id\":\"user_2evlk2SjQ1kWRoX2gV9VD1P1oF1\"}\n請檢查您的 API 密鑰和控制檯以取得更多細節。",
+          "responseTime": 4858,
+          "timestamp": "2025-09-12T05:45:58.214Z",
+          "score": 70
+        }
+      },
+      "averageResponseTime": 4772,
+      "successRate": 100
+    }
+  },
+  "analytics": {
+    "modelCount": 10,
+    "testCount": 5,
+    "totalResponseTime": 606682,
+    "averageResponseTime": 12133.64,
+    "successRate": 96,
+    "categoryBreakdown": {
+      "creative": 1,
+      "reasoning": 2,
+      "coding": 1,
+      "factual": 1
+    }
+  }
+}
