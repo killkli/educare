@@ -43,7 +43,6 @@ const useSessionManager = ({ session, onSessionUpdate }: SessionManagerProps) =>
           enableReranking: true,
           minSimilarity: 0.3,
           // Cache-specific settings
-          similarityThreshold: 0.9, // High threshold for cache hits
           enableCache: true,
         },
       );

@@ -2,6 +2,7 @@ import { RagChunk } from '../types';
 import { generateEmbedding } from './embeddingService';
 import { queryCacheService } from './queryCacheService';
 import { ragQueryService, RagQueryOptions } from './ragQueryService';
+import { cacheConfigService } from './cacheConfigService';
 
 /**
  * Performance metrics for monitoring cache effectiveness
@@ -65,7 +66,11 @@ export class RagCacheManager {
     const startTime = Date.now();
     this.metrics.totalQueries++;
 
-    const { similarityThreshold = 0.9, enableCache = true, ...ragOptions } = options;
+    const {
+      similarityThreshold = cacheConfigService.getSimilarityThreshold(),
+      enableCache = true,
+      ...ragOptions
+    } = options;
 
     try {
       if (!enableCache) {
@@ -315,29 +320,27 @@ export class RagCacheManager {
   }
 
   /**
-   * Configure cache settings
+   * Configure cache settings (deprecated - use cacheConfigService directly)
+   * @deprecated Use cacheConfigService.updateConfig() instead
    */
   configureCacheSettings(settings: {
     similarityThreshold?: number;
     autoMaintenance?: boolean;
     maintenanceInterval?: number;
   }): void {
-    const { similarityThreshold, autoMaintenance, maintenanceInterval } = settings;
+    console.warn(
+      'ragCacheManagerV2.configureCacheSettings is deprecated. Use cacheConfigService.updateConfig() instead.',
+    );
 
-    if (similarityThreshold !== undefined) {
-      queryCacheService.setSimilarityThreshold(similarityThreshold);
-      console.log(`🎛️ Cache similarity threshold set to ${similarityThreshold}`);
+    if (settings.similarityThreshold !== undefined) {
+      cacheConfigService.setSimilarityThreshold(settings.similarityThreshold);
     }
 
-    if (autoMaintenance && maintenanceInterval) {
-      // Set up automatic cache maintenance
-      setInterval(() => {
-        this.performMaintenance().catch(error => {
-          console.error('Auto maintenance failed:', error);
-        });
-      }, maintenanceInterval);
-
-      console.log(`⏰ Auto maintenance enabled: every ${maintenanceInterval}ms`);
+    if (settings.autoMaintenance !== undefined || settings.maintenanceInterval !== undefined) {
+      cacheConfigService.updateConfig({
+        autoMaintenance: settings.autoMaintenance,
+        maintenanceInterval: settings.maintenanceInterval,
+      });
     }
   }
 

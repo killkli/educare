@@ -13,13 +13,11 @@ class MockIDBRequest {
     this.result = result;
     this.error = error;
     // Simulate async behavior
-    setTimeout(() => {
-      if (error) {
-        this.onerror?.({ target: this });
-      } else {
-        this.onsuccess?.({ target: this });
-      }
-    }, 0);
+    if (error) {
+      this.onerror?.({ target: this });
+    } else {
+      this.onsuccess?.({ target: this });
+    }
   }
 }
 
@@ -92,7 +90,7 @@ class MockIDBIndex {
           },
           continue: () => {
             index++;
-            setTimeout(advanceCursor, 0);
+            advanceCursor();
           },
         };
       } else {
@@ -101,7 +99,7 @@ class MockIDBIndex {
       request.onsuccess?.({ target: request });
     };
 
-    setTimeout(advanceCursor, 0);
+    advanceCursor();
     return request;
   }
 }
@@ -133,17 +131,15 @@ const mockIndexedDB = {
   open: (_name: string, _version: number) => {
     const request = new MockIDBRequest();
 
-    setTimeout(() => {
-      const db = new MockIDBDatabase();
-      // Simulate onupgradeneeded event for database initialization
-      const store = db.createObjectStore('queryCache', { keyPath: 'id' });
-      store.createIndex('assistantId', 'assistantId', { unique: false });
-      store.createIndex('timestamp', 'timestamp', { unique: false });
-      store.createIndex('lastAccessTime', 'lastAccessTime', { unique: false });
+    const db = new MockIDBDatabase();
+    // Simulate onupgradeneeded event for database initialization
+    const store = db.createObjectStore('queryCache', { keyPath: 'id' });
+    store.createIndex('assistantId', 'assistantId', { unique: false });
+    store.createIndex('timestamp', 'timestamp', { unique: false });
+    store.createIndex('lastAccessTime', 'lastAccessTime', { unique: false });
 
-      request.result = db;
-      request.onsuccess?.({ target: request });
-    }, 0);
+    request.result = db;
+    request.onsuccess?.({ target: request });
 
     return request;
   },
@@ -183,8 +179,9 @@ describe('QueryCacheService', () => {
   const mockSimilarEmbedding = [...mockQueryEmbedding]; // Identical for perfect similarity
   const mockDifferentEmbedding = new Array(128).fill(0).map(() => Math.random());
 
-  beforeEach(() => {
+  beforeEach(async () => {
     cacheService = new QueryCacheService();
+    await cacheService.init();
   });
 
   afterEach(() => {

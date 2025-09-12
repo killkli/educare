@@ -4,6 +4,7 @@
 
 import { QueryCacheEntry, RagChunk } from '../types';
 import { cosineSimilarity } from './embeddingService';
+import { cacheConfigService } from './cacheConfigService';
 
 /**
  * IndexedDB based vector cache for query results
@@ -249,11 +250,20 @@ class QueryCacheDB {
  * High-level cache service for managing query cache operations
  */
 export class QueryCacheService {
-  private cacheDB: QueryCacheDB;
-  private similarityThreshold = 0.75;
+  private cacheDB: QueryCacheDB | null = null;
+  private initialized = false;
 
   constructor() {
+    // Defer DB initialization to init()
+  }
+
+  public async init(): Promise<void> {
+    if (this.initialized) {
+      return;
+    }
     this.cacheDB = new QueryCacheDB();
+    await this.cacheDB.initDB();
+    this.initialized = true;
   }
 
   /**
@@ -262,10 +272,13 @@ export class QueryCacheService {
   async searchSimilarQuery(
     queryEmbedding: number[],
     assistantId: string,
-    threshold: number = this.similarityThreshold,
+    threshold: number = cacheConfigService.getSimilarityThreshold(),
   ): Promise<QueryCacheEntry | null> {
+    if (!this.initialized || !this.cacheDB) {
+      await this.init();
+    }
     try {
-      const entries = await this.cacheDB.getEntriesByAssistant(assistantId);
+      const entries = await this.cacheDB!.getEntriesByAssistant(assistantId);
 
       let bestMatch: QueryCacheEntry | null = null;
       let bestSimilarity = 0;
@@ -303,6 +316,9 @@ export class QueryCacheService {
     rerankedResults: RagChunk[],
     assistantId: string,
   ): Promise<void> {
+    if (!this.initialized || !this.cacheDB) {
+      await this.init();
+    }
     try {
       const entry: QueryCacheEntry = {
         id: crypto.randomUUID(),
@@ -315,10 +331,10 @@ export class QueryCacheService {
         lastAccessTime: Date.now(),
       };
 
-      await this.cacheDB.storeEntry(entry);
+      await this.cacheDB!.storeEntry(entry);
 
       // Enforce cache size limit
-      await this.cacheDB.enforceCacheLimit(assistantId);
+      await this.cacheDB!.enforceCacheLimit(assistantId);
 
       console.log(`💾 Cached query result for assistant ${assistantId}: "${queryText}"`);
     } catch (error) {
@@ -330,11 +346,14 @@ export class QueryCacheService {
    * Update hit statistics for a cache entry
    */
   private async updateHitStatistics(entryId: string): Promise<void> {
+    if (!this.initialized || !this.cacheDB) {
+      await this.init();
+    }
     try {
       // We need to get the current entry to increment hit count
-      const db = await this.cacheDB.initDB();
-      const transaction = db.transaction([this.cacheDB.storeName], 'readwrite');
-      const store = transaction.objectStore(this.cacheDB.storeName);
+      const db = await this.cacheDB!.initDB();
+      const transaction = db.transaction([this.cacheDB!.storeName], 'readwrite');
+      const store = transaction.objectStore(this.cacheDB!.storeName);
 
       return new Promise((resolve, reject) => {
         const getRequest = store.get(entryId);
@@ -362,30 +381,48 @@ export class QueryCacheService {
    * Clear cache for a specific assistant
    */
   async clearAssistantCache(assistantId: string): Promise<number> {
-    return await this.cacheDB.clearAssistantCache(assistantId);
+    if (!this.initialized || !this.cacheDB) {
+      await this.init();
+    }
+    return await this.cacheDB!.clearAssistantCache(assistantId);
   }
 
   /**
    * Clean up expired cache entries
    */
   async cleanupExpiredCache(): Promise<number> {
-    return await this.cacheDB.cleanupExpiredEntries();
+    if (!this.initialized || !this.cacheDB) {
+      await this.init();
+    }
+    return await this.cacheDB!.cleanupExpiredEntries();
   }
 
   /**
    * Get cache statistics
    */
-  async getCacheStats(): Promise<ReturnType<typeof this.cacheDB.getCacheStats>> {
-    return await this.cacheDB.getCacheStats();
+  async getCacheStats(): Promise<{
+    totalEntries: number;
+    entriesByAssistant: Record<string, number>;
+    oldestEntry: number | null;
+    newestEntry: number | null;
+  }> {
+    if (!this.initialized || !this.cacheDB) {
+      await this.init();
+    }
+    return await this.cacheDB!.getCacheStats();
   }
 
   /**
    * Set similarity threshold for cache hits
+   * @deprecated Use cacheConfigService.setSimilarityThreshold() instead
    */
   setSimilarityThreshold(threshold: number) {
-    this.similarityThreshold = Math.max(0, Math.min(1, threshold));
+    console.warn(
+      'queryCacheService.setSimilarityThreshold is deprecated. Use cacheConfigService.setSimilarityThreshold() instead.',
+    );
+    cacheConfigService.setSimilarityThreshold(threshold);
   }
 }
 
-// Singleton instance
+// Singleton instance, but init must be called explicitly
 export const queryCacheService = new QueryCacheService();

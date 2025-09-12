@@ -74,7 +74,6 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
           enableReranking,
           minSimilarity,
           // Cache-specific settings
-          similarityThreshold: 0.9, // High threshold for cache hits
           enableCache: true,
         },
       );
