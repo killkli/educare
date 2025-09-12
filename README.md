@@ -1,123 +1,139 @@
 # EduCare - Educational AI Assistant
 
-**為博幼基金會設計的客製化教學聊天助理工具**
+**Customized Educational Chat Assistant for Boyo Social Welfare Foundation**
 
-EduCare 是一個專為偏鄉弱勢兒童教育打造的 AI 教學助理平台。基於博幼基金會「博學幼教，關懷弱勢」的理念，提供個人化學習支援和課後輔導功能。
+EduCare is an AI-powered educational assistant platform designed specifically for underserved rural children. Built on Boyo Social Welfare Foundation's mission of "博學幼教，關懷弱勢" (Enlightening Education, Caring for the Vulnerable), it provides personalized learning support, after-school tutoring, and advanced Retrieval-Augmented Generation (RAG) capabilities with support for PDF, DOCX, and MD educational materials. Powered by Google Gemini API, integrated with Turso DB for cloud persistence and QR code sharing.
 
-## 🎯 專案使命
+## 🎯 Project Mission
 
-博幼基金會自 2002 年起致力於偏鄉弱勢兒童教育，透過課後輔導和教育資源分享，縮短城鄉教育差距。EduCare 承襲這份使命，運用 AI 技術提供：
+Since 2002, Boyo Social Welfare Foundation has been dedicated to education for disadvantaged rural children, bridging urban-rural education gaps through after-school tutoring and resource sharing. EduCare leverages AI to deliver:
 
-- 📚 **個人化學習輔導** - 根據學生需求調整教學內容
-- 🤖 **24/7 學習陪伴** - 隨時可用的教學助理
-- 📄 **多元教材支援** - 支援 PDF、Word、Markdown 教材處理
-- 🌐 **跨裝置同步** - 雲端資料儲存，支援多裝置存取
-- 🔗 **教師協作** - 教師可分享和管理教學助理
+- 📚 **Personalized Learning Support** - Tailors content to student needs, using RAG to retrieve relevant information from uploaded materials
+- 🤖 **24/7 Learning Companion** - Always-available tutoring assistant supporting multiple AI providers (Gemini, Groq, OpenAI, etc.)
+- 📄 **Multi-Format Material Support** - Handles PDF, DOCX, MD files with intelligent chunking, vector embeddings, and similarity search
+- 🌐 **Cross-Device Sync** - Turso DB cloud storage for multi-device access and data synchronization
+- 🔗 **Teacher Collaboration** - Teachers can share and manage assistants with secure links and QR codes
 
-## 🚀 快速開始
+## 🚀 Quick Start
 
-**系統需求:** Node.js 和 pnpm
+**Requirements:** Node.js 18+ and pnpm
 
-1. **安裝相依套件:**
+1. **Install Dependencies:**
 
    ```bash
    pnpm install
    ```
 
-2. **設定環境變數:**
-   複製 `.env.local` 並設定你的 AI API 金鑰（支援多種 AI 服務）
+2. **Set Environment Variables:**
+   Copy `.env.local` and configure AI API keys (e.g., GEMINI_API_KEY) and Turso DB credentials (TURSO_DATABASE_URL, TURSO_AUTH_TOKEN).
 
-3. **啟動開發伺服器:**
+3. **Initialize Database (Optional):**
+
+   ```bash
+   pnpm run init-turso
+   ```
+
+4. **Start Development Server:**
    ```bash
    pnpm run dev
    ```
+   The app will run at http://localhost:5173.
 
-## ✨ 核心功能
+## ✨ Core Features
 
-### 🎓 教學功能
+### 🎓 Educational Features
 
-- **智慧問答** - 回答學生課業問題
-- **個人化輔導** - 根據學習進度調整內容
-- **多媒體支援** - 處理文字、圖片、文件教材
-- **學習追蹤** - 記錄學習歷程和進度
+- **Intelligent Q&A with RAG**: Upload teaching materials; AI retrieves and provides contextual responses (using HuggingFace embeddings and Turso vector search)
+- **Personalized Tutoring**: Custom system prompts to adjust teaching style; automatic chat history compaction (limited to 10 rounds)
+- **Streaming Responses**: Real-time AI replies with token counting and thinking indicators
+- **Learning Tracking**: Records chat sessions and progress, with cross-device sync
 
-### 👩‍🏫 教師工具
+### 👩‍🏫 Teacher Tools
 
-- **助理管理** - 建立和客製化教學助理
-- **教材整合** - 上傳和管理教學資源
-- **分享協作** - 與其他教師分享優質助理
-- **使用分析** - 了解學生學習狀況
+- **Assistant Management**: Create/edit assistants (name, description, system prompt, RAG chunks) via AssistantEditor
+- **Material Integration**: RAGFileUpload processes files, stores in Turso DB
+- **Sharing Collaboration**: ShareModal generates QR codes and links, supporting public/private modes and new conversation buttons
+- **Usage Analytics**: Monitors token usage and session metadata
 
-## 🏗️ 技術架構
+### 🛡️ Security & Performance
 
-- **前端框架**: React 19.1.1 + TypeScript + Vite
-- **資料庫**: Turso DB (雲端 SQLite)
-- **AI 整合**: 模組化 AI Router 設計，支援多種 AI 服務
-- **檔案處理**: PDF、DOCX、MD 文件智能解析
-- **向量檢索**: HuggingFace transformers 實現 RAG 功能
-- **響應式設計**: 支援手機、平板、電腦全裝置
+- **API Key Management**: User-configurable, encrypted storage
+- **Migration Support**: Seamless from IndexedDB to Turso DB
+- **Performance Optimizations**: Preloaded embedding models, responsive UI (mobile/tablet/desktop)
 
-## 🛠️ 開發指令
+## 🏗️ Technical Architecture
 
-| 指令               | 說明                                                    |
-| ------------------ | ------------------------------------------------------- |
-| `pnpm run dev`     | 啟動開發伺服器                                          |
-| `pnpm run build`   | 建置正式版本                                            |
-| `pnpm run preview` | 預覽正式版本                                            |
-| `pnpm run quality` | 執行所有品質檢查 (linting, formatting, typecheck, test) |
-| `pnpm run test`    | 執行測試套件                                            |
-| `pnpm run test:ui` | 執行測試 UI 介面                                        |
+- **Frontend Framework**: React 19.1.1 + TypeScript + Vite (fast dev and build)
+- **State Management**: React Context and hooks (no external libs)
+- **Database**: Turso DB (cloud SQLite with vector search) + IndexedDB offline fallback
+- **AI Integration**: Modular providers (geminiService.ts etc.), supporting streaming chat and multi-models
+- **RAG Implementation**: fileProcessingService.ts (file parsing) → embeddingService.ts (vectors) → tursoService.ts (store/search)
+- **Sharing System**: sharingService.ts with qrcode library
+- **Path Aliases**: `@/*` points to project root
 
-### 資料庫操作
+### Data Models
 
-| 指令                        | 說明                 |
-| --------------------------- | -------------------- |
-| `pnpm run init-turso`       | 初始化 Turso 資料庫  |
-| `pnpm run migrate-to-turso` | 遷移現有資料到 Turso |
-| `pnpm run create-test-data` | 產生測試資料         |
+- **Assistant**: id, name, description, systemPrompt, ragChunks?, createdAt, isShared?
+- **ChatSession**: assistantId, messages (ChatMessage[]), token counts
+- **RagChunk**: File metadata, content chunks, vector embeddings
+- **ChatMessage**: role ('user'|'model'), content, timestamp
 
-## 📁 專案結構
+## 🛠️ Development Commands
+
+| Command                     | Description                                            |
+| --------------------------- | ------------------------------------------------------ |
+| `pnpm run dev`              | Start dev server                                       |
+| `pnpm run build`            | Build production version                               |
+| `pnpm run preview`          | Preview production build                               |
+| `pnpm run quality`          | Run all quality checks (lint, format, typecheck, test) |
+| `pnpm run test`             | Run Vitest tests                                       |
+| `pnpm run test:ui`          | Run test UI interface                                  |
+| `pnpm run lint:fix`         | Auto-fix lint issues                                   |
+| `pnpm run init-turso`       | Initialize Turso DB                                    |
+| `pnpm run migrate-to-turso` | Migrate data to Turso                                  |
+
+### Testing & E2E
+
+- **Unit Tests**: Vitest + React Testing Library (components/_.test.tsx, services/_.test.ts)
+- **E2E Tests**: Playwright (tests/e2e/\*.spec.ts), including model comparison and sharing tests
+- **Coverage**: `pnpm run test:coverage`
+
+## 📁 Project Structure
 
 ```
-├── components/          # React UI 元件
-├── services/           # 業務邏輯與外部整合
-│   ├── db.ts          # 資料庫操作
-│   ├── aiService.ts   # AI 服務整合
-│   ├── embeddingService.ts # RAG 向量嵌入
-│   └── tursoService.ts    # Turso DB 服務
-├── scripts/           # 資料庫與工具腳本
-├── App.tsx           # 主應用程式元件
-├── types.ts          # TypeScript 型別定義
-└── CLAUDE.md         # 開發指南
+├── components/          # React UI components (assistant/, chat/, ui/, settings/, core/)
+├── services/            # Business logic (db.ts, tursoService.ts, geminiService.ts, embeddingService.ts etc.)
+├── scripts/             # Utility scripts (initTurso.ts, migrateToTurso.ts, testVectorSearch.ts)
+├── types.ts             # TypeScript interfaces
+├── App.tsx              # Main app component
+├── CLAUDE.md            # Claude Code dev guide
+└── package.json         # Dependencies & scripts
 ```
 
-## 🔧 品質保證
+## 🔧 Quality Assurance
 
-- **ESLint + Prettier**: 程式碼格式化與檢查
-- **Vitest + React Testing Library**: 完整測試覆蓋
-- **TypeScript**: 嚴格型別檢查
-- **Husky + lint-staged**: 預提交檢查
-- **品質關卡**: 所有檢查必須通過才能提交
+- **ESLint + Prettier**: Code style enforcement
+- **TypeScript**: Strict type checking
+- **Husky + lint-staged**: Pre-commit hooks
+- **Test Conventions**: AAA pattern, mock external APIs
+- **Quality Gates**: All checks must pass before commit
 
-## 🌟 特色功能
+## 🌟 Recent Updates
 
-- 🎓 **教學助理建立**: 客製化系統提示與教學風格
-- 📚 **智慧文件整合**: 上傳處理教材文件，提供情境回應
-- ☁️ **雲端資料保存**: 安全的 Turso DB 雲端儲存
-- 📱 **跨裝置支援**: 針對手機、平板、電腦最佳化
-- 🔗 **助理分享**: 透過 QR 碼和安全連結分享教學助理
-- 🔐 **API 金鑰管理**: 使用者自主控制 AI 服務設定
-- ⚡ **效能優化**: 預載模型與高效資料處理
+- **RAG Enhancements**: Configurable settings, Jina AI reranking
+- **Testing Expansion**: Playwright E2E and model comparison
+- **Sharing Improvements**: Remove unused props, new conversation button
+- **Database Migration**: Full IndexedDB → Turso support
 
-## 🤝 貢獻指南
+## 🤝 Contribution Guide
 
-歡迎為 EduCare 專案貢獻！請參考 `CLAUDE.md` 了解開發規範和最佳實務。
+Contributions welcome! Follow CLAUDE.md guidelines. Use `pnpm run quality` to validate changes.
 
-## 📄 授權
+## 📄 License
 
-本專案採用 MIT 授權條款 - 詳見 [LICENSE](LICENSE) 檔案。
+MIT License - see [LICENSE](LICENSE).
 
 ---
 
-**為博幼基金會 × 教育科技創新**  
-讓每個孩子都有平等的學習機會 🌟
+**Boyo Social Welfare Foundation × EdTech Innovation**  
+Equal learning opportunities for every child 🌟
