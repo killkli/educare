@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ragCacheManagerV2 } from '../../services/ragCacheManagerV2';
+import { cacheConfigService } from '../../services/cacheConfigService';
 
 interface CacheStats {
   performanceMetrics: {
@@ -19,11 +20,21 @@ interface CacheStats {
   };
 }
 
-export const CacheManagement: React.FC = () => {
+interface CacheManagementProps {
+  showHeader?: boolean;
+  className?: string;
+}
+
+export const CacheManagement: React.FC<CacheManagementProps> = ({
+  showHeader = true,
+  className = 'p-6 max-w-4xl mx-auto',
+}) => {
   const [stats, setStats] = useState<CacheStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [similarityThreshold, setSimilarityThreshold] = useState(0.9);
+  const [similarityThreshold, setSimilarityThreshold] = useState(
+    cacheConfigService.getSimilarityThreshold(),
+  );
   const [clearingCache, setClearingCache] = useState(false);
 
   const refreshStats = async () => {
@@ -66,9 +77,7 @@ export const CacheManagement: React.FC = () => {
   };
 
   const updateSimilarityThreshold = () => {
-    ragCacheManagerV2.configureCacheSettings({
-      similarityThreshold,
-    });
+    cacheConfigService.setSimilarityThreshold(similarityThreshold);
     console.log(`Similarity threshold updated to ${similarityThreshold}`);
   };
 
@@ -79,6 +88,8 @@ export const CacheManagement: React.FC = () => {
 
   useEffect(() => {
     refreshStats();
+    // Sync with current config
+    setSimilarityThreshold(cacheConfigService.getSimilarityThreshold());
   }, []);
 
   const formatTime = (ms: number) => {
@@ -106,26 +117,28 @@ export const CacheManagement: React.FC = () => {
   };
 
   return (
-    <div className='p-6 max-w-4xl mx-auto'>
-      <div className='flex justify-between items-center mb-6'>
-        <h2 className='text-2xl font-bold text-white'>RAG 緩存管理</h2>
-        <div className='flex space-x-3'>
-          <button
-            onClick={refreshStats}
-            disabled={loading}
-            className='px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50'
-          >
-            {loading ? '更新中...' : '刷新統計'}
-          </button>
-          <button
-            onClick={performMaintenance}
-            disabled={loading}
-            className='px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50'
-          >
-            執行維護
-          </button>
+    <div className={className}>
+      {showHeader && (
+        <div className='flex justify-between items-center mb-6'>
+          <h2 className='text-2xl font-bold text-white'>RAG 緩存管理</h2>
+          <div className='flex space-x-3'>
+            <button
+              onClick={refreshStats}
+              disabled={loading}
+              className='px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50'
+            >
+              {loading ? '更新中...' : '刷新統計'}
+            </button>
+            <button
+              onClick={performMaintenance}
+              disabled={loading}
+              className='px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50'
+            >
+              執行維護
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {lastUpdated && (
         <p className='text-gray-400 text-sm mb-4'>最後更新: {lastUpdated.toLocaleString()}</p>

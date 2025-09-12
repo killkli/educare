@@ -4,6 +4,7 @@
 // No declaration needed, using window.performance in tests
 
 import { ragCacheManagerV2 } from './ragCacheManagerV2';
+import { cacheConfigService } from './cacheConfigService';
 import { RagChunk } from '../types';
 
 /**
@@ -135,7 +136,6 @@ export async function runCacheBenchmark(
         assistantId,
         mockRagChunks,
         {
-          similarityThreshold: 0.9,
           rerankLimit: 5,
           enableReranking: true,
           enableCache: true,
@@ -234,9 +234,7 @@ export async function testSimilarityThresholds(
   const results = [];
 
   for (const testCase of testCases) {
-    ragCacheManagerV2.configureCacheSettings({
-      similarityThreshold: testCase.threshold,
-    });
+    cacheConfigService.setSimilarityThreshold(testCase.threshold);
 
     const result = await ragCacheManagerV2.performCachedRagQuery(
       testCase.query,
