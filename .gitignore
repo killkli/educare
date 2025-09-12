@@ -48,3 +48,7 @@ IMPLEMENTATION_PLAN.md
 
 # Image files
 work.png
+
+# E2E Test Results
+playwright-report/
+test-results*/
