@@ -3,7 +3,7 @@
 
 // No declaration needed, using window.performance in tests
 
-import { ragCacheManager } from './ragCacheManager';
+import { ragCacheManagerV2 } from './ragCacheManagerV2';
 import { RagChunk } from '../types';
 
 /**
@@ -108,8 +108,8 @@ export async function runCacheBenchmark(
   console.log(`🧪 Starting cache benchmark: ${testName}`);
 
   // Clear existing cache for this test
-  await ragCacheManager.clearAssistantCache(assistantId);
-  ragCacheManager.resetMetrics();
+  await ragCacheManagerV2.clearAssistantCache(assistantId);
+  ragCacheManagerV2.resetMetrics();
 
   const mockRagChunks = generateMockRagChunks();
   const results: BenchmarkResult['results'] = [];
@@ -130,7 +130,7 @@ export async function runCacheBenchmark(
     try {
       const startTime = Date.now();
 
-      const result = await ragCacheManager.performCachedRagQuery(
+      const result = await ragCacheManagerV2.performCachedRagQuery(
         query,
         assistantId,
         mockRagChunks,
@@ -167,7 +167,7 @@ export async function runCacheBenchmark(
   }
 
   // Get final metrics
-  const metrics = ragCacheManager.getMetrics();
+  const metrics = ragCacheManagerV2.getMetrics();
 
   const performanceGain =
     metrics.averageFullRagTime > 0
@@ -215,11 +215,11 @@ export async function testSimilarityThresholds(
 > {
   console.log('🎯 Testing similarity thresholds...');
 
-  // await ragCacheManager.clearAssistantCache(assistantId);
+  // await ragCacheManagerV2.clearAssistantCache(assistantId);
   const mockRagChunks = generateMockRagChunks();
 
   // First, cache the base query
-  await ragCacheManager.performCachedRagQuery(baseQuery, assistantId, mockRagChunks, {
+  await ragCacheManagerV2.performCachedRagQuery(baseQuery, assistantId, mockRagChunks, {
     enableCache: true,
   });
 
@@ -234,11 +234,11 @@ export async function testSimilarityThresholds(
   const results = [];
 
   for (const testCase of testCases) {
-    ragCacheManager.configureCacheSettings({
+    ragCacheManagerV2.configureCacheSettings({
       similarityThreshold: testCase.threshold,
     });
 
-    const result = await ragCacheManager.performCachedRagQuery(
+    const result = await ragCacheManagerV2.performCachedRagQuery(
       testCase.query,
       assistantId,
       mockRagChunks,
@@ -277,7 +277,7 @@ export async function testMemoryUsage(
   console.log(`🧠 Testing memory usage with ${numQueries} queries...`);
 
   // Clear cache first
-  await ragCacheManager.clearAssistantCache(assistantId);
+  await ragCacheManagerV2.clearAssistantCache(assistantId);
 
   const initialMemory = (window.performance?.memory?.usedJSHeapSize as number) || 0;
   const mockRagChunks = generateMockRagChunks();
@@ -292,7 +292,7 @@ export async function testMemoryUsage(
 
   console.log('Running queries...');
   for (const query of queries) {
-    await ragCacheManager.performCachedRagQuery(query, assistantId, mockRagChunks, {
+    await ragCacheManagerV2.performCachedRagQuery(query, assistantId, mockRagChunks, {
       enableCache: true,
     });
 
@@ -330,14 +330,14 @@ if (typeof window !== 'undefined') {
         runBenchmark: typeof runCacheBenchmark;
         testSimilarity: typeof testSimilarityThresholds;
         testMemory: typeof testMemoryUsage;
-        manager: typeof ragCacheManager;
+        manager: typeof ragCacheManagerV2;
       };
     }
   ).cacheTests = {
     runBenchmark: runCacheBenchmark,
     testSimilarity: testSimilarityThresholds,
     testMemory: testMemoryUsage,
-    manager: ragCacheManager,
+    manager: ragCacheManagerV2,
   };
   console.log('🧪 Cache testing tools available as window.cacheTests');
 }

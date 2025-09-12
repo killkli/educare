@@ -68,7 +68,9 @@ class MockIDBIndex {
     if (key === undefined) {
       return new MockIDBRequest(Array.from(this.data.values()));
     }
-    const results = Array.from(this.data.values()).filter(item => item[this.keyPath] === key);
+    const results = Array.from(this.data.values()).filter(
+      item => (item as Record<string, unknown>)[this.keyPath] === key,
+    );
     return new MockIDBRequest(results);
   }
 
@@ -85,7 +87,7 @@ class MockIDBIndex {
           value: currentValue,
           delete: () => {
             if (currentValue) {
-              this.data.delete(currentValue.id);
+              this.data.delete((currentValue as Record<string, unknown>).id as string);
             }
           },
           continue: () => {
