@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Gemini Professional Assistant application - a React-based web app that allows users to create, manage, and chat with AI assistants powered by Google's Gemini API. The app features advanced RAG (Retrieval-Augmented Generation) capabilities with support for PDF, DOCX, and MD files, Turso DB for cloud persistence, and comprehensive assistant sharing functionality with QR codes.
+This is EduCare - an Educational AI Assistant application - a React-based web app designed for Lumina Foundation to create, manage, and chat with AI assistants for educational support, powered by Google's Gemini API. The app features advanced RAG (Retrieval-Augmented Generation) capabilities with support for PDF, DOCX, and MD files, Turso DB for cloud persistence, and comprehensive assistant sharing functionality with QR codes.
 
 ## Development Commands
 
@@ -109,7 +109,7 @@ This is a Gemini Professional Assistant application - a React-based web app that
 
 ## Important Notes
 
-- The app requires a valid Gemini API key to function (configurable in UI)
+- The app requires a valid Gemini API key to function for AI features (configurable in UI)
 - Data persists in Turso DB for cross-device synchronization
 - Assistant sharing uses secure public links with QR codes
 - RAG supports PDF, DOCX, and MD file processing with intelligent chunking
