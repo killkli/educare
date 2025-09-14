@@ -205,6 +205,6 @@ export const chunkText = (text: string, options: ChunkingOptions = {}): Chunking
  * Default chunking options for RAG applications
  */
 export const DEFAULT_CHUNKING_OPTIONS: ChunkingOptions = {
-  maxTokens: 1024,
-  overlapTokens: 102, // ~10% overlap
+  maxTokens: 1843, // 2048 * 0.9
+  overlapTokens: 184, // ~10% overlap
 };
