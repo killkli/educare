@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Assistant, RagChunk } from '../../types';
-import { saveAssistantToTurso } from '../../services/tursoService';
 import { RAGFileUpload } from './RAGFileUpload';
 
 interface AssistantEditorProps {
@@ -54,20 +53,8 @@ export const AssistantEditor: React.FC<AssistantEditorProps> = ({
         createdAt: assistant?.createdAt || Date.now(),
       };
 
-      // 同步儲存助手到 Turso
-      try {
-        await saveAssistantToTurso({
-          id: assistantId,
-          name: name.trim(),
-          description: description.trim(),
-          systemPrompt: systemPrompt.trim(),
-          createdAt: newAssistant.createdAt,
-        });
-      } catch (error) {
-        console.error('Failed to save assistant to Turso:', error);
-        // 繼續儲存到本地，但警告用戶
-        alert('警告：助理已本地保存，但無法同步到 Turso 資料庫');
-      }
+      // 只保存到本地，不自動上傳到 Turso
+      console.log('Assistant saved locally. Use migration settings to sync to Turso if needed.');
 
       onSave(newAssistant);
     } finally {
