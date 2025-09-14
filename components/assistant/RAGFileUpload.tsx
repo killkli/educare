@@ -3,36 +3,8 @@ import { RagChunk } from '../../types';
 import { generateEmbedding } from '../../services/embeddingService';
 import { saveRagChunkToTurso, saveAssistantToTurso } from '../../services/tursoService';
 import { DocumentParserService } from '../../services/documentParserService';
+import { chunkText, DEFAULT_CHUNKING_OPTIONS } from '../../services/textChunkingService';
 import { RAGFileUploadProps } from './types';
-
-const chunkText = (text: string, chunkSizeInWords = 200, overlapInWords = 40): string[] => {
-  const sentences = text.match(/[^.!?]+[.!?]+|\s+/g) || [];
-  const chunks: string[] = [];
-  let currentChunkWords: string[] = [];
-
-  for (const sentence of sentences) {
-    const sentenceWords = sentence.trim().split(/\s+/).filter(Boolean);
-    if (sentenceWords.length === 0) {
-      continue;
-    }
-
-    if (
-      currentChunkWords.length + sentenceWords.length > chunkSizeInWords &&
-      currentChunkWords.length > 0
-    ) {
-      chunks.push(currentChunkWords.join(' '));
-      const overlapIndex = Math.max(0, currentChunkWords.length - overlapInWords);
-      currentChunkWords = currentChunkWords.slice(overlapIndex);
-    }
-    currentChunkWords.push(...sentenceWords);
-  }
-
-  if (currentChunkWords.length > 0) {
-    chunks.push(currentChunkWords.join(' '));
-  }
-
-  return chunks;
-};
 
 export const RAGFileUpload: React.FC<RAGFileUploadProps> = ({
   ragChunks,
@@ -101,7 +73,8 @@ export const RAGFileUpload: React.FC<RAGFileUploadProps> = ({
 
         // 使用新的文件解析服務
         const parsedDocument = await DocumentParserService.parseDocument(file);
-        const textChunks = chunkText(parsedDocument.content);
+        const chunkingResult = chunkText(parsedDocument.content, DEFAULT_CHUNKING_OPTIONS);
+        const textChunks = chunkingResult.chunks;
 
         setProcessingStatus(`✅ ${fileTypeName} 解析完成，共 ${textChunks.length} 個區塊`);
 
