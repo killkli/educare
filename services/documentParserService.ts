@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
+import { cleanChineseSpacing } from './textChunkingService';
 
 // PDF.js type interfaces
 interface PdfInfo {
@@ -101,10 +102,13 @@ export class DocumentParserService {
           const page = await pdf.getPage(i);
           const textContent = (await page.getTextContent()) as PdfTextContent;
 
-          const pageText = textContent.items
+          const rawPageText = textContent.items
             .filter((item: PdfTextItem) => item.str && typeof item.str === 'string')
             .map((item: PdfTextItem) => item.str)
             .join(' ');
+
+          // Clean Chinese spacing for better token calculation accuracy
+          const pageText = cleanChineseSpacing(rawPageText);
 
           if (pageText.trim()) {
             fullText += `\n\n[第 ${i} 頁]\n${pageText.trim()}`;
@@ -168,7 +172,7 @@ export class DocumentParserService {
       }
 
       return {
-        content: result.value.trim(),
+        content: cleanChineseSpacing(result.value.trim()),
         metadata: {
           // DOCX 解析器不直接提供元數據，但可以根據需要擴展
         },
@@ -191,7 +195,7 @@ export class DocumentParserService {
       }
 
       return {
-        content: content.trim(),
+        content: cleanChineseSpacing(content.trim()),
         metadata: {
           // 可以根據需要添加 Markdown 特定的元數據解析
         },
@@ -214,7 +218,7 @@ export class DocumentParserService {
       }
 
       return {
-        content: content.trim(),
+        content: cleanChineseSpacing(content.trim()),
         metadata: {},
       };
     } catch (error) {

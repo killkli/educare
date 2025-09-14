@@ -31,6 +31,83 @@ export const estimateTokens = (text: string): number => {
   // Chinese: ~1.5 tokens per character, English: ~4 characters per token
   return Math.ceil(chineseCharCount * 1.5 + nonChineseCharCount / 4);
 };
+/**
+ * Removes unnecessary spaces between Chinese characters while preserving
+ * necessary spaces for mixed Chinese/English content
+ *
+ * @param text - Input text to clean
+ * @returns Text with cleaned Chinese character spacing
+ */
+export const cleanChineseSpacing = (text: string): string => {
+  if (!text) {
+    return text;
+  }
+
+  // Define Chinese character ranges (CJK Unified Ideographs and extensions)
+  const chineseCharPattern = /[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]/;
+
+  // Define Chinese punctuation marks
+  const chinesePunctuation = /[，。！？；：""''（）【】《》]/;
+
+  // Define English letters, numbers, and common punctuation
+  const englishPattern = /[a-zA-Z0-9]/;
+  const englishPunctuation = /[.!?;:,'"()[\]{}]/;
+
+  return text.replace(/[ \t]+/g, (match, offset) => {
+    // Get characters before and after the space(s)
+    const before = text[offset - 1];
+    const after = text[offset + 1];
+
+    if (!before || !after) {
+      // Keep spaces at the beginning or end
+      return match;
+    }
+
+    // Case 1: Both characters are Chinese - remove space
+    if (chineseCharPattern.test(before) && chineseCharPattern.test(after)) {
+      return '';
+    }
+
+    // Case 2: Chinese character and Chinese punctuation - remove space
+    if (
+      (chineseCharPattern.test(before) && chinesePunctuation.test(after)) ||
+      (chinesePunctuation.test(before) && chineseCharPattern.test(after))
+    ) {
+      return '';
+    }
+
+    // Case 3: Chinese punctuation and English - remove space
+    if (
+      (chinesePunctuation.test(before) && englishPattern.test(after)) ||
+      (englishPattern.test(before) && chinesePunctuation.test(after))
+    ) {
+      return '';
+    }
+
+    // Case 4: Numbers and Chinese characters - remove space
+    if (
+      (englishPattern.test(before) && chineseCharPattern.test(after)) ||
+      (chineseCharPattern.test(before) && englishPattern.test(after))
+    ) {
+      // Special handling for numbers adjacent to Chinese
+      if (/\d/.test(before) || /\d/.test(after)) {
+        return '';
+      }
+      return ' '; // Keep space for other English-Chinese boundaries
+    }
+
+    // Case 5: Multiple spaces between English words - keep single space
+    if (
+      (englishPattern.test(before) || englishPunctuation.test(before)) &&
+      (englishPattern.test(after) || englishPunctuation.test(after))
+    ) {
+      return ' ';
+    }
+
+    // Default: keep single space for other cases
+    return ' ';
+  });
+};
 
 /**
  * Splits text into sentences supporting both Chinese and English punctuation
@@ -81,7 +158,10 @@ export const getOverlapText = (text: string, maxTokens: number): string => {
 export const chunkText = (text: string, options: ChunkingOptions = {}): ChunkingResult => {
   const { maxTokens = 1024, overlapTokens = 102 } = options;
 
-  const sentences = splitIntoSentences(text);
+  // Clean Chinese spacing before processing
+  const cleanedText = cleanChineseSpacing(text);
+
+  const sentences = splitIntoSentences(cleanedText);
   const chunks: string[] = [];
   let currentChunk = '';
   let currentTokenCount = 0;
