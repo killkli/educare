@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { RagChunk } from '../../types';
 import { generateEmbedding } from '../../services/embeddingService';
-import { saveRagChunkToTurso, saveAssistantToTurso } from '../../services/tursoService';
 import { DocumentParserService } from '../../services/documentParserService';
 import { chunkText, DEFAULT_CHUNKING_OPTIONS } from '../../services/textChunkingService';
 import { RAGFileUploadProps } from './types';
@@ -12,7 +11,6 @@ export const RAGFileUpload: React.FC<RAGFileUploadProps> = ({
   disabled = false,
 }) => {
   const [processingStatus, setProcessingStatus] = useState<string | null>(null);
-  const [ragChunkCount, setRagChunkCount] = useState<number>(0);
   const [tursoSyncStatus, setTursoSyncStatus] = useState<{
     type: 'success' | 'warning' | 'error';
     message: string;
@@ -20,10 +18,10 @@ export const RAGFileUpload: React.FC<RAGFileUploadProps> = ({
 
   const handleFileChange = async (
     event: React.ChangeEvent<HTMLInputElement>,
-    assistantId?: string,
-    assistantName?: string,
-    assistantDescription?: string,
-    systemPrompt?: string,
+    _assistantId?: string,
+    _assistantName?: string,
+    _assistantDescription?: string,
+    _systemPrompt?: string,
   ) => {
     if (!event.target.files) {
       return;
@@ -34,30 +32,8 @@ export const RAGFileUpload: React.FC<RAGFileUploadProps> = ({
       return;
     }
 
-    // 需要先有 assistant ID 才能儲存到 Turso
-    const targetAssistantId = assistantId || `asst_${Date.now()}`;
-
-    // 如果是新助手，需要先確保助手基本資料存在於 Turso
-    if (!assistantId) {
-      try {
-        setProcessingStatus('在 Turso 中建立助理...');
-        await saveAssistantToTurso({
-          id: targetAssistantId,
-          name: assistantName?.trim() || '新助理',
-          description: assistantDescription?.trim() || '一個有用的 AI 助理',
-          systemPrompt: systemPrompt?.trim() || '您是一個有用的 AI 助理。',
-          createdAt: Date.now(),
-        });
-      } catch (error) {
-        console.error('Failed to create assistant in Turso:', error);
-        setProcessingStatus('⚠️ 無法在雲端建立助理，繼續使用本地儲存...');
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
-    }
-
     setProcessingStatus('開始處理檔案...');
     const successfulChunks: RagChunk[] = [];
-    const failedChunks: { file: string; chunk: number; error: string }[] = [];
 
     for (const file of files) {
       // 檢查文件是否為支援的格式
@@ -94,39 +70,10 @@ export const RAGFileUpload: React.FC<RAGFileUploadProps> = ({
             }
           });
 
-          // 優先儲存到 Turso 雲端
-          try {
-            setProcessingStatus(`保存 ${i + 1}/${textChunks.length} 區塊到 Turso 雲端...`);
-            await saveRagChunkToTurso(
-              {
-                id: `chunk_${Date.now()}_${i}_${Math.random().toString(36).slice(2)}`,
-                assistantId: targetAssistantId,
-                fileName: file.name,
-                content: textChunks[i],
-                createdAt: Date.now(),
-              },
-              vector,
-            );
-
-            // 只有成功上傳到 Turso 後才加到本地顯示
-            const ragChunk = { fileName: file.name, content: textChunks[i], vector };
-            successfulChunks.push(ragChunk);
-            setRagChunkCount(prevCount => prevCount + 1);
-
-            setProcessingStatus(`✅ 區塊 ${i + 1}/${textChunks.length} 已保存到雲端`);
-          } catch (tursoError) {
-            console.error('Failed to save chunk to Turso:', tursoError);
-            failedChunks.push({
-              file: file.name,
-              chunk: i + 1,
-              error: tursoError instanceof Error ? tursoError.message : String(tursoError),
-            });
-
-            // 嘗試作為後備儲存到本地
-            setProcessingStatus(`⚠️ 雲端失敗，本地保存區塊 ${i + 1}...`);
-            const ragChunk = { fileName: file.name, content: textChunks[i], vector };
-            successfulChunks.push(ragChunk);
-          }
+          // 只保存到本地，不自動上傳到 Turso
+          const ragChunk = { fileName: file.name, content: textChunks[i], vector };
+          successfulChunks.push(ragChunk);
+          setProcessingStatus(`✅ 區塊 ${i + 1}/${textChunks.length} 已處理完成`);
         }
       } catch (err) {
         console.error(`Error processing file ${file.name}:`, err);
@@ -142,17 +89,10 @@ export const RAGFileUpload: React.FC<RAGFileUploadProps> = ({
     onRagChunksChange([...ragChunks, ...successfulChunks]);
 
     // 顯示最終結果
-    if (failedChunks.length > 0) {
-      setTursoSyncStatus({
-        type: 'warning',
-        message: `已處理 ${successfulChunks.length} 個區塊，${failedChunks.length} 個無法同步到雲端。部分資料僅儲存在本地。`,
-      });
-      setProcessingStatus(null);
-      setTimeout(() => setTursoSyncStatus(null), 8000);
-    } else if (successfulChunks.length > 0) {
+    if (successfulChunks.length > 0) {
       setTursoSyncStatus({
         type: 'success',
-        message: `所有 ${successfulChunks.length} 個區塊已成功保存到 Turso 雲端！`,
+        message: `所有 ${successfulChunks.length} 個區塊已本地保存！如需同步到雲端，請到設定頁面使用遷移功能。`,
       });
       setProcessingStatus(null);
       setTimeout(() => setTursoSyncStatus(null), 5000);
@@ -170,19 +110,12 @@ export const RAGFileUpload: React.FC<RAGFileUploadProps> = ({
 
   return (
     <div className='mb-8'>
-      <label className='block text-sm font-semibold text-gray-300 mb-2'>
-        知識檔案 (RAG)
-        {ragChunkCount > 0 && (
-          <span className='ml-2 px-3 py-1 bg-gradient-to-r from-cyan-600 to-cyan-500 text-white text-xs rounded-full shadow-md'>
-            {ragChunkCount} 區塊在 Turso
-          </span>
-        )}
-      </label>
+      <label className='block text-sm font-semibold text-gray-300 mb-2'>知識檔案 (RAG)</label>
       <p className='text-sm text-gray-400 mb-4 leading-relaxed'>
         上傳文件以建立可搜尋的知識庫。支援格式：
         <span className='text-cyan-400 font-medium'>.txt, .md, .pdf, .docx</span>
         <br />
-        檔案會自動儲存到 Turso 雲端，以提供高效能向量搜尋。
+        檔案會儲存到本地。如需同步到雲端，請使用設定頁面的遷移功能。
       </p>
       <div className='bg-gray-700/50 border-2 border-dashed border-gray-600/70 rounded-xl p-6 text-center hover:border-cyan-500/50 transition-all duration-300'>
         <input
