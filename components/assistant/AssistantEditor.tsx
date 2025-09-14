@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Assistant, RagChunk } from '../../types';
 import { RAGFileUpload } from './RAGFileUpload';
+import { useTursoAssistantStatus } from '../../hooks/useTursoAssistantStatus';
 
 interface AssistantEditorProps {
   assistant: Assistant | null;
@@ -20,6 +21,9 @@ export const AssistantEditor: React.FC<AssistantEditorProps> = ({
   const [systemPrompt, setSystemPrompt] = useState('');
   const [ragChunks, setRagChunks] = useState<RagChunk[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Check if assistant exists in Turso for sharing
+  const { canShare } = useTursoAssistantStatus(assistant?.id || null);
 
   useEffect(() => {
     if (assistant) {
@@ -131,8 +135,18 @@ export const AssistantEditor: React.FC<AssistantEditorProps> = ({
             <div className='space-y-2'>
               <div className='flex items-center space-x-2'>
                 <button
-                  onClick={() => onShare?.(assistant)}
-                  className='px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-semibold flex items-center space-x-2 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5'
+                  onClick={() => {
+                    if (canShare) {
+                      onShare?.(assistant);
+                    }
+                  }}
+                  disabled={!canShare}
+                  className={`px-6 py-3 rounded-xl font-semibold flex items-center space-x-2 shadow-lg transition-all duration-300 ${
+                    canShare
+                      ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white hover:shadow-xl transform hover:-translate-y-0.5 cursor-pointer'
+                      : 'bg-gray-600 text-gray-400 cursor-not-allowed opacity-50'
+                  }`}
+                  title={canShare ? '分享助理' : '需要先遷移到 Turso 才能分享'}
                 >
                   <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
                     <path
