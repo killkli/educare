@@ -8,6 +8,7 @@ export interface AssistantListProps {
   onDelete: (assistantId: string) => void;
   onShare: (assistant: Assistant) => void;
   onCreateNew: () => void;
+  canShare?: boolean;
 }
 
 export interface AssistantCardProps {
@@ -17,6 +18,7 @@ export interface AssistantCardProps {
   onEdit: (assistant: Assistant) => void;
   onDelete: (assistantId: string) => void;
   onShare: (assistant: Assistant) => void;
+  canShare?: boolean;
 }
 
 export interface AssistantContainerProps {

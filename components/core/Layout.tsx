@@ -3,6 +3,7 @@ import { useAppContext } from './useAppContext';
 import { AssistantList } from '../assistant';
 import { ChatIcon, TrashIcon, SettingsIcon } from '../ui/Icons';
 import { ChatSession } from '../../types';
+import { useTursoAssistantStatus } from '../../hooks/useTursoAssistantStatus';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -10,6 +11,9 @@ interface LayoutProps {
 
 export function Layout({ children }: LayoutProps): React.JSX.Element {
   const { state, dispatch, actions } = useAppContext();
+
+  // Check if current assistant exists in Turso for sharing
+  const { canShare } = useTursoAssistantStatus(state.currentAssistant?.id || null);
 
   // In shared mode, render a simplified layout without sidebar
   if (state.isShared) {
@@ -67,6 +71,7 @@ export function Layout({ children }: LayoutProps): React.JSX.Element {
           onDelete={actions.deleteAssistant}
           onShare={actions.openShareModal}
           onCreateNew={() => actions.setViewMode('new_assistant')}
+          canShare={canShare}
         />
 
         {/* Session List */}

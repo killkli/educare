@@ -256,6 +256,24 @@ export const getAssistantFromTurso = async (id: string): Promise<TursoAssistant 
   }
 };
 
+// 檢查助手是否存在於 Turso 中
+export const checkAssistantExistsInTurso = async (id: string): Promise<boolean> => {
+  try {
+    const client = getReadClient();
+
+    const result = await client.execute({
+      sql: 'SELECT COUNT(*) as count FROM assistants WHERE id = ?',
+      args: [id],
+    });
+
+    const count = result.rows[0]?.count as number;
+    return count > 0;
+  } catch (error) {
+    console.error('Failed to check if assistant exists in Turso:', error);
+    return false; // 如果檢查失敗，預設為不存在
+  }
+};
+
 // 取得所有助手
 export const getAllAssistantsFromTurso = async (): Promise<TursoAssistant[]> => {
   try {

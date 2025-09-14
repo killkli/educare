@@ -9,6 +9,7 @@ export const AssistantCard: React.FC<AssistantCardProps> = ({
   onEdit,
   onDelete,
   onShare,
+  canShare = true, // 預設為可分享，避免破壞現有功能
 }) => {
   return (
     <div
@@ -50,11 +51,18 @@ export const AssistantCard: React.FC<AssistantCardProps> = ({
           <button
             onClick={e => {
               e.stopPropagation();
-              onShare(assistant);
+              if (canShare) {
+                onShare(assistant);
+              }
             }}
-            className='p-1.5 text-gray-400 hover:text-blue-400 rounded-md hover:bg-blue-500/20 transition-colors'
-            title='分享助理'
-            aria-label='分享助理'
+            disabled={!canShare}
+            className={`p-1.5 rounded-md transition-colors ${
+              canShare
+                ? 'text-gray-400 hover:text-blue-400 hover:bg-blue-500/20 cursor-pointer'
+                : 'text-gray-600 cursor-not-allowed opacity-50'
+            }`}
+            title={canShare ? '分享助理' : '需要先遷移到 Turso 才能分享'}
+            aria-label={canShare ? '分享助理' : '需要遷移到 Turso'}
           >
             <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
               <path
