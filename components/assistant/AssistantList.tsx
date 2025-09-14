@@ -11,6 +11,7 @@ export const AssistantList: React.FC<AssistantListProps> = ({
   onDelete,
   onShare,
   onCreateNew,
+  canShare = true, // 預設為可分享
 }) => {
   return (
     <div className='mb-6 px-2' role='navigation' aria-label='助理選擇'>
@@ -37,10 +38,19 @@ export const AssistantList: React.FC<AssistantListProps> = ({
         {selectedAssistant && (
           <>
             <button
-              onClick={() => onShare(selectedAssistant)}
-              className='p-1.5 text-gray-400 hover:text-blue-400 rounded-md hover:bg-blue-500/20 transition-colors'
-              title='分享助理'
-              aria-label='分享助理'
+              onClick={() => {
+                if (canShare) {
+                  onShare(selectedAssistant);
+                }
+              }}
+              disabled={!canShare}
+              className={`p-1.5 rounded-md transition-colors ${
+                canShare
+                  ? 'text-gray-400 hover:text-blue-400 hover:bg-blue-500/20 cursor-pointer'
+                  : 'text-gray-600 cursor-not-allowed opacity-50'
+              }`}
+              title={canShare ? '分享助理' : '需要先遷移到 Turso 才能分享'}
+              aria-label={canShare ? '分享助理' : '需要遷移到 Turso'}
             >
               <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
                 <path
