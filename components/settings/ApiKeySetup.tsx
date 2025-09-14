@@ -127,6 +127,9 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onComplete, onCancel, showTit
       setImportPassword('');
 
       alert('API 金鑰導入成功！');
+
+      // 自動完成設定並切換到 chat 模式
+      onComplete?.();
     } catch (error) {
       console.error('導入失敗:', error);
       alert('導入失敗：' + (error instanceof Error ? error.message : String(error)));

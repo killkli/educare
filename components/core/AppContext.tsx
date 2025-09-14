@@ -170,6 +170,10 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
 
   // Load data from database
   const loadData = useCallback(async () => {
+    if (state.isShared) {
+      return;
+    }
+
     dispatch({ type: 'SET_LOADING', payload: true });
     try {
       const storedAssistants = await db.getAllAssistants();
@@ -180,11 +184,11 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
 
       // Initialize providers asynchronously
       initializeProviders().catch(error => {
-        console.error('❌ Failed to initialize providers:', error);
+        console.error('Failed to initialize providers:', error);
       });
 
-      // Preload embedding model if not loaded
-      if (!isEmbeddingModelLoaded()) {
+      // Preload embedding model if not loaded and not in shared mode
+      if (!isEmbeddingModelLoaded() && !state.isShared) {
         dispatch({ type: 'SET_MODEL_LOADING', payload: { isLoading: true } });
         try {
           await preloadEmbeddingModel(progress => {
@@ -193,9 +197,8 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
               payload: { isLoading: true, progress: progress as ModelLoadingProgress },
             });
           });
-          console.log('✅ Embedding model preloaded successfully');
         } catch (error) {
-          console.error('❌ Failed to preload embedding model:', error);
+          console.error('Failed to preload embedding model:', error);
         } finally {
           dispatch({ type: 'SET_MODEL_LOADING', payload: { isLoading: false, progress: null } });
         }
@@ -212,7 +215,7 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
-  }, [selectAssistant]);
+  }, [selectAssistant, state.isShared]);
 
   const loadSharedAssistant = useCallback(
     async (assistantId: string) => {
@@ -443,14 +446,29 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
     return () => window.removeEventListener('resize', checkScreenSize);
   }, [checkScreenSize]);
 
-  // Load data if not in shared mode
+  // Load data only if not in shared mode, and ensure no preload in shared mode
   useEffect(() => {
-    if (!state.isShared) {
-      loadData();
-    } else if (state.sharedAssistantId) {
-      loadSharedAssistant(state.sharedAssistantId);
+    console.log('🔍 [AppContext] useEffect triggered, isShared:', state.isShared);
+    if (state.isShared) {
+      // In shared mode, do not load data or preload models - handled by SharedAssistant
+      console.log('🚫 [AppContext] Skipping loadData in shared mode');
+      return;
     }
-  }, [loadData, state.isShared, loadSharedAssistant, state.sharedAssistantId]);
+    console.log('🔄 [AppContext] Starting normal loadData');
+    loadData();
+  }, [loadData, state.isShared]);
+
+  // Separate effect for shared mode to prevent any interference
+  useEffect(() => {
+    if (state.isShared) {
+      // Ensure model loading is cleared if any
+      dispatch({ type: 'SET_MODEL_LOADING', payload: { isLoading: false, progress: null } });
+      // Prevent viewMode reset in shared mode
+      if (state.viewMode === 'new_assistant') {
+        dispatch({ type: 'SET_VIEW_MODE', payload: 'chat' });
+      }
+    }
+  }, [state.isShared, state.viewMode, dispatch]);
 
   const contextValue: AppContextValue = {
     state,

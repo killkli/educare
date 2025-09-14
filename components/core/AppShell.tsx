@@ -182,6 +182,12 @@ function AppContent(): React.JSX.Element {
             </button>
           </div>
         )}
+
+        {/* Model Loading Overlay for Shared Mode */}
+        <ModelLoadingOverlay
+          isVisible={state.isModelLoading}
+          progress={state.modelLoadingProgress || undefined}
+        />
       </Layout>
     );
   }
