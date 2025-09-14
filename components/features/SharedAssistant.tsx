@@ -5,6 +5,7 @@ import {
   providerManager,
   isLLMAvailable,
 } from '../../services/providerRegistry';
+import { ProviderType } from '../../services/llmAdapter';
 import { getAssistantFromTurso } from '../../services/tursoService';
 import CryptoService from '../../services/cryptoService';
 import { ApiKeyManager } from '../../services/apiKeyManager';
@@ -26,7 +27,7 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
     const needed = !isLLMAvailable();
     // Don't dispatch here - let the caller handle the viewMode setting
     return !needed;
-  }, [dispatch]);
+  }, []);
 
   const loadSharedAssistant = useCallback(async () => {
     // 防止重複請求
@@ -109,8 +110,8 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
 
             // Handle provider-specific config if present in decrypted keys
             if (decryptedApiKeys.provider) {
-              const providerType = decryptedApiKeys.provider as string;
-              const config: Record<string, any> = {};
+              const providerType = decryptedApiKeys.provider as ProviderType;
+              const config: { apiKey?: string; baseUrl?: string; model?: string } = {};
               const keyName = `${providerType}ApiKey` as keyof typeof decryptedApiKeys;
               const baseUrlName = `${providerType}BaseUrl` as keyof typeof decryptedApiKeys;
               const modelName = 'model' as keyof typeof decryptedApiKeys;
@@ -128,6 +129,7 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
               if (Object.keys(config).length > 0) {
                 const provider = providerManager.getProvider(providerType);
                 if (provider) {
+                  providerManager.updateProviderConfig(providerType as ProviderType, config);
                   await provider.initialize(config);
                   providerManager.enableProvider(providerType, true);
                   providerManager.setActiveProvider(providerType);
