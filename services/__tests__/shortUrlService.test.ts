@@ -25,7 +25,7 @@ describe('shortUrlService', () => {
       const shortCode = 'abc12345';
       const result = buildShortUrl(shortCode);
 
-      expect(result).toBe('https://example.com/s/abc12345');
+      expect(result).toBe('https://example.com/?s=abc12345');
     });
 
     it('should build short URL with base URL from Vite config', () => {
@@ -41,7 +41,7 @@ describe('shortUrlService', () => {
       const shortCode = 'abc12345';
       const result = buildShortUrl(shortCode);
 
-      expect(result).toBe('https://example.com/chatbot-test/s/abc12345');
+      expect(result).toBe('https://example.com/chatbot-test/?s=abc12345');
     });
 
     it('should build short URL when accessing a subpage', () => {
@@ -57,7 +57,7 @@ describe('shortUrlService', () => {
       const shortCode = 'xyz98765';
       const result = buildShortUrl(shortCode);
 
-      expect(result).toBe('https://example.com/chatbot-test/s/xyz98765');
+      expect(result).toBe('https://example.com/chatbot-test/?s=xyz98765');
     });
 
     it('should handle deep nested paths', () => {
@@ -73,7 +73,7 @@ describe('shortUrlService', () => {
       const shortCode = 'def54321';
       const result = buildShortUrl(shortCode);
 
-      expect(result).toBe('https://example.com/my-app/s/def54321');
+      expect(result).toBe('https://example.com/my-app/?s=def54321');
     });
 
     it('should handle localhost development environment', () => {
@@ -89,7 +89,7 @@ describe('shortUrlService', () => {
       const shortCode = 'dev12345';
       const result = buildShortUrl(shortCode);
 
-      expect(result).toBe('http://localhost:5173/chatbot-test/s/dev12345');
+      expect(result).toBe('http://localhost:5173/chatbot-test/?s=dev12345');
     });
   });
 });

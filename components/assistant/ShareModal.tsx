@@ -399,7 +399,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
           {useShortUrl && (
             <div className='bg-purple-900/30 border border-purple-600/30 rounded-lg p-3'>
               <p className='text-purple-200 text-xs'>
-                ℹ️ 短網址將生成 <code className='bg-purple-800/50 px-1 rounded'>/s/xxxxxxxx</code>{' '}
+                ℹ️ 短網址將生成 <code className='bg-purple-800/50 px-1 rounded'>?s=xxxxxxxx</code>{' '}
                 格式的鏈接，更適合在社交媒體或消息應用中分享。
               </p>
             </div>
