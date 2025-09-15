@@ -102,8 +102,33 @@ export const initializeDatabase = async (): Promise<void> => {
 
     // 建立向量索引
     await client.execute(`
-      CREATE INDEX IF NOT EXISTS rag_chunks_vector_idx 
+      CREATE INDEX IF NOT EXISTS rag_chunks_vector_idx
       ON rag_chunks (libsql_vector_idx(embedding, 'metric=cosine'))
+    `);
+
+    // 建立短網址資料表
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS short_urls (
+        short_code TEXT PRIMARY KEY,
+        assistant_id TEXT NOT NULL,
+        encrypted_keys TEXT,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER,
+        click_count INTEGER DEFAULT 0,
+        last_clicked_at INTEGER,
+        FOREIGN KEY (assistant_id) REFERENCES assistants(id) ON DELETE CASCADE
+      )
+    `);
+
+    // 建立短網址索引
+    await client.execute(`
+      CREATE INDEX IF NOT EXISTS idx_short_urls_assistant_id
+      ON short_urls(assistant_id)
+    `);
+
+    await client.execute(`
+      CREATE INDEX IF NOT EXISTS idx_short_urls_created_at
+      ON short_urls(created_at)
     `);
 
     console.log('Turso database initialized successfully');

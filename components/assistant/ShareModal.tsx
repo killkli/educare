@@ -6,6 +6,7 @@ import { ApiKeyManager } from '../../services/apiKeyManager';
 import { ProviderSettings } from '../../services/llmAdapter';
 import { saveAssistantToTurso } from '../../services/tursoService';
 import { providerManager } from '../../services/providerRegistry';
+import { generateShortUrl, buildShortUrl } from '../../services/shortUrlService';
 
 interface ShareModalProps {
   isOpen: boolean;
@@ -18,6 +19,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
   const [shareWithApiKeys, setShareWithApiKeys] = useState(false);
   const [sharePassword, setSharePassword] = useState('');
+  const [useShortUrl, setUseShortUrl] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [shareStatus, setShareStatus] = useState<{
     type: 'success' | 'error' | 'info';
@@ -126,7 +128,10 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
         createdAt: assistant.createdAt || Date.now(), // 確保 createdAt 已設定
       });
 
-      let url = `${window.location.origin}${window.location.pathname}?share=${assistant.id}`;
+      // 生成分享連結，考慮 base URL
+      const baseUrl = window.location.pathname.replace(/\/[^/]*$/, '') || '/';
+      let url = `${window.location.origin}${baseUrl}?share=${assistant.id}`;
+      let encryptedKeysString: string | undefined;
 
       if (shareWithApiKeys) {
         if (!sharePassword.trim()) {
@@ -209,8 +214,27 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
         }
 
         const password = sharePassword || CryptoService.generateRandomPassword();
-        const encryptedString = await CryptoService.encryptApiKeys(apiKeysToEncrypt, password);
-        url += `&keys=${encryptedString}`;
+        encryptedKeysString = await CryptoService.encryptApiKeys(apiKeysToEncrypt, password);
+        url += `&keys=${encryptedKeysString}`;
+      }
+
+      // 如果選擇使用短網址，生成短網址
+      if (useShortUrl) {
+        try {
+          const shortCode = await generateShortUrl(assistant.id, encryptedKeysString);
+          url = buildShortUrl(shortCode);
+          setShareStatus({
+            type: 'success',
+            message: '短網址生成成功！',
+          });
+        } catch (error) {
+          console.error('Failed to generate short URL:', error);
+          setShareStatus({
+            type: 'error',
+            message: `短網址生成失敗：${error instanceof Error ? error.message : String(error)}`,
+          });
+          // 繼續使用原始 URL
+        }
       }
 
       setShareUrl(url);
@@ -250,6 +274,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
     assistant.createdAt,
     selectedProvider,
     providerInfo,
+    useShortUrl,
     // isGenerating 不應該在依賴中，因為它會導致循環
   ]);
 
@@ -357,6 +382,30 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
           </div>
         </div>
 
+        {/* 短網址選項 */}
+        <div className='mb-6 bg-gray-700/30 rounded-xl p-6'>
+          <div className='flex items-center space-x-3 mb-4'>
+            <input
+              type='checkbox'
+              id='useShortUrl'
+              checked={useShortUrl}
+              onChange={e => setUseShortUrl(e.target.checked)}
+              className='w-4 h-4 text-purple-600 rounded focus:ring-purple-500'
+            />
+            <label htmlFor='useShortUrl' className='text-white font-medium'>
+              🔗 使用短網址（更簡潔易分享）
+            </label>
+          </div>
+          {useShortUrl && (
+            <div className='bg-purple-900/30 border border-purple-600/30 rounded-lg p-3'>
+              <p className='text-purple-200 text-xs'>
+                ℹ️ 短網址將生成 <code className='bg-purple-800/50 px-1 rounded'>/s/xxxxxxxx</code>{' '}
+                格式的鏈接，更適合在社交媒體或消息應用中分享。
+              </p>
+            </div>
+          )}
+        </div>
+
         {/* API 金鑰分享選項 */}
         <div className='mb-6 bg-gray-700/30 rounded-xl p-6'>
           <div className='flex items-center space-x-3 mb-4'>
@@ -368,7 +417,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
               className='w-4 h-4 text-cyan-600 rounded focus:ring-cyan-500'
             />
             <label htmlFor='shareWithApiKeys' className='text-white font-medium'>
-              包含我的 API 金鑰（讓接收者無需配置即可使用）
+              🔐 包含我的 API 金鑰（讓接收者無需配置即可使用）
             </label>
           </div>
 

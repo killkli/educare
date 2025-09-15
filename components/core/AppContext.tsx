@@ -6,7 +6,12 @@ import { preloadEmbeddingModel, isEmbeddingModelLoaded } from '../../services/em
 import { initializeProviders, providerManager } from '../../services/providerRegistry';
 import { CryptoService } from '../../services/cryptoService';
 import { ApiKeyManager } from '../../services/apiKeyManager';
-import { getAssistantFromTurso } from '../../services/tursoService';
+import {
+  getAssistantFromTurso,
+  initializeDatabase,
+  canWriteToTurso,
+} from '../../services/tursoService';
+import { resolveShortUrl, recordShortUrlClick } from '../../services/shortUrlService';
 import { AppContext } from './useAppContext';
 import type {
   ViewMode,
@@ -176,6 +181,17 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
 
     dispatch({ type: 'SET_LOADING', payload: true });
     try {
+      // Initialize Turso database if we have write access
+      if (canWriteToTurso()) {
+        try {
+          await initializeDatabase();
+          console.log('✅ Turso database initialized successfully');
+        } catch (error) {
+          console.warn('⚠️ Failed to initialize Turso database:', error);
+          // Continue without Turso functionality
+        }
+      }
+
       const storedAssistants = await db.getAllAssistants();
       dispatch({
         type: 'SET_ASSISTANTS',
@@ -434,13 +450,61 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
 
   // Check for shared mode and screen size on mount
   useEffect(() => {
-    // Check for ?share=ID format
-    const params = new URLSearchParams(window.location.search);
-    const shared = params.has('share');
-    const assistantId = params.get('share');
+    const handleSharedMode = async () => {
+      // Check for short URL format with base URL support
+      const pathname = window.location.pathname;
 
-    dispatch({ type: 'SET_SHARED_MODE', payload: { isShared: shared, assistantId } });
+      // 檢測短網址格式，考慮 base URL（如 /chatbot-test/s/shortCode 或 /s/shortCode）
+      const shortUrlMatch = pathname.match(/\/s\/([a-zA-Z0-9]+)$/);
 
+      if (shortUrlMatch) {
+        const shortCode = shortUrlMatch[1];
+        console.log('🔗 [AppContext] Detected short URL:', shortCode);
+
+        try {
+          const shortUrlData = await resolveShortUrl(shortCode);
+          if (shortUrlData) {
+            // Record the click
+            await recordShortUrlClick(shortCode);
+
+            // Build regular share URL with correct base URL
+            const baseUrl = pathname.replace(/\/s\/[a-zA-Z0-9]+$/, '') || '/';
+            const shareUrl = new URL(window.location.origin);
+            shareUrl.pathname = baseUrl;
+            shareUrl.searchParams.set('share', shortUrlData.assistantId);
+            if (shortUrlData.encryptedKeys) {
+              shareUrl.searchParams.set('keys', shortUrlData.encryptedKeys);
+            }
+
+            // Redirect to the regular share URL
+            console.log('🔄 [AppContext] Redirecting to:', shareUrl.toString());
+            window.history.replaceState({}, '', shareUrl.toString());
+
+            // Set shared mode with the resolved data
+            dispatch({
+              type: 'SET_SHARED_MODE',
+              payload: { isShared: true, assistantId: shortUrlData.assistantId },
+            });
+            return;
+          } else {
+            console.error('❌ [AppContext] Short URL not found or expired:', shortCode);
+            // TODO: Show error page or redirect to home
+          }
+        } catch (error) {
+          console.error('❌ [AppContext] Failed to resolve short URL:', error);
+          // TODO: Show error page or redirect to home
+        }
+      }
+
+      // Check for regular ?share=ID format
+      const params = new URLSearchParams(window.location.search);
+      const shared = params.has('share');
+      const assistantId = params.get('share');
+
+      dispatch({ type: 'SET_SHARED_MODE', payload: { isShared: shared, assistantId } });
+    };
+
+    handleSharedMode();
     checkScreenSize();
     window.addEventListener('resize', checkScreenSize);
     return () => window.removeEventListener('resize', checkScreenSize);
