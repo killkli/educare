@@ -250,9 +250,11 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
     <div className='flex flex-col h-full bg-gray-900'>
       {/* Optional Header */}
       {!hideHeader && (
-        <div className='p-4 border-b border-gray-700 flex-shrink-0 bg-gray-800'>
+        <div className='p-2 md:p-4 border-b border-gray-700 flex-shrink-0 bg-gray-800'>
           <div className='flex items-center justify-between'>
-            <h2 className='text-xl font-semibold text-white'>{assistantName}</h2>
+            <h2 className='text-base md:text-xl font-medium md:font-semibold text-white truncate mr-2'>
+              {assistantName}
+            </h2>
             <div className='flex items-center space-x-3'>
               {sharedMode && (
                 <button
@@ -266,10 +268,15 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
                     setStatusText('');
                     setInput('');
                   }}
-                  className='flex items-center space-x-2 px-3 py-1.5 rounded-md transition-colors text-sm font-medium bg-purple-700 hover:bg-purple-600 text-purple-100 hover:text-white'
+                  className='flex items-center space-x-1 md:space-x-2 px-2 md:px-3 py-1.5 rounded-md transition-colors text-xs md:text-sm font-medium bg-purple-700 hover:bg-purple-600 text-purple-100 hover:text-white'
                   title='開啟新對話'
                 >
-                  <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                  <svg
+                    className='w-3 h-3 md:w-4 md:h-4'
+                    fill='none'
+                    stroke='currentColor'
+                    viewBox='0 0 24 24'
+                  >
                     <path
                       strokeLinecap='round'
                       strokeLinejoin='round'
@@ -277,15 +284,20 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
                       d='M12 4v16m8-8H4'
                     />
                   </svg>
-                  <span>新對話</span>
+                  <span className='hidden sm:inline'>新對話</span>
                 </button>
               )}
               <button
                 onClick={() => setShowRagSettings(true)}
-                className={`flex items-center space-x-2 px-3 py-1.5 rounded-md transition-colors text-sm font-medium ${sharedMode ? 'bg-blue-700 hover:bg-blue-600 text-blue-100 hover:text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white'}`}
+                className={`flex items-center space-x-1 md:space-x-2 px-2 md:px-3 py-1.5 rounded-md transition-colors text-xs md:text-sm font-medium ${sharedMode ? 'bg-blue-700 hover:bg-blue-600 text-blue-100 hover:text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white'}`}
                 title={sharedMode ? '全域 RAG 搜尋設定' : 'RAG 搜尋設定'}
               >
-                <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                <svg
+                  className='w-3 h-3 md:w-4 md:h-4'
+                  fill='none'
+                  stroke='currentColor'
+                  viewBox='0 0 24 24'
+                >
                   <path
                     strokeLinecap='round'
                     strokeLinejoin='round'
@@ -293,7 +305,7 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
                     d='M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z'
                   />
                 </svg>
-                <span>RAG 設定</span>
+                <span className='hidden sm:inline'>RAG 設定</span>
               </button>
             </div>
           </div>
@@ -302,7 +314,7 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
 
       {/* Messages Area */}
       <main className='flex-1 overflow-y-auto chat-scroll' role='main' aria-label='聊天對話'>
-        <div className='max-w-4xl mx-auto px-4 py-6'>
+        <div className='max-w-4xl mx-auto px-3 md:px-4 py-4 md:py-6'>
           {/* Welcome Message for Empty Chat */}
           {currentSession.messages.length === 0 && !streamingResponse && !isThinking && (
             <WelcomeMessage
