@@ -33,7 +33,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
   };
 
   return (
-    <div className='border-t border-gray-700/30 bg-gradient-to-r from-gray-800/90 to-gray-850/90 backdrop-blur-sm p-6'>
+    <div className='border-t border-gray-700/30 bg-gradient-to-r from-gray-800/90 to-gray-850/90 backdrop-blur-sm p-3 md:p-6'>
       <div className='max-w-4xl mx-auto'>
         {/* Status Text */}
         {statusText && (
@@ -49,7 +49,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
         )}
 
         {/* Input Row */}
-        <div className='flex gap-4 items-end'>
+        <div className='flex gap-2 md:gap-4 items-end'>
           <div className='flex-1 relative'>
             <textarea
               value={value}
@@ -59,15 +59,15 @@ const ChatInput: React.FC<ChatInputProps> = ({
               onCompositionEnd={handleCompositionEnd}
               placeholder='輸入您的訊息...'
               rows={1}
-              className='w-full bg-gray-700/60 border-2 border-gray-600/40 rounded-2xl px-6 py-4 resize-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/60 focus:bg-gray-700/80 text-white placeholder-gray-400 max-h-32 shadow-lg backdrop-blur-sm transition-all duration-300 hover:border-gray-500/60 focus:outline-none'
+              className='w-full bg-gray-700/60 border-2 border-gray-600/40 rounded-2xl px-4 md:px-6 py-3 md:py-4 resize-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/60 focus:bg-gray-700/80 text-white placeholder-gray-400 max-h-32 shadow-lg backdrop-blur-sm transition-all duration-300 hover:border-gray-500/60 focus:outline-none text-sm md:text-base'
               disabled={isLoading || disabled}
               aria-label='輸入訊息'
               aria-describedby='input-help'
               aria-multiline='true'
               role='textbox'
               style={{
-                minHeight: '56px',
-                height: Math.min(value.split('\n').length * 24 + 32, 128) + 'px',
+                minHeight: '48px',
+                height: Math.min(value.split('\n').length * 20 + 28, 120) + 'px',
               }}
             />
             {/* Token counter and character counter */}
@@ -99,7 +99,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
               isLoading || !value.trim() || disabled
                 ? 'bg-gray-600/50 cursor-not-allowed'
                 : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 hover:scale-105 hover:shadow-xl hover:shadow-cyan-500/30'
-            } text-white rounded-2xl px-8 py-4 font-semibold transition-all duration-300 flex items-center justify-center min-w-[100px] shadow-lg border border-gray-600/30 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-gray-800`}
+            } text-white rounded-2xl px-4 md:px-8 py-3 md:py-4 font-medium md:font-semibold transition-all duration-300 flex items-center justify-center min-w-[80px] md:min-w-[100px] shadow-lg border border-gray-600/30 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-gray-800 text-sm md:text-base`}
             aria-label={isLoading ? '正在傳送訊息' : '傳送訊息'}
             type='submit'
           >
@@ -110,7 +110,12 @@ const ChatInput: React.FC<ChatInputProps> = ({
               </>
             ) : (
               <>
-                <svg className='w-5 h-5 mr-2' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                <svg
+                  className='w-4 h-4 md:w-5 md:h-5 mr-1 md:mr-2'
+                  fill='none'
+                  stroke='currentColor'
+                  viewBox='0 0 24 24'
+                >
                   <path
                     strokeLinecap='round'
                     strokeLinejoin='round'
@@ -118,20 +123,20 @@ const ChatInput: React.FC<ChatInputProps> = ({
                     d='M12 19l9 2-9-18-9 18 9-2zm0 0v-8'
                   />
                 </svg>
-                <span>傳送</span>
+                <span className='hidden sm:inline md:inline'>傳送</span>
               </>
             )}
           </button>
         </div>
 
         {/* Footer Info */}
-        <div className='flex justify-center items-center mt-4' id='input-help'>
+        <div className='flex justify-center items-center mt-2 md:mt-4' id='input-help'>
           <div
-            className='flex items-center gap-3 text-xs text-gray-400'
+            className='flex items-center gap-1 md:gap-3 text-xs text-gray-400'
             role='region'
             aria-label='輸入說明'
           >
-            <div className='flex items-center gap-2 bg-gray-700/30 px-3 py-1.5 rounded-full border border-gray-600/30'>
+            <div className='flex items-center gap-2 bg-gray-700/30 px-2 py-1 md:px-3 md:py-1.5 rounded-full border border-gray-600/30'>
               <kbd
                 className='px-2 py-1 bg-gray-600/50 rounded text-xs font-medium'
                 aria-label='Enter 鍵'
@@ -140,7 +145,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
               </kbd>
               <span>換行</span>
             </div>
-            <div className='flex items-center gap-2 bg-gray-700/30 px-3 py-1.5 rounded-full border border-gray-600/30'>
+            <div className='flex items-center gap-2 bg-gray-700/30 px-2 py-1 md:px-3 md:py-1.5 rounded-full border border-gray-600/30'>
               <kbd
                 className='px-2 py-1 bg-gray-600/50 rounded text-xs font-medium'
                 aria-label='Shift 加 Enter 鍵'
