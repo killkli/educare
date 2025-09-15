@@ -27,9 +27,9 @@ const initialState: AppState = {
   sessions: [],
   currentSession: null,
   viewMode: 'chat',
-  isLoading: true,
+  isLoading: true, // Keep loading until we determine shared mode
   error: null,
-  isShared: false,
+  isShared: null, // Changed to null to indicate "not yet determined"
   sharedAssistantId: null,
   isSidebarOpen: true,
   isMobile: false,
@@ -175,7 +175,8 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
 
   // Load data from database
   const loadData = useCallback(async () => {
-    if (state.isShared) {
+    // Only load data if we're definitely not in shared mode
+    if (state.isShared === null || state.isShared === true) {
       return;
     }
 
@@ -204,7 +205,7 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       });
 
       // Preload embedding model if not loaded and not in shared mode
-      if (!isEmbeddingModelLoaded() && !state.isShared) {
+      if (!isEmbeddingModelLoaded() && state.isShared === false) {
         dispatch({ type: 'SET_MODEL_LOADING', payload: { isLoading: true } });
         try {
           await preloadEmbeddingModel(progress => {
@@ -448,7 +449,7 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
     }
   }, []);
 
-  // Check for shared mode and screen size on mount
+  // Check for shared mode first, then check screen size
   useEffect(() => {
     const handleSharedMode = async () => {
       // Check for short URL parameter format (?s=shortCode)
@@ -498,22 +499,30 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       const assistantId = params.get('share');
 
       dispatch({ type: 'SET_SHARED_MODE', payload: { isShared: shared, assistantId } });
+
+      // After determining shared mode, check screen size
+      checkScreenSize();
     };
 
     handleSharedMode();
-    checkScreenSize();
     window.addEventListener('resize', checkScreenSize);
     return () => window.removeEventListener('resize', checkScreenSize);
   }, [checkScreenSize]);
 
-  // Load data only if not in shared mode, and ensure no preload in shared mode
+  // Load data only after shared mode has been determined
   useEffect(() => {
-    console.log('🔍 [AppContext] useEffect triggered, isShared:', state.isShared);
-    if (state.isShared) {
-      // In shared mode, do not load data or preload models - handled by SharedAssistant
-      console.log('🚫 [AppContext] Skipping loadData in shared mode');
+    console.log('🔍 [AppContext] Data loading useEffect, isShared:', state.isShared);
+
+    // Don't load if shared mode hasn't been determined yet (null) or if in shared mode (true)
+    if (state.isShared === null || state.isShared === true) {
+      if (state.isShared === null) {
+        console.log('⏳ [AppContext] Waiting for shared mode determination');
+      } else {
+        console.log('🚫 [AppContext] Skipping loadData in shared mode');
+      }
       return;
     }
+
     console.log('🔄 [AppContext] Starting normal loadData');
     loadData();
   }, [loadData, state.isShared]);

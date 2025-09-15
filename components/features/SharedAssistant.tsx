@@ -97,7 +97,7 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
         }
       }
 
-      // Handle encrypted keys directly with prompt (similar to AppContext logic)
+      // Handle encrypted keys directly with prompt (improved logic matching AppContext)
       const encryptedKeys = CryptoService.extractKeysFromUrl();
       let hasValidKeys = false;
       if (encryptedKeys) {
@@ -111,36 +111,66 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
             // Handle provider-specific config if present in decrypted keys
             if (decryptedApiKeys.provider) {
               const providerType = decryptedApiKeys.provider as ProviderType;
+
+              // 1. Configure provider with specific keys if available (matching AppContext logic)
               const config: { apiKey?: string; baseUrl?: string; model?: string } = {};
               const keyName = `${providerType}ApiKey` as keyof typeof decryptedApiKeys;
               const baseUrlName = `${providerType}BaseUrl` as keyof typeof decryptedApiKeys;
-              const modelName = 'model' as keyof typeof decryptedApiKeys;
+              const apiKey = decryptedApiKeys[keyName];
+              const baseUrl = decryptedApiKeys[baseUrlName];
+              const model = decryptedApiKeys.model;
 
-              if (decryptedApiKeys[keyName]) {
-                config.apiKey = decryptedApiKeys[keyName];
+              if (apiKey) {
+                config.apiKey = apiKey as string;
               }
-              if (decryptedApiKeys[baseUrlName]) {
-                config.baseUrl = decryptedApiKeys[baseUrlName];
+              if (baseUrl) {
+                config.baseUrl = baseUrl as string;
               }
-              if (decryptedApiKeys[modelName]) {
-                config.model = decryptedApiKeys[modelName];
+
+              // Include model if provided
+              if (model) {
+                config.model = model as string;
               }
 
               if (Object.keys(config).length > 0) {
-                const provider = providerManager.getProvider(providerType);
-                if (provider) {
-                  providerManager.updateProviderConfig(providerType as ProviderType, config);
+                providerManager.updateProviderConfig(providerType, config);
+                providerManager.enableProvider(providerType, true);
+              }
+
+              // 2. Ensure the provider is properly initialized with the new config
+              const provider = providerManager.getProvider(providerType);
+              if (provider) {
+                try {
                   await provider.initialize(config);
-                  providerManager.enableProvider(providerType, true);
-                  providerManager.setActiveProvider(providerType);
                   console.log(
-                    `✅ [SHARED ASSISTANT] ${providerType} provider configured from shared keys`,
+                    `✅ [SHARED ASSISTANT] ${providerType} provider initialized successfully with shared keys`,
+                  );
+                } catch (error) {
+                  console.warn(
+                    `⚠️ [SHARED ASSISTANT] Failed to initialize ${providerType} provider:`,
+                    error,
                   );
                 }
               }
             }
 
             await initializeProviders(); // Re-init after setting keys
+
+            // IMPORTANT: Set active provider AFTER initializeProviders to ensure it persists
+            if (decryptedApiKeys.provider) {
+              const providerType = decryptedApiKeys.provider as ProviderType;
+
+              // 3. Set the active provider to persist choice (AFTER initializeProviders)
+              providerManager.setActiveProvider(providerType);
+
+              // 4. Dispatch an action to notify UI components of the change
+              dispatch({ type: 'SET_ACTIVE_PROVIDER', payload: providerType as string });
+
+              // 5. Notify user of success
+              console.log(
+                `✅ [SHARED ASSISTANT] ${providerType} provider set as active after initialization`,
+              );
+            }
             hasValidKeys = true;
 
             // Clear URL params

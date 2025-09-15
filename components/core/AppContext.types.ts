@@ -23,7 +23,7 @@ export interface AppState {
   viewMode: ViewMode;
   isLoading: boolean;
   error: string | null;
-  isShared: boolean;
+  isShared: boolean | null;
   sharedAssistantId: string | null;
   isSidebarOpen: boolean;
   isMobile: boolean;
