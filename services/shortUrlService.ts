@@ -232,22 +232,32 @@ export const cleanupExpiredShortUrls = async (): Promise<number> => {
 };
 
 /**
- * 獲取應用的 base URL（考慮 Vite 配置）
+ * 獲取應用的 base URL（從 pathname 中提取）
  */
 const getBaseUrl = (): string => {
-  // 從當前 pathname 獲取 base URL
   const pathname = window.location.pathname;
 
-  // 如果 pathname 包含 base URL（如 /chatbot-test/），提取它
-  // 否則使用根路徑 '/'
-  const baseUrlMatch = pathname.match(/^(\/[^/]*\/)/);
-  return baseUrlMatch ? baseUrlMatch[1] : '/';
+  // 如果是根路徑，直接返回
+  if (pathname === '/') {
+    return '/';
+  }
+
+  // 提取第一個路徑段作為 base URL
+  // 例如: /chatbot-test/chat -> /chatbot-test/
+  // 例如: /my-app/some/deep/path -> /my-app/
+  const segments = pathname.split('/').filter(Boolean);
+  if (segments.length > 0) {
+    return `/${segments[0]}/`;
+  }
+
+  return '/';
 };
 
 /**
- * 構建完整的短網址
+ * 構建完整的短網址（使用 parameter 格式）
  */
 export const buildShortUrl = (shortCode: string): string => {
+  const origin = window.location.origin;
   const baseUrl = getBaseUrl();
-  return `${window.location.origin}${baseUrl}s/${shortCode}`;
+  return `${origin}${baseUrl}?s=${shortCode}`;
 };

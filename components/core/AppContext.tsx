@@ -451,15 +451,12 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
   // Check for shared mode and screen size on mount
   useEffect(() => {
     const handleSharedMode = async () => {
-      // Check for short URL format with base URL support
-      const pathname = window.location.pathname;
+      // Check for short URL parameter format (?s=shortCode)
+      const urlParams = new URLSearchParams(window.location.search);
+      const shortCode = urlParams.get('s');
 
-      // 檢測短網址格式，考慮 base URL（如 /chatbot-test/s/shortCode 或 /s/shortCode）
-      const shortUrlMatch = pathname.match(/\/s\/([a-zA-Z0-9]+)$/);
-
-      if (shortUrlMatch) {
-        const shortCode = shortUrlMatch[1];
-        console.log('🔗 [AppContext] Detected short URL:', shortCode);
+      if (shortCode) {
+        console.log('🔗 [AppContext] Detected short URL parameter:', shortCode);
 
         try {
           const shortUrlData = await resolveShortUrl(shortCode);
@@ -467,10 +464,9 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
             // Record the click
             await recordShortUrlClick(shortCode);
 
-            // Build regular share URL with correct base URL
-            const baseUrl = pathname.replace(/\/s\/[a-zA-Z0-9]+$/, '') || '/';
-            const shareUrl = new URL(window.location.origin);
-            shareUrl.pathname = baseUrl;
+            // Build regular share URL
+            const shareUrl = new URL(window.location.href);
+            shareUrl.searchParams.delete('s'); // Remove short URL parameter
             shareUrl.searchParams.set('share', shortUrlData.assistantId);
             if (shortUrlData.encryptedKeys) {
               shareUrl.searchParams.set('keys', shortUrlData.encryptedKeys);

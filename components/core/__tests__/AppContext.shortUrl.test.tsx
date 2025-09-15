@@ -9,69 +9,79 @@ describe('AppContext Short URL handling', () => {
     vi.clearAllMocks();
   });
 
-  describe('Short URL pattern matching', () => {
-    it('should detect short URL with root base URL', () => {
-      const pathname = '/s/abc12345';
-      const shortUrlMatch = pathname.match(/\/s\/([a-zA-Z0-9]+)$/);
+  describe('Short URL parameter detection', () => {
+    it('should detect short URL parameter in search params', () => {
+      const urlParams = new URLSearchParams('?s=abc12345');
+      const shortCode = urlParams.get('s');
 
-      expect(shortUrlMatch).not.toBeNull();
-      expect(shortUrlMatch![1]).toBe('abc12345');
+      expect(shortCode).toBe('abc12345');
     });
 
-    it('should detect short URL with Vite base URL', () => {
-      const pathname = '/chatbot-test/s/xyz98765';
-      const shortUrlMatch = pathname.match(/\/s\/([a-zA-Z0-9]+)$/);
+    it('should detect short URL parameter with other params', () => {
+      const urlParams = new URLSearchParams('?foo=bar&s=xyz98765&baz=qux');
+      const shortCode = urlParams.get('s');
 
-      expect(shortUrlMatch).not.toBeNull();
-      expect(shortUrlMatch![1]).toBe('xyz98765');
+      expect(shortCode).toBe('xyz98765');
     });
 
-    it('should not match regular paths', () => {
-      const pathname = '/chatbot-test/chat';
-      const shortUrlMatch = pathname.match(/\/s\/([a-zA-Z0-9]+)$/);
+    it('should return null for missing short URL parameter', () => {
+      const urlParams = new URLSearchParams('?share=test-id');
+      const shortCode = urlParams.get('s');
 
-      expect(shortUrlMatch).toBeNull();
+      expect(shortCode).toBeNull();
     });
 
-    it('should not match invalid short URL format', () => {
-      const pathname = '/s/';
-      const shortUrlMatch = pathname.match(/\/s\/([a-zA-Z0-9]+)$/);
+    it('should return null for empty search params', () => {
+      const urlParams = new URLSearchParams('');
+      const shortCode = urlParams.get('s');
 
-      expect(shortUrlMatch).toBeNull();
+      expect(shortCode).toBeNull();
     });
   });
 
-  describe('Base URL extraction for redirection', () => {
-    it('should extract base URL correctly from short URL path', () => {
-      const pathname = '/chatbot-test/s/abc12345';
-      const baseUrl = pathname.replace(/\/s\/[a-zA-Z0-9]+$/, '') || '/';
+  describe('URL manipulation for redirection', () => {
+    it('should remove short URL parameter and add share parameters', () => {
+      const mockUrl = new URL('https://example.com/chatbot-test?s=abc12345');
 
-      expect(baseUrl).toBe('/chatbot-test');
+      // Remove short URL parameter
+      mockUrl.searchParams.delete('s');
+      // Add share parameters
+      mockUrl.searchParams.set('share', 'test-assistant-123');
+      mockUrl.searchParams.set('keys', 'encrypted-data-xyz');
+
+      expect(mockUrl.toString()).toBe(
+        'https://example.com/chatbot-test?share=test-assistant-123&keys=encrypted-data-xyz',
+      );
     });
 
-    it('should handle root path short URL', () => {
-      const pathname = '/s/abc12345';
-      const baseUrl = pathname.replace(/\/s\/[a-zA-Z0-9]+$/, '') || '/';
+    it('should handle root path with short URL parameter', () => {
+      const mockUrl = new URL('https://example.com/?s=abc12345');
 
-      expect(baseUrl).toBe('/');
+      mockUrl.searchParams.delete('s');
+      mockUrl.searchParams.set('share', 'test-assistant-123');
+
+      expect(mockUrl.toString()).toBe('https://example.com/?share=test-assistant-123');
     });
 
-    it('should handle deep nested base URL', () => {
-      const pathname = '/my-app/nested/s/abc12345';
-      const baseUrl = pathname.replace(/\/s\/[a-zA-Z0-9]+$/, '') || '/';
+    it('should preserve existing query parameters when processing short URL', () => {
+      const mockUrl = new URL('https://example.com/app?foo=bar&s=abc12345&baz=qux');
 
-      expect(baseUrl).toBe('/my-app/nested');
+      mockUrl.searchParams.delete('s');
+      mockUrl.searchParams.set('share', 'test-assistant-123');
+
+      expect(mockUrl.toString()).toBe(
+        'https://example.com/app?foo=bar&baz=qux&share=test-assistant-123',
+      );
     });
   });
 
   describe('Share URL construction', () => {
     it('should build correct share URL with base URL', () => {
       const mockOrigin = 'https://example.com';
-      const baseUrl = '/chatbot-test';
+      const basePath = '/chatbot-test';
       const assistantId = 'test-assistant-123';
 
-      const shareUrl = new URL(mockOrigin);
-      shareUrl.pathname = baseUrl;
+      const shareUrl = new URL(mockOrigin + basePath);
       shareUrl.searchParams.set('share', assistantId);
 
       expect(shareUrl.toString()).toBe('https://example.com/chatbot-test?share=test-assistant-123');
@@ -79,12 +89,11 @@ describe('AppContext Short URL handling', () => {
 
     it('should build correct share URL with encrypted keys', () => {
       const mockOrigin = 'https://example.com';
-      const baseUrl = '/chatbot-test';
+      const basePath = '/chatbot-test';
       const assistantId = 'test-assistant-123';
       const encryptedKeys = 'encrypted-data-xyz';
 
-      const shareUrl = new URL(mockOrigin);
-      shareUrl.pathname = baseUrl;
+      const shareUrl = new URL(mockOrigin + basePath);
       shareUrl.searchParams.set('share', assistantId);
       shareUrl.searchParams.set('keys', encryptedKeys);
 
