@@ -391,6 +391,11 @@ describe('ChatCompactorService', () => {
   });
 
   describe('End-to-End Compression', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    afterEach(() => {
+      consoleSpy.mockRestore();
+    });
     it('should successfully compress conversation rounds', async () => {
       // Mock successful LLM response using AsyncIterable
       const responseText =
@@ -458,19 +463,15 @@ describe('ChatCompactorService', () => {
     });
 
     it('should handle LLM errors with retry', async () => {
-      let callCount = 0;
       const successResponseText = '用戶詢問了測試問題，助手提供了回應摘要。';
-      vi.mocked(mockManagerStreamChat).mockImplementation(async (_params: ChatParams) => {
-        callCount++;
-        if (callCount === 1) {
-          throw new Error('Simulated LLM error 1');
-        }
-        // Succeed on second call
-        return (async function* () {
-          yield { text: successResponseText, isComplete: false };
-          yield { text: '', isComplete: true };
-        })();
-      });
+      vi.mocked(mockManagerStreamChat)
+        .mockRejectedValueOnce(new Error('Simulated LLM error 1'))
+        .mockResolvedValueOnce(
+          (async function* () {
+            yield { text: successResponseText, isComplete: false };
+            yield { text: '', isComplete: true };
+          })(),
+        );
 
       const rounds = [createTestRound(1, 'Test', 'Response')];
       const result = await compactorService.compressConversationHistory(rounds);
@@ -485,22 +486,19 @@ describe('ChatCompactorService', () => {
     it('should retry when compression result is too long', async () => {
       const longResponse = 'Very long response '.repeat(1000) + '用戶助手討論長內容';
       const shortResponse = '用戶詢問問題，助手提供了解答。';
-      let callCount = 0;
-
-      vi.mocked(mockManagerStreamChat).mockImplementation(async (_params: ChatParams) => {
-        callCount++;
-        if (callCount === 1) {
-          return (async function* () {
+      vi.mocked(mockManagerStreamChat)
+        .mockResolvedValueOnce(
+          (async function* () {
             yield { text: longResponse, isComplete: false };
             yield { text: '', isComplete: true };
-          })();
-        }
-        // Second call succeeds with short response
-        return (async function* () {
-          yield { text: shortResponse, isComplete: false };
-          yield { text: '', isComplete: true };
-        })();
-      });
+          })(),
+        )
+        .mockResolvedValueOnce(
+          (async function* () {
+            yield { text: shortResponse, isComplete: false };
+            yield { text: '', isComplete: true };
+          })(),
+        );
 
       const rounds = [createTestRound(1, 'Test', 'Response')];
       const result = await compactorService.compressConversationHistory(rounds);
@@ -512,9 +510,7 @@ describe('ChatCompactorService', () => {
     });
 
     it('should fail after max retries', async () => {
-      vi.mocked(mockManagerStreamChat).mockImplementation(async (_params: ChatParams) => {
-        throw new Error('Persistent LLM error');
-      });
+      vi.mocked(mockManagerStreamChat).mockRejectedValue(new Error('Persistent LLM error'));
 
       const rounds = [createTestRound(1, 'Test', 'Response')];
       const result = await compactorService.compressConversationHistory(rounds);
