@@ -1,5 +1,9 @@
 import { RagChunk } from '../types';
-import { generateEmbedding, cosineSimilarity, rerankChunks } from './embeddingService';
+import {
+  generateEmbeddingRobust as generateEmbedding,
+  cosineSimilarity,
+  rerankChunks,
+} from './embeddingService';
 import { searchSimilarChunks } from './tursoService';
 
 /**

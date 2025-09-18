@@ -1,4 +1,21 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+vi.mock('./embeddingService', () => ({
+  cosineSimilarity: vi.fn((a: number[], b: number[]) => {
+    let dotProduct = 0;
+    let normA = 0;
+    let normB = 0;
+    for (let i = 0; i < a.length; i++) {
+      dotProduct += a[i] * b[i];
+      normA += a[i] * a[i];
+      normB += b[i] * b[i];
+    }
+    const magnitude = Math.sqrt(normA * normB);
+    return magnitude === 0 ? 1 : dotProduct / magnitude;
+  }),
+  generateEmbedding: vi.fn().mockResolvedValue(new Array(128).fill(0.5)),
+  // Mock other exports if needed
+}));
 import { QueryCacheService } from './queryCacheService';
 import { RagChunk } from '../types';
 
@@ -12,12 +29,14 @@ class MockIDBRequest {
   constructor(result?: unknown, error?: unknown) {
     this.result = result;
     this.error = error;
-    // Simulate async behavior
-    if (error) {
-      this.onerror?.({ target: this });
-    } else {
-      this.onsuccess?.({ target: this });
-    }
+    // Delay firing to allow handlers to be set
+    setTimeout(() => {
+      if (error) {
+        this.onerror?.({ target: this });
+      } else {
+        this.onsuccess?.({ target: this });
+      }
+    }, 0);
   }
 }
 
@@ -129,17 +148,57 @@ class MockIDBDatabase {
 // Mock the global indexedDB
 const mockIndexedDB = {
   open: (_name: string, _version: number) => {
-    const request = new MockIDBRequest();
+    interface MockIDBOpenDBRequest {
+      result: MockIDBDatabase | null;
+      onsuccess:
+        | ((this: MockIDBOpenDBRequest, ev: { target: MockIDBOpenDBRequest }) => void)
+        | null;
+      onerror: ((this: MockIDBOpenDBRequest, ev: { target: MockIDBOpenDBRequest }) => void) | null;
+      onupgradeneeded:
+        | ((
+            this: MockIDBOpenDBRequest,
+            ev: { target: MockIDBOpenDBRequest; oldVersion: number; newVersion: number },
+          ) => void)
+        | null;
+      oldVersion: number;
+      newVersion: number;
+    }
+
+    const request: MockIDBOpenDBRequest = {
+      result: null,
+      onsuccess: null,
+      onerror: null,
+      onupgradeneeded: null,
+      oldVersion: 0,
+      newVersion: _version,
+    };
 
     const db = new MockIDBDatabase();
-    // Simulate onupgradeneeded event for database initialization
-    const store = db.createObjectStore('queryCache', { keyPath: 'id' });
-    store.createIndex('assistantId', 'assistantId', { unique: false });
-    store.createIndex('timestamp', 'timestamp', { unique: false });
-    store.createIndex('lastAccessTime', 'lastAccessTime', { unique: false });
 
-    request.result = db;
-    request.onsuccess?.({ target: request });
+    // Simulate async event firing after handlers are set
+    setTimeout(() => {
+      request.result = db;
+      // Fire onupgradeneeded first
+      if (request.onupgradeneeded) {
+        const upgradeEvent = {
+          target: { ...request, result: db },
+          oldVersion: request.oldVersion,
+          newVersion: request.newVersion,
+          preventDefault: () => {},
+        } as {
+          target: MockIDBOpenDBRequest;
+          oldVersion: number;
+          newVersion: number;
+          preventDefault: () => void;
+        };
+        request.onupgradeneeded(upgradeEvent);
+      }
+
+      // Then fire onsuccess
+      if (request.onsuccess) {
+        request.onsuccess({ target: { ...request, result: db } });
+      }
+    }, 0);
 
     return request;
   },
@@ -154,6 +213,19 @@ Object.defineProperty(global, 'indexedDB', {
 Object.defineProperty(global, 'crypto', {
   value: {
     randomUUID: () => `test-uuid-${Math.random()}`,
+  },
+  writable: true,
+});
+
+// Mock IDBKeyRange for cleanup tests
+Object.defineProperty(global, 'IDBKeyRange', {
+  value: {
+    upperBound: (value: unknown) => ({
+      lower: null,
+      lowerOpen: true,
+      upper: value,
+      upperOpen: false,
+    }),
   },
   writable: true,
 });

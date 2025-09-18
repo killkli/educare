@@ -79,3 +79,15 @@ export interface RagSettings {
   /** 最低相似度閾值 (預設: 0.3) */
   minSimilarity: number;
 }
+
+export interface EmbeddingConfig {
+  timeoutSeconds: number; // Timeout for browser embedding in seconds
+  fallbackToSimple: boolean; // Whether to fallback to simple text similarity
+  showMethodUsed: boolean; // Show which embedding method was used (dev mode)
+}
+
+export interface EmbeddingResult {
+  vector: number[];
+  method: 'browser-webgpu' | 'browser-cpu' | 'simple';
+  processingTime: number;
+}

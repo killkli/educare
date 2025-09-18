@@ -1,5 +1,5 @@
 import { RagChunk } from '../types';
-import { generateEmbedding } from './embeddingService';
+import { generateEmbeddingRobust as generateEmbedding } from './embeddingService';
 import { queryCacheService } from './queryCacheService';
 import { ragQueryService, RagQueryOptions } from './ragQueryService';
 import { cacheConfigService } from './cacheConfigService';

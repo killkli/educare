@@ -1,5 +1,5 @@
 import React from 'react';
-import { Assistant, ChatSession } from '../../types';
+import { Assistant, ChatSession, EmbeddingConfig } from '../../types';
 
 export type ViewMode =
   | 'chat'
@@ -32,6 +32,7 @@ export interface AppState {
   modelLoadingProgress: ModelLoadingProgress | null;
   isShareModalOpen: boolean;
   assistantToShare: Assistant | null;
+  embeddingConfig: EmbeddingConfig;
 }
 
 export type AppAction =
@@ -53,7 +54,8 @@ export type AppAction =
   | { type: 'ADD_SESSION'; payload: ChatSession }
   | { type: 'UPDATE_SESSION'; payload: ChatSession }
   | { type: 'DELETE_SESSION'; payload: string }
-  | { type: 'DELETE_ASSISTANT'; payload: string };
+  | { type: 'DELETE_ASSISTANT'; payload: string }
+  | { type: 'SET_EMBEDDING_CONFIG'; payload: EmbeddingConfig };
 
 export interface AppContextValue {
   state: AppState;
@@ -71,5 +73,6 @@ export interface AppContextValue {
     openShareModal: (assistant: Assistant) => void;
     closeShareModal: () => void;
     checkScreenSize: () => void;
+    setEmbeddingConfig: (config: EmbeddingConfig) => void;
   };
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Assistant, RagChunk } from '../types';
-import { generateEmbedding } from '../services/embeddingService';
+import { generateEmbeddingRobust as generateEmbedding } from '../services/embeddingService';
 import { getRagChunkCount } from '../services/tursoService';
 import { DocumentParserService } from '../services/documentParserService';
 import { useTursoAssistantStatus } from '../hooks/useTursoAssistantStatus';
