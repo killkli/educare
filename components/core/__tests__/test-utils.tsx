@@ -547,6 +547,30 @@ export const setupCoreTestEnvironment = () => {
   const windowMocks = mockWindowMethods();
   const consoleMocks = mockConsole();
 
+  // Mock idb to prevent unhandled rejections in Node.js environment
+  vi.mock('idb', () => ({
+    openDB: vi.fn().mockImplementation(async (_name: string, _version: number) => {
+      const db = {
+        getAll: vi.fn().mockResolvedValue([]),
+        get: vi.fn().mockResolvedValue(undefined),
+        put: vi.fn().mockResolvedValue(undefined),
+        delete: vi.fn().mockResolvedValue(undefined),
+        getAllFromIndex: vi.fn().mockResolvedValue([]),
+        transaction: vi.fn().mockImplementation((_storeName: string) => ({
+          objectStore: vi.fn().mockReturnValue({
+            getAll: vi.fn().mockResolvedValue([]),
+            get: vi.fn().mockResolvedValue(undefined),
+            put: vi.fn().mockResolvedValue(undefined),
+            delete: vi.fn().mockResolvedValue(undefined),
+            getAllFromIndex: vi.fn().mockResolvedValue([]),
+          }),
+          done: Promise.resolve(),
+        })),
+      };
+      return db;
+    }),
+  }));
+
   // Mock all external dependencies
   mockDbService();
   mockTursoService();
