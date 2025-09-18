@@ -465,13 +465,16 @@ describe('ChatCompactorService', () => {
     it('should handle LLM errors with retry', async () => {
       const successResponseText = '用戶詢問了測試問題，助手提供了回應摘要。';
       vi.mocked(mockManagerStreamChat)
-        .mockRejectedValueOnce(new Error('Simulated LLM error 1'))
-        .mockResolvedValueOnce(
-          (async function* () {
+        .mockImplementationOnce(async () => {
+          throw new Error('Simulated LLM error 1');
+        })
+        .mockImplementationOnce(async () => {
+          const successGen = (async function* () {
             yield { text: successResponseText, isComplete: false };
             yield { text: '', isComplete: true };
-          })(),
-        );
+          })();
+          return successGen;
+        });
 
       const rounds = [createTestRound(1, 'Test', 'Response')];
       const result = await compactorService.compressConversationHistory(rounds);
@@ -510,7 +513,9 @@ describe('ChatCompactorService', () => {
     });
 
     it('should fail after max retries', async () => {
-      vi.mocked(mockManagerStreamChat).mockRejectedValue(new Error('Persistent LLM error'));
+      vi.mocked(mockManagerStreamChat).mockImplementation(async () => {
+        throw new Error('Persistent LLM error');
+      });
 
       const rounds = [createTestRound(1, 'Test', 'Response')];
       const result = await compactorService.compressConversationHistory(rounds);
