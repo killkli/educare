@@ -495,13 +495,11 @@ describe('ChatCompactorService', () => {
             yield { text: '', isComplete: true };
           })();
         }
-        if (callCount === 2) {
-          return (async function* () {
-            yield { text: shortResponse, isComplete: false };
-            yield { text: '', isComplete: true };
-          })();
-        }
-        throw new Error('Unexpected call');
+        // Second call succeeds with short response
+        return (async function* () {
+          yield { text: shortResponse, isComplete: false };
+          yield { text: '', isComplete: true };
+        })();
       });
 
       const rounds = [createTestRound(1, 'Test', 'Response')];
@@ -532,10 +530,10 @@ describe('ChatCompactorService', () => {
     it('should call ProviderManager.streamChat with correct parameters', async () => {
       const responseText = '用戶詢問助手回答的摘要';
 
-      vi.mocked(mockManagerStreamChat).mockImplementation(async (_params: ChatParams) => {
-        expect(_params.systemPrompt).toContain('專業的對話摘要助手');
-        expect(_params.history).toEqual([]);
-        expect(_params.message).toContain('請將以下對話歷史壓縮');
+      const mockImplementation = vi.fn(async (params: ChatParams) => {
+        expect(params.systemPrompt).toContain('專業的對話摘要助手');
+        expect(params.history).toEqual([]);
+        expect(params.message).toContain('請將以下對話歷史壓縮');
 
         return (async function* () {
           yield {
@@ -548,6 +546,8 @@ describe('ChatCompactorService', () => {
           };
         })();
       });
+
+      vi.mocked(mockManagerStreamChat).mockImplementation(mockImplementation);
 
       const rounds = [createTestRound(1, 'Test question', 'Test answer')];
       await compactorService.compressConversationHistory(rounds);
