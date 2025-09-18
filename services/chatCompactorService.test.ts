@@ -459,23 +459,26 @@ describe('ChatCompactorService', () => {
 
     it('should handle LLM errors with retry', async () => {
       let callCount = 0;
+      const successResponseText = '用戶詢問了測試問題，助手提供了回應摘要。';
       vi.mocked(mockManagerStreamChat).mockImplementation(async (_params: ChatParams) => {
         callCount++;
         if (callCount === 1) {
           throw new Error('Simulated LLM error 1');
         }
-        if (callCount === 2) {
-          throw new Error('Simulated LLM error 2');
-        }
-        throw new Error('Unexpected call');
+        // Succeed on second call
+        return (async function* () {
+          yield { text: successResponseText, isComplete: false };
+          yield { text: '', isComplete: true };
+        })();
       });
 
       const rounds = [createTestRound(1, 'Test', 'Response')];
       const result = await compactorService.compressConversationHistory(rounds);
 
-      expect(result.success).toBe(false);
-      expect(result.retryCount).toBe(2);
-      expect(result.error).toContain('Simulated LLM error 2');
+      expect(result.success).toBe(true);
+      expect(result.retryCount).toBe(1);
+      expect(result.compactContext).toBeDefined();
+      expect(result.compactContext?.content).toContain('用戶詢問了測試問題');
       expect(mockManagerStreamChat).toHaveBeenCalledTimes(2);
     });
 

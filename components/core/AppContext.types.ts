@@ -1,5 +1,5 @@
 import React from 'react';
-import { Assistant, ChatSession } from '../../types';
+import { Assistant, ChatSession, EmbeddingConfig } from '../../types';
 
 export type ViewMode =
   | 'chat'
@@ -7,7 +7,8 @@ export type ViewMode =
   | 'edit_assistant'
   | 'settings'
   | 'api_setup'
-  | 'provider_settings';
+  | 'provider_settings'
+  | 'embedding_test';
 
 export interface ModelLoadingProgress {
   status: string;
@@ -33,6 +34,7 @@ export interface AppState {
   isShareModalOpen: boolean;
   assistantToShare: Assistant | null;
   currentProvider?: string;
+  embeddingConfig: EmbeddingConfig;
 }
 
 export type AppAction =
@@ -55,7 +57,8 @@ export type AppAction =
   | { type: 'UPDATE_SESSION'; payload: ChatSession }
   | { type: 'DELETE_SESSION'; payload: string }
   | { type: 'DELETE_ASSISTANT'; payload: string }
-  | { type: 'SET_ACTIVE_PROVIDER'; payload: string };
+  | { type: 'SET_ACTIVE_PROVIDER'; payload: string }
+  | { type: 'SET_EMBEDDING_CONFIG'; payload: EmbeddingConfig };
 
 export interface AppContextValue {
   state: AppState;
@@ -74,5 +77,6 @@ export interface AppContextValue {
     closeShareModal: () => void;
     checkScreenSize: () => void;
     loadSharedAssistant: (assistantId: string) => Promise<void>;
+    setEmbeddingConfig: (config: EmbeddingConfig) => void;
   };
 }

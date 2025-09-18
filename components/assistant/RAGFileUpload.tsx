@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { RagChunk } from '../../types';
-import { generateEmbedding } from '../../services/embeddingService';
+import { generateEmbeddingRobust as generateEmbedding } from '../../services/embeddingService';
 import { DocumentParserService } from '../../services/documentParserService';
 import { chunkText, DEFAULT_CHUNKING_OPTIONS } from '../../services/textChunkingService';
 import { RAGFileUploadProps } from './types';

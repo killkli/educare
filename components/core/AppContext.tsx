@@ -1,5 +1,5 @@
 import React, { useReducer, useCallback, useEffect } from 'react';
-import { Assistant, ChatSession } from '../../types';
+import { Assistant, ChatSession, EmbeddingConfig } from '../../types';
 import { ProviderType } from '../../services/llmAdapter';
 import * as db from '../../services/db';
 import { preloadEmbeddingModel, isEmbeddingModelLoaded } from '../../services/embeddingService';
@@ -21,6 +21,26 @@ import type {
   AppContextValue,
 } from './AppContext.types';
 
+// Load embedding config from localStorage
+const loadEmbeddingConfig = (): EmbeddingConfig => {
+  try {
+    const saved = localStorage.getItem('embeddingConfig');
+    if (saved) {
+      return {
+        ...{ timeoutSeconds: 5, fallbackToSimple: true, showMethodUsed: false },
+        ...JSON.parse(saved),
+      };
+    }
+  } catch (error) {
+    console.warn('Failed to load embedding config from localStorage:', error);
+  }
+  return {
+    timeoutSeconds: 5,
+    fallbackToSimple: true,
+    showMethodUsed: false,
+  };
+};
+
 const initialState: AppState = {
   assistants: [],
   currentAssistant: null,
@@ -38,6 +58,7 @@ const initialState: AppState = {
   modelLoadingProgress: null,
   isShareModalOpen: false,
   assistantToShare: null,
+  embeddingConfig: loadEmbeddingConfig(),
 };
 
 function appReducer(state: AppState, action: AppAction): AppState {
@@ -121,6 +142,11 @@ function appReducer(state: AppState, action: AppAction): AppState {
         currentSession: state.currentAssistant?.id === action.payload ? null : state.currentSession,
       };
     }
+    case 'SET_EMBEDDING_CONFIG':
+      return {
+        ...state,
+        embeddingConfig: action.payload,
+      };
     default:
       return state;
   }
@@ -539,6 +565,12 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
     }
   }, [state.isShared, state.viewMode, dispatch]);
 
+  // Set embedding configuration
+  const setEmbeddingConfig = useCallback((config: EmbeddingConfig) => {
+    dispatch({ type: 'SET_EMBEDDING_CONFIG', payload: config });
+    // Save to localStorage for persistence
+    localStorage.setItem('embeddingConfig', JSON.stringify(config));
+  }, []);
   const contextValue: AppContextValue = {
     state,
     dispatch,
@@ -556,6 +588,7 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       closeShareModal,
       checkScreenSize,
       loadSharedAssistant,
+      setEmbeddingConfig,
     },
   };
 

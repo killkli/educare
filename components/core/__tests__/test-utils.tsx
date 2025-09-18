@@ -140,6 +140,11 @@ export const createMockAppState = (overrides: Partial<AppState> = {}): AppState 
   modelLoadingProgress: null,
   isShareModalOpen: false,
   assistantToShare: null,
+  embeddingConfig: {
+    timeoutSeconds: 5,
+    fallbackToSimple: true,
+    showMethodUsed: false,
+  },
   ...overrides,
 });
 

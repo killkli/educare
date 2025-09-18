@@ -12,8 +12,10 @@ env.allowLocalModels = false;
 
 // Define the prefixes as recommended for the embedding model
 const prefixes = {
-  query: 'task: search result | query: ',
-  document: 'title: none | text: ',
+  // query: 'task: search result | query: ',
+  // document: 'title: none | text: ',
+  query: '',
+  document: '',
 };
 
 // FIX: Refactored to use the transformers.js pipeline API.
@@ -305,6 +307,143 @@ export const testRerankingInConsole = async () => {
     console.error('❌ Reranking test failed:', error);
     throw error;
   }
+};
+// Simple embedding service for fallback
+class SimpleEmbeddingService {
+  // Generate a simple 384-dimensional embedding based on text characteristics
+  static generateSimpleEmbedding(text: string): number[] {
+    const words = text
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(word => word.length > 0);
+    const vector = new Array(384).fill(0);
+
+    if (words.length === 0) {
+      return vector; // Return zero vector for empty text
+    }
+
+    // Use multiple hash functions to distribute features across the vector
+    words.forEach((word, wordIndex) => {
+      // Hash 1: Word content
+      const hash1 = this.simpleHash(word) % 384;
+      // Hash 2: Word position
+      const hash2 = this.simpleHash(word + wordIndex.toString()) % 384;
+      // Hash 3: Word length
+      const hash3 = this.simpleHash(word.length.toString() + word) % 384;
+
+      // Assign weights based on word frequency and position
+      const weight = 1 / Math.sqrt(words.length);
+      vector[hash1] += weight;
+      vector[hash2] += weight * 0.7;
+      vector[hash3] += weight * 0.5;
+    });
+
+    // Add character-level features
+    const chars = text.toLowerCase().replace(/\s+/g, '');
+    for (let i = 0; i < Math.min(chars.length, 50); i++) {
+      const charHash = this.simpleHash(chars[i] + i.toString()) % 384;
+      vector[charHash] += 0.1 / Math.sqrt(chars.length);
+    }
+
+    // Normalize the vector
+    const magnitude = Math.sqrt(vector.reduce((sum, val) => sum + val * val, 0));
+    return magnitude > 0 ? vector.map(val => val / magnitude) : vector;
+  }
+
+  private static simpleHash(str: string): number {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = (hash << 5) - hash + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return Math.abs(hash);
+  }
+}
+
+// Timeout wrapper for embedding generation
+const createTimeoutPromise = (timeoutMs: number) => {
+  return new Promise<never>((_, reject) => {
+    setTimeout(() => {
+      reject(new Error(`Embedding generation timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+};
+
+// Enhanced embedding generation with timeout and fallback
+export const generateEmbeddingWithTimeout = async (
+  text: string,
+  type: 'query' | 'document',
+  timeoutSeconds = 5,
+  progress_callback?: (progress: unknown) => void,
+): Promise<{ vector: number[]; method: string; processingTime: number }> => {
+  const startTime = Date.now();
+
+  // Validate input
+  if (!text || text.trim().length === 0) {
+    throw new Error('Text input cannot be empty for embedding generation');
+  }
+
+  if (timeoutSeconds <= 0) {
+    throw new Error('Timeout must be greater than 0 seconds');
+  }
+
+  try {
+    console.log(`🚀 Attempting browser embedding with ${timeoutSeconds}s timeout...`);
+
+    // Race between embedding generation and timeout
+    const vector = await Promise.race([
+      generateEmbedding(text, type, progress_callback),
+      createTimeoutPromise(timeoutSeconds * 1000),
+    ]);
+
+    const processingTime = Date.now() - startTime;
+    const method = 'browser'; // We don't know if it was WebGPU or CPU, but it was browser-based
+
+    console.log(`✅ Browser embedding completed in ${processingTime}ms`);
+    return { vector, method, processingTime };
+  } catch (error) {
+    const browserTime = Date.now() - startTime;
+    console.warn(`⚠️ Browser embedding failed after ${browserTime}ms:`, error);
+
+    // Fallback to simple embedding
+    console.log('📝 Falling back to simple text similarity...');
+    const fallbackStart = Date.now();
+
+    try {
+      const prefixedText = prefixes[type] + text;
+      const vector = SimpleEmbeddingService.generateSimpleEmbedding(prefixedText);
+
+      const fallbackTime = Date.now() - fallbackStart;
+      const totalTime = Date.now() - startTime;
+
+      console.log(`✅ Simple embedding completed in ${fallbackTime}ms (total: ${totalTime}ms)`);
+      return { vector, method: 'simple', processingTime: totalTime };
+    } catch (fallbackError) {
+      console.error('❌ Simple embedding fallback also failed:', fallbackError);
+      const totalTime = Date.now() - startTime;
+
+      // Last resort: return a zero vector with error indication
+      const errorVector = new Array(384).fill(0);
+      console.warn('🚨 Returning zero vector as last resort');
+
+      return {
+        vector: errorVector,
+        method: 'error',
+        processingTime: totalTime,
+      };
+    }
+  }
+};
+
+// Backward compatible wrapper that maintains the original API
+export const generateEmbeddingRobust = async (
+  text: string,
+  type: 'query' | 'document',
+  progress_callback?: (progress: unknown) => void,
+): Promise<number[]> => {
+  const result = await generateEmbeddingWithTimeout(text, type, 5, progress_callback);
+  return result.vector;
 };
 
 // Make it available globally for console access
