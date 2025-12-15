@@ -299,50 +299,82 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
                 if (decryptedApiKeys.provider) {
                   const providerType = decryptedApiKeys.provider as ProviderType;
 
-                  // 1. Configure provider with specific keys if available
+                  // 1. Build config from decrypted keys - use direct key access for reliability
                   const config: { apiKey?: string; baseUrl?: string; model?: string } = {};
-                  const keyName = `${providerType}ApiKey` as keyof typeof decryptedApiKeys;
-                  const baseUrlName = `${providerType}BaseUrl` as keyof typeof decryptedApiKeys;
-                  const apiKey = decryptedApiKeys[keyName];
-                  const baseUrl = decryptedApiKeys[baseUrlName];
+
+                  // Try multiple key formats for API key (handle different naming conventions)
+                  const apiKeyValue =
+                    decryptedApiKeys[`${providerType}ApiKey`] ||
+                    decryptedApiKeys[`${providerType}_api_key`] ||
+                    decryptedApiKeys['apiKey'];
+
+                  // Try multiple key formats for base URL
+                  const baseUrlValue =
+                    decryptedApiKeys[`${providerType}BaseUrl`] ||
+                    decryptedApiKeys[`${providerType}_base_url`] ||
+                    decryptedApiKeys['baseUrl'];
+
                   const model = decryptedApiKeys.model;
 
-                  if (apiKey) {
-                    config.apiKey = apiKey as string;
-                  } else if (baseUrl) {
-                    config.baseUrl = baseUrl as string;
-                  }
+                  console.log(
+                    `🔑 [APP CONTEXT] Extracting config for ${providerType}:`,
+                    'apiKey:',
+                    apiKeyValue ? `${apiKeyValue.substring(0, 15)}...` : 'none',
+                    'baseUrl:',
+                    baseUrlValue || 'none',
+                    'model:',
+                    model || 'none',
+                  );
 
-                  // Include model if provided
+                  if (apiKeyValue) {
+                    config.apiKey = apiKeyValue as string;
+                  }
+                  if (baseUrlValue) {
+                    config.baseUrl = baseUrlValue as string;
+                  }
                   if (model) {
                     config.model = model as string;
                   }
 
+                  console.log('📝 [APP CONTEXT] Config to apply:', config);
+
+                  // 2. Update provider config and enable it
                   if (Object.keys(config).length > 0) {
                     providerManager.updateProviderConfig(providerType, config);
-                    providerManager.enableProvider(providerType, true);
                   }
 
-                  // 2. Set the active provider to persist choice
+                  // IMPORTANT: Always enable the provider when importing with keys
+                  providerManager.enableProvider(providerType, true);
+
+                  // 3. Set the active provider
                   providerManager.setActiveProvider(providerType);
 
-                  // 3. Ensure the provider is properly initialized with the new config
+                  // 4. Initialize the provider with the config
                   const provider = providerManager.getProvider(providerType);
                   if (provider) {
                     try {
                       await provider.initialize(config);
                       console.log(
-                        `✅ ${providerType} provider initialized successfully with shared keys`,
+                        `✅ [APP CONTEXT] ${providerType} provider initialized successfully`,
                       );
                     } catch (error) {
-                      console.warn(`⚠️ Failed to initialize ${providerType} provider:`, error);
+                      console.warn(
+                        `⚠️ [APP CONTEXT] Failed to initialize ${providerType} provider:`,
+                        error,
+                      );
                     }
                   }
 
-                  // 4. Dispatch an action to notify UI components of the change
+                  // 5. Dispatch to notify UI components
                   dispatch({ type: 'SET_ACTIVE_PROVIDER', payload: providerType as string });
 
-                  // 5. Notify user of success
+                  console.log(
+                    `✅ [APP CONTEXT] ${providerType} provider set as active`,
+                    'enabled:',
+                    providerManager.isProviderEnabled(providerType),
+                  );
+
+                  // 6. Notify user of success
                   alert(`API 金鑰與 ${providerType} 提供者已成功匯入並啟用！`);
                   const newParams = new URLSearchParams(window.location.search);
                   newParams.delete('keys');
