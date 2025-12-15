@@ -1,8 +1,6 @@
-/* global HTMLSelectElement */
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { Assistant } from '../../../types';
 import { AssistantList } from '../AssistantList';
 import { AssistantListProps } from '../types';
 import { TEST_ASSISTANTS, setupAssistantTestEnvironment } from './test-utils';
@@ -11,7 +9,23 @@ import { TEST_ASSISTANTS, setupAssistantTestEnvironment } from './test-utils';
 vi.mock('../ui/Icons', () => ({
   PlusIcon: ({ className }: { className?: string }) => {
     const React = require('react');
-    return React.createElement('div', { 'data-testid': 'plus-icon', className }, 'Plus');
+    return React.createElement(
+      'svg',
+      {
+        'data-testid': 'plus-icon',
+        className,
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        stroke: 'currentColor',
+        xmlns: 'http://www.w3.org/2000/svg',
+      },
+      React.createElement('path', {
+        d: 'M12 4v16m8-8H4',
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
+        strokeWidth: '2',
+      }),
+    );
   },
   EditIcon: ({ className }: { className?: string }) => {
     const React = require('react');
@@ -20,35 +34,6 @@ vi.mock('../ui/Icons', () => ({
   TrashIcon: ({ className }: { className?: string }) => {
     const React = require('react');
     return React.createElement('div', { 'data-testid': 'trash-icon', className }, 'Trash');
-  },
-}));
-
-vi.mock('../ui/CustomSelect', () => ({
-  CustomSelect: ({
-    assistants,
-    selectedAssistant,
-    onSelect,
-    placeholder,
-  }: {
-    assistants: Assistant[];
-    selectedAssistant: Assistant | null;
-    onSelect: (id: string) => void;
-    placeholder: string;
-  }) => {
-    return React.createElement(
-      'select',
-      {
-        'data-testid': 'custom-select',
-        value: selectedAssistant?.id || '',
-        onChange: (e: React.ChangeEvent<HTMLSelectElement>) => onSelect(e.target.value),
-      },
-      [
-        React.createElement('option', { key: 'placeholder', value: '' }, placeholder),
-        ...assistants.map(assistant =>
-          React.createElement('option', { key: assistant.id, value: assistant.id }, assistant.name),
-        ),
-      ],
-    );
   },
 }));
 
@@ -85,9 +70,10 @@ describe('AssistantList', () => {
     it('renders CustomSelect component with correct props', () => {
       render(<AssistantList {...mockProps} />);
 
-      const select = screen.getByTestId('custom-select');
-      expect(select).toBeInTheDocument();
-      expect(select).toHaveValue('');
+      // CustomSelect renders as a button with placeholder text
+      const selectButton = screen.getByRole('button', { name: /請選擇一個助理/ });
+      expect(selectButton).toBeInTheDocument();
+      expect(selectButton).toHaveAttribute('aria-expanded', 'false');
     });
 
     it('renders create new button', () => {
@@ -130,11 +116,22 @@ describe('AssistantList', () => {
       expect(mockProps.onCreateNew).toHaveBeenCalledTimes(1);
     });
 
-    it('calls onSelect when an assistant is selected from dropdown', () => {
-      render(<AssistantList {...mockProps} />);
+    it('calls onSelect when an assistant is selected from dropdown', async () => {
+      const assistants = [TEST_ASSISTANTS.basic, TEST_ASSISTANTS.withRag];
+      const propsWithAssistants = {
+        ...mockProps,
+        assistants,
+      };
 
-      const select = screen.getByTestId('custom-select');
-      fireEvent.change(select, { target: { value: TEST_ASSISTANTS.basic.id } });
+      render(<AssistantList {...propsWithAssistants} />);
+
+      // Click the dropdown button to open it
+      const selectButton = screen.getByRole('button', { name: /請選擇一個助理/ });
+      fireEvent.click(selectButton);
+
+      // Wait for dropdown to open and click an option
+      const option = await screen.findByText(TEST_ASSISTANTS.basic.name);
+      fireEvent.click(option);
 
       expect(mockProps.onSelect).toHaveBeenCalledWith(TEST_ASSISTANTS.basic.id);
     });
@@ -252,7 +249,9 @@ describe('AssistantList', () => {
 
       render(<AssistantList {...propsWithEmptyList} />);
 
-      expect(screen.getByTestId('custom-select')).toBeInTheDocument();
+      // CustomSelect renders as a button with placeholder text
+      const selectButton = screen.getByRole('button', { name: /請選擇一個助理/ });
+      expect(selectButton).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /新增助理/i })).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /編輯助理/i })).not.toBeInTheDocument();
     });
@@ -265,18 +264,26 @@ describe('AssistantList', () => {
 
       render(<AssistantList {...propsWithNullSelected} />);
 
-      expect(screen.getByTestId('custom-select')).toHaveValue('');
+      // When no assistant is selected, shows placeholder text
+      const selectButton = screen.getByRole('button', { name: /請選擇一個助理/ });
+      expect(selectButton).toBeInTheDocument();
+      expect(selectButton).toHaveTextContent('請選擇一個助理');
       expect(screen.queryByRole('button', { name: /編輯助理/i })).not.toBeInTheDocument();
     });
 
     it('updates selection when selectedAssistant prop changes', () => {
       const { rerender } = render(<AssistantList {...mockProps} />);
 
-      expect(screen.getByTestId('custom-select')).toHaveValue('');
+      // Initially shows placeholder
+      let selectButton = screen.getByRole('button', { name: /請選擇一個助理/ });
+      expect(selectButton).toHaveTextContent('請選擇一個助理');
 
+      // After selecting an assistant, should show the assistant name in the dropdown button
       rerender(<AssistantList {...mockProps} selectedAssistant={TEST_ASSISTANTS.basic} />);
 
-      expect(screen.getByTestId('custom-select')).toHaveValue(TEST_ASSISTANTS.basic.id);
+      // The select button now has a different aria-label with the selected assistant
+      selectButton = screen.getByRole('button', { name: /已選擇: Basic Assistant/ });
+      expect(selectButton).toHaveTextContent(TEST_ASSISTANTS.basic.name);
     });
   });
 
@@ -284,7 +291,8 @@ describe('AssistantList', () => {
     it('applies correct CSS classes to main container', () => {
       render(<AssistantList {...mockProps} />);
 
-      const container = screen.getByRole('navigation').parentElement;
+      // The navigation element itself has the CSS classes
+      const container = screen.getByRole('navigation');
       expect(container).toHaveClass('mb-6', 'px-2');
     });
 

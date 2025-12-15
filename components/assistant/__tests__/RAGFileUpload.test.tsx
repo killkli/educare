@@ -1,24 +1,33 @@
 /// <reference types="vitest/globals" />
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { describe, it, expect, beforeEach, afterEach, beforeAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { vi } from 'vitest';
 import { RAGFileUpload } from '../RAGFileUpload';
 import { RAGFileUploadProps } from '../types';
-import {
-  TEST_RAG_CHUNKS,
-  setupAssistantTestEnvironment,
-  mockEmbeddingService,
-  mockTursoService,
-  mockDocumentParserService,
-  createMockFile,
-} from './test-utils';
+import { TEST_RAG_CHUNKS, setupAssistantTestEnvironment, createMockFile } from './test-utils';
 
 // Mock dependencies
-beforeAll(() => {
-  mockEmbeddingService();
-  mockTursoService();
-  mockDocumentParserService();
-});
+vi.mock('../../../services/tursoService', () => ({
+  saveRagChunkToTurso: vi.fn().mockResolvedValue(undefined),
+  getRagChunkCount: vi.fn().mockResolvedValue(0),
+  searchSimilarChunks: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock('../../../services/embeddingService', () => ({
+  generateEmbeddingRobust: vi.fn().mockResolvedValue([0.1, 0.2, 0.3]),
+  cosineSimilarity: vi.fn().mockReturnValue(0.8),
+}));
+
+vi.mock('../../../services/documentParserService', () => ({
+  DocumentParserService: {
+    isSupportedFile: vi.fn().mockReturnValue(true),
+    getFileTypeName: vi.fn().mockReturnValue('PDF'),
+    parseDocument: vi.fn().mockResolvedValue({
+      content: 'Mocked document content for testing purposes.',
+      metadata: { fileName: 'test.pdf', fileType: 'pdf' },
+    }),
+  },
+}));
 
 describe('RAGFileUpload', () => {
   let mockProps: RAGFileUploadProps;
@@ -48,10 +57,7 @@ describe('RAGFileUpload', () => {
     it('renders file input with correct attributes', () => {
       render(<RAGFileUpload {...mockProps} />);
 
-      const fileInput =
-        screen.getByRole('button', { name: /choose files/i }) ||
-        screen.getByDisplayValue('') ||
-        document.querySelector('input[type="file"]');
+      const fileInput = document.querySelector('input[type="file"]');
 
       expect(fileInput).toBeInTheDocument();
       if (fileInput) {
@@ -63,26 +69,21 @@ describe('RAGFileUpload', () => {
     it('renders supported file type indicators', () => {
       render(<RAGFileUpload {...mockProps} />);
 
-      expect(screen.getByText('TXT')).toBeInTheDocument();
-      expect(screen.getByText('MD')).toBeInTheDocument();
-      expect(screen.getByText('PDF')).toBeInTheDocument();
-      expect(screen.getByText('DOCX')).toBeInTheDocument();
+      expect(screen.getByText('📄 TXT')).toBeInTheDocument();
+      expect(screen.getByText('📝 MD')).toBeInTheDocument();
+      expect(screen.getByText('📕 PDF')).toBeInTheDocument();
+      expect(screen.getByText('📘 DOCX')).toBeInTheDocument();
     });
 
     it('renders description text', () => {
       render(<RAGFileUpload {...mockProps} />);
 
       expect(screen.getByText(/上傳文件以建立可搜尋的知識庫/)).toBeInTheDocument();
-      expect(screen.getByText(/檔案會自動儲存到 Turso 雲端/)).toBeInTheDocument();
+      expect(screen.getByText(/檔案會儲存到本地/)).toBeInTheDocument();
     });
 
     it('shows RAG chunk count when chunks exist in Turso', async () => {
-      const mockGetRagChunkCount = vi.mocked(
-        await import('../../../services/tursoService'),
-      ).getRagChunkCount;
-      mockGetRagChunkCount.mockResolvedValue(5);
-
-      // We can't easily test the useEffect hook, but we can verify the UI renders
+      // The component doesn't actually show chunk count in UI, so just test basic rendering
       render(<RAGFileUpload {...mockProps} />);
 
       expect(screen.getByText('知識檔案 (RAG)')).toBeInTheDocument();
@@ -91,19 +92,20 @@ describe('RAGFileUpload', () => {
 
   describe('File Upload Handling', () => {
     it('handles single file upload', async () => {
-      const mockGenerateEmbedding = vi.mocked(
-        await import('../../../services/embeddingService'),
-      ).generateEmbedding;
+      const mockGenerateEmbeddingRobust = vi.mocked(
+        (await import('../../../services/embeddingService')).generateEmbeddingRobust,
+      );
       const mockSaveRagChunk = vi.mocked(
-        await import('../../../services/tursoService'),
-      ).saveRagChunkToTurso;
-      const mockParseDocument = vi.mocked(await import('../../../services/documentParserService'))
-        .DocumentParserService.parseDocument;
+        (await import('../../../services/tursoService')).saveRagChunkToTurso,
+      );
+      const mockParseDocument = vi.mocked(
+        (await import('../../../services/documentParserService')).DocumentParserService
+          .parseDocument,
+      );
 
-      mockGenerateEmbedding.mockResolvedValue([0.1, 0.2, 0.3]);
+      mockGenerateEmbeddingRobust.mockResolvedValue([0.1, 0.2, 0.3]);
       mockSaveRagChunk.mockResolvedValue(undefined);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (mockParseDocument as any).mockResolvedValue({
+      mockParseDocument.mockResolvedValue({
         content: 'Test document content',
         metadata: { fileName: 'test.pdf', fileType: 'pdf' },
       });
