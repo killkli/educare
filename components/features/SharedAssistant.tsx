@@ -108,42 +108,67 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
             const decryptedApiKeys = await CryptoService.decryptApiKeys(encryptedKeys, password);
             ApiKeyManager.setUserApiKeys(decryptedApiKeys);
 
+            // Initialize providers first to ensure all providers are registered
+            await initializeProviders();
+
             // Handle provider-specific config if present in decrypted keys
             if (decryptedApiKeys.provider) {
               const providerType = decryptedApiKeys.provider as ProviderType;
 
-              // 1. Configure provider with specific keys if available (matching AppContext logic)
+              // 1. Build config from decrypted keys - use direct key access for reliability
               const config: { apiKey?: string; baseUrl?: string; model?: string } = {};
-              const keyName = `${providerType}ApiKey` as keyof typeof decryptedApiKeys;
-              const baseUrlName = `${providerType}BaseUrl` as keyof typeof decryptedApiKeys;
-              const apiKey = decryptedApiKeys[keyName];
-              const baseUrl = decryptedApiKeys[baseUrlName];
+
+              // Try multiple key formats for API key (handle different naming conventions)
+              const apiKeyValue =
+                decryptedApiKeys[`${providerType}ApiKey`] ||
+                decryptedApiKeys[`${providerType}_api_key`] ||
+                decryptedApiKeys['apiKey'];
+
+              // Try multiple key formats for base URL
+              const baseUrlValue =
+                decryptedApiKeys[`${providerType}BaseUrl`] ||
+                decryptedApiKeys[`${providerType}_base_url`] ||
+                decryptedApiKeys['baseUrl'];
+
               const model = decryptedApiKeys.model;
 
-              if (apiKey) {
-                config.apiKey = apiKey as string;
-              }
-              if (baseUrl) {
-                config.baseUrl = baseUrl as string;
-              }
+              console.log(
+                `🔑 [SHARED ASSISTANT] Extracting config for ${providerType}:`,
+                'apiKey:',
+                apiKeyValue ? `${apiKeyValue.substring(0, 15)}...` : 'none',
+                'baseUrl:',
+                baseUrlValue || 'none',
+                'model:',
+                model || 'none',
+              );
 
-              // Include model if provided
+              if (apiKeyValue) {
+                config.apiKey = apiKeyValue as string;
+              }
+              if (baseUrlValue) {
+                config.baseUrl = baseUrlValue as string;
+              }
               if (model) {
                 config.model = model as string;
               }
 
+              console.log('📝 [SHARED ASSISTANT] Config to apply:', config);
+
+              // 2. Update provider config and enable it
               if (Object.keys(config).length > 0) {
                 providerManager.updateProviderConfig(providerType, config);
-                providerManager.enableProvider(providerType, true);
               }
 
-              // 2. Ensure the provider is properly initialized with the new config
+              // IMPORTANT: Always enable the provider when importing with keys
+              providerManager.enableProvider(providerType, true);
+
+              // 3. Initialize the provider with the config
               const provider = providerManager.getProvider(providerType);
               if (provider) {
                 try {
                   await provider.initialize(config);
                   console.log(
-                    `✅ [SHARED ASSISTANT] ${providerType} provider initialized successfully with shared keys`,
+                    `✅ [SHARED ASSISTANT] ${providerType} provider initialized successfully`,
                   );
                 } catch (error) {
                   console.warn(
@@ -152,23 +177,17 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
                   );
                 }
               }
-            }
 
-            await initializeProviders(); // Re-init after setting keys
-
-            // IMPORTANT: Set active provider AFTER initializeProviders to ensure it persists
-            if (decryptedApiKeys.provider) {
-              const providerType = decryptedApiKeys.provider as ProviderType;
-
-              // 3. Set the active provider to persist choice (AFTER initializeProviders)
+              // 4. Set as active provider
               providerManager.setActiveProvider(providerType);
 
-              // 4. Dispatch an action to notify UI components of the change
+              // 5. Dispatch to notify UI components
               dispatch({ type: 'SET_ACTIVE_PROVIDER', payload: providerType as string });
 
-              // 5. Notify user of success
               console.log(
-                `✅ [SHARED ASSISTANT] ${providerType} provider set as active after initialization`,
+                `✅ [SHARED ASSISTANT] ${providerType} provider set as active`,
+                'enabled:',
+                providerManager.isProviderEnabled(providerType),
               );
             }
             hasValidKeys = true;

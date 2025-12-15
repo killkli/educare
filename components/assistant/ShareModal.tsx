@@ -50,20 +50,15 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
   }> => {
     const available: Array<{ providerKey: string; name: string; icon: string; key: string }> = [];
 
-    // Check both ApiKeyManager (localStorage) and providerManager (provider settings)
-    const userApiKeys = ApiKeyManager.getUserApiKeys();
+    // Check both providerManager (current system) and ApiKeyManager (legacy localStorage)
     const providerSettings = providerManager.getSettings();
+    const userApiKeys = ApiKeyManager.getUserApiKeys();
 
     Object.entries(providerInfo).forEach(([providerKey, info]) => {
       let hasApiKey = false;
 
-      // Check localStorage first (new system)
-      const localStorageKey = userApiKeys[info.key as keyof typeof userApiKeys];
-      if (localStorageKey) {
-        hasApiKey = true;
-      }
-      // Then check providerManager (existing system)
-      else if (providerSettings?.providers) {
+      // Check providerManager first (current system - has the actual in-use keys)
+      if (providerSettings?.providers) {
         const providers = providerSettings.providers as Record<
           string,
           { enabled: boolean; config?: { apiKey?: string; baseUrl?: string } }
@@ -75,6 +70,13 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
           if (providerConfig.enabled && providerConfig.config?.[configKey]) {
             hasApiKey = true;
           }
+        }
+      }
+      // Then check ApiKeyManager (legacy localStorage) as fallback
+      if (!hasApiKey) {
+        const localStorageKey = userApiKeys[info.key as keyof typeof userApiKeys];
+        if (localStorageKey) {
+          hasApiKey = true;
         }
       }
 
@@ -154,18 +156,15 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
 
         // Collect selected API keys from both systems
         const selectedApiKeys: Record<string, string> = {};
-        const userApiKeys = ApiKeyManager.getUserApiKeys();
         const providerSettings = providerManager.getSettings();
+        const userApiKeys = ApiKeyManager.getUserApiKeys();
 
         const info = providerInfo[selectedProvider as keyof typeof providerInfo];
         if (info) {
-          // Try localStorage first (new system)
-          const localStorageKey = userApiKeys[info.key as keyof typeof userApiKeys];
-          if (localStorageKey) {
-            selectedApiKeys[info.key] = localStorageKey;
-          }
-          // Then try providerManager (existing system)
-          else if (providerSettings?.providers) {
+          let foundKey = false;
+
+          // Try providerManager first (current system - has the actual in-use keys)
+          if (providerSettings?.providers) {
             const providers = providerSettings.providers as Record<
               string,
               { enabled: boolean; config?: { apiKey?: string; baseUrl?: string } }
@@ -179,7 +178,16 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
               const configValue = providerConfig.config?.[configKey];
               if (configValue) {
                 selectedApiKeys[info.key] = configValue;
+                foundKey = true;
               }
+            }
+          }
+
+          // Fall back to ApiKeyManager (legacy localStorage) if not found
+          if (!foundKey) {
+            const localStorageKey = userApiKeys[info.key as keyof typeof userApiKeys];
+            if (localStorageKey) {
+              selectedApiKeys[info.key] = localStorageKey;
             }
           }
         }
