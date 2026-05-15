@@ -1,10 +1,20 @@
 import { render, screen } from '@testing-library/react';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import ThinkingIndicator from '../ThinkingIndicator';
-import { setupTestEnvironment, mockIcons } from './test-utils';
+import { setupTestEnvironment } from './test-utils';
 
-// Mock external dependencies
-mockIcons();
+vi.mock('../../ui/Icons', () => ({
+  GeminiIcon: ({ className }: { className?: string }) => (
+    <span data-testid='gemini-icon' className={className}>
+      Gemini
+    </span>
+  ),
+  UserIcon: ({ className }: { className?: string }) => (
+    <span data-testid='user-icon' className={className}>
+      User
+    </span>
+  ),
+}));
 
 describe('ThinkingIndicator', () => {
   let testEnv: ReturnType<typeof setupTestEnvironment>;
@@ -32,8 +42,8 @@ describe('ThinkingIndicator', () => {
       render(<ThinkingIndicator />);
 
       // Assert
-      const container = screen.getByText('AI 正在思考...').closest('.flex');
-      expect(container).toHaveClass('justify-start');
+      const container = screen.getByText('AI 正在思考...').closest('.flex.justify-start');
+      expect(container).toBeInTheDocument();
       expect(container?.querySelector('.max-w-4xl')).toBeInTheDocument();
     });
 
@@ -315,7 +325,7 @@ describe('ThinkingIndicator', () => {
       render(<ThinkingIndicator />);
 
       // Assert
-      const bubble = screen.getByText('AI 正在思考...').closest('div');
+      const bubble = screen.getByText('AI 正在思考...').closest('.bg-gray-800\\/80');
 
       // Should use same background and styling as assistant messages
       expect(bubble).toHaveClass('bg-gray-800/80', 'backdrop-blur-sm');

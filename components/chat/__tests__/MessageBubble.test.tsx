@@ -1,33 +1,28 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import MessageBubble from '../MessageBubble';
 import { createMockChatMessage } from './test-utils';
 
-// Mock dependencies before importing
-beforeAll(() => {
-  vi.mock('react-markdown', () => ({
-    default: ({ children }: { children: string }) => (
-      <div data-testid='markdown-content'>{children}</div>
-    ),
-  }));
-
-  vi.mock('remark-gfm', () => ({ default: vi.fn() }));
-  vi.mock('rehype-highlight', () => ({ default: vi.fn() }));
-  vi.mock('highlight.js/styles/github-dark.css', () => ({}));
-
-  vi.mock('../../ui/Icons', () => ({
-    UserIcon: ({ className }: { className?: string }) => (
-      <div data-testid='user-icon' className={className}>
-        User
-      </div>
-    ),
-    GeminiIcon: ({ className }: { className?: string }) => (
-      <div data-testid='gemini-icon' className={className}>
-        Gemini
-      </div>
-    ),
-  }));
-});
+vi.mock('react-markdown', () => ({
+  default: ({ children }: { children: string }) => (
+    <div data-testid='markdown-content'>{children}</div>
+  ),
+}));
+vi.mock('remark-gfm', () => ({ default: vi.fn() }));
+vi.mock('rehype-highlight', () => ({ default: vi.fn() }));
+vi.mock('highlight.js/styles/github-dark.css', () => ({}));
+vi.mock('../../ui/Icons', () => ({
+  UserIcon: ({ className }: { className?: string }) => (
+    <span data-testid='user-icon' className={className}>
+      User
+    </span>
+  ),
+  GeminiIcon: ({ className }: { className?: string }) => (
+    <span data-testid='gemini-icon' className={className}>
+      Gemini
+    </span>
+  ),
+}));
 
 describe('MessageBubble', () => {
   describe('User Message Rendering', () => {
