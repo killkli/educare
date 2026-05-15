@@ -12,6 +12,44 @@ import {
   RESPONSIVE_BREAKPOINTS,
 } from './test-utils';
 
+vi.mock('../../../services/db', () => ({
+  getAssistant: vi.fn().mockResolvedValue(null),
+  saveAssistant: vi.fn().mockResolvedValue(undefined),
+  deleteAssistant: vi.fn().mockResolvedValue(undefined),
+  getAllAssistants: vi.fn().mockResolvedValue([]),
+  getSessionsForAssistant: vi.fn().mockResolvedValue([]),
+  saveSession: vi.fn().mockResolvedValue(undefined),
+  deleteSession: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('../../../services/embeddingService', () => ({
+  preloadEmbeddingModel: vi.fn().mockResolvedValue(undefined),
+  isEmbeddingModelLoaded: vi.fn().mockReturnValue(true),
+  generateEmbedding: vi.fn().mockResolvedValue([0.1, 0.2, 0.3]),
+}));
+vi.mock('../../../services/providerRegistry', () => ({
+  initializeProviders: vi.fn().mockResolvedValue(undefined),
+  providerManager: {
+    getAvailableProviders: vi.fn().mockReturnValue(['gemini']),
+  },
+}));
+vi.mock('../../../services/cryptoService', () => ({
+  CryptoService: {
+    encryptApiKeys: vi.fn().mockResolvedValue('encrypted'),
+    decryptApiKeys: vi.fn().mockResolvedValue({}),
+    generateRandomPassword: vi.fn().mockReturnValue('password'),
+  },
+}));
+vi.mock('../../../services/apiKeyManager', () => ({
+  ApiKeyManager: {
+    getUserApiKeys: vi.fn().mockReturnValue({ geminiApiKey: 'test-key' }),
+    saveUserApiKeys: vi.fn(),
+  },
+}));
+vi.mock('../../../services/shortUrlService', () => ({
+  resolveShortUrl: vi.fn().mockResolvedValue(null),
+  recordShortUrlClick: vi.fn().mockResolvedValue(undefined),
+}));
+
 // Test component to access context
 function TestConsumer() {
   const { state, dispatch, actions } = useAppContext();
