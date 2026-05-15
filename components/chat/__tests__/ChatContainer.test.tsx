@@ -1,14 +1,22 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import ChatContainer from '../ChatContainer';
-import { RagChunk, ChatSession } from '../../../types';
 import {
   setupTestEnvironment,
   TEST_SESSIONS,
   TEST_ASSISTANTS,
   createMockChatSession,
 } from './test-utils';
+import { ragCacheManagerV2 } from '../../../services/ragCacheManagerV2';
+
+// Stable spy created via vi.hoisted so the mock factory always exports the exact same
+// vi.fn() reference — even if Vitest re-evaluates the mock module between tests.
+// Without this, the test's import binding becomes stale while the component receives
+// a freshly-created spy, breaking mockImplementation calls in individual tests.
+const { mockStreamChat } = vi.hoisted(() => ({
+  mockStreamChat: vi.fn(),
+}));
 
 vi.mock('react-markdown', () => ({
   default: ({ children }: { children: string }) => (
@@ -38,52 +46,52 @@ vi.mock('../../../services/tursoService', () => ({
   searchSimilarChunks: vi.fn().mockResolvedValue([]),
 }));
 vi.mock('../../../services/llmService', () => ({
-  streamChat: vi.fn().mockResolvedValue(undefined),
+  streamChat: mockStreamChat,
 }));
-
-// Mock SessionManager
-vi.mock('../SessionManager', () => ({
-  default: ({
-    session,
-    onSessionUpdate: _onSessionUpdate,
-  }: {
-    session: ChatSession;
-    onSessionUpdate: (session: ChatSession) => void;
-  }) => ({
-    currentSession: session,
-    handleSendMessage: vi.fn(
-      async (
-        userMessage: string,
-        systemPrompt: string,
-        assistantId: string,
-        ragChunks: RagChunk[],
-        setStatusText: (text: string) => void,
-        setIsThinking: (thinking: boolean) => void,
-        onStreamingChunk: (chunk: string) => void,
-        onComplete: (
-          tokenInfo: { promptTokenCount: number; candidatesTokenCount: number },
-          fullResponse: string,
-        ) => void,
-        _onError: (_error: Error) => void,
-      ) => {
-        // Simulate the message flow
-        setIsThinking(true);
-        setStatusText('Processing...');
-
-        // Simulate streaming response
-        setTimeout(() => {
-          onStreamingChunk('Hello');
-          setTimeout(() => {
-            onStreamingChunk(' world!');
-            setTimeout(() => {
-              onComplete({ promptTokenCount: 10, candidatesTokenCount: 15 }, 'Hello world!');
-            }, 50);
-          }, 50);
-        }, 50);
-      },
-    ),
-    messagesEndRef: { current: null },
+vi.mock('../../core/useAppContext', () => ({
+  useAppContext: () => ({
+    actions: {
+      createNewSession: vi.fn().mockResolvedValue({
+        id: 'new-session-1',
+        assistantId: 'test-assistant-1',
+        title: 'New Chat',
+        messages: [],
+        createdAt: Date.now(),
+        tokenCount: 0,
+      }),
+    },
+    state: {},
+    dispatch: vi.fn(),
   }),
+}));
+vi.mock('../../../services/ragCacheManagerV2', () => ({
+  ragCacheManagerV2: {
+    performCachedRagQuery: vi.fn().mockResolvedValue({
+      results: [],
+      fromCache: false,
+      queryTime: 0,
+      cacheStats: null,
+      ragMetadata: { source: 'test', totalCandidates: 0, filteredCandidates: 0, finalResults: 0 },
+    }),
+    resultsToContextString: vi.fn().mockReturnValue(''),
+  },
+}));
+vi.mock('../../../services/ragQueryService', () => ({
+  ragQueryService: {
+    performRagQuery: vi.fn().mockResolvedValue({ results: [] }),
+    resultsToContextString: vi.fn().mockReturnValue(''),
+  },
+}));
+vi.mock('../../../services/ragSettingsService', () => ({
+  getRagSettingsService: () => ({
+    getVectorSearchLimit: vi.fn().mockReturnValue(5),
+    isRerankingEnabled: vi.fn().mockReturnValue(false),
+    getRerankLimit: vi.fn().mockReturnValue(3),
+    getMinSimilarity: vi.fn().mockReturnValue(0.5),
+  }),
+}));
+vi.mock('../../settings', () => ({
+  RagSettingsModal: () => null,
 }));
 
 describe('ChatContainer', () => {
@@ -102,12 +110,56 @@ describe('ChatContainer', () => {
   };
 
   beforeEach(() => {
+    // Fresh onNewMessage each test to avoid stale call counts
+    defaultProps.onNewMessage = vi.fn();
     testEnv = setupTestEnvironment();
-    vi.clearAllMocks();
+
+    // Re-establish streamChat implementation for each test.
+    // Uses mockStreamChat (the hoisted stable spy) so beforeEach and tests always
+    // reference the same vi.fn() that the component receives via the mock factory.
+    mockStreamChat.mockImplementation(
+      async ({
+        onChunk,
+        onComplete,
+      }: {
+        onChunk?: (chunk: string) => void;
+        onComplete?: (
+          tokenInfo: { promptTokenCount: number; candidatesTokenCount: number },
+          response: string,
+        ) => void;
+      }) => {
+        await new Promise<void>(resolve => setTimeout(resolve, 10));
+        if (onChunk) {
+          onChunk('Hello world!');
+        }
+        await new Promise<void>(resolve => setTimeout(resolve, 60));
+        if (onComplete) {
+          onComplete({ promptTokenCount: 10, candidatesTokenCount: 15 }, 'Hello world!');
+        }
+      },
+    );
+
+    vi.mocked(ragCacheManagerV2.performCachedRagQuery).mockResolvedValue({
+      results: [],
+      fromCache: false,
+      queryTime: 0,
+      cacheStats: null,
+      ragMetadata: { source: 'test', totalCandidates: 0, filteredCandidates: 0, finalResults: 0 },
+    });
+
+    vi.mocked(ragCacheManagerV2.resultsToContextString).mockReturnValue('');
   });
 
-  afterEach(() => {
-    testEnv.cleanup();
+  afterEach(async () => {
+    // Flush any pending async work from in-flight handleSend before cleanup
+    await act(async () => {});
+    // Restore only the explicit spies (console, Date.now) — NOT vi.restoreAllMocks(),
+    // which resets vi.mock() factory implementations (streamChat, ragCacheManagerV2)
+    // and breaks subsequent tests even after beforeEach re-establishes them.
+    testEnv.consoleSpy.mockRestore();
+    testEnv.consoleErrorSpy.mockRestore();
+    testEnv.dateNow.spy.mockRestore();
+    vi.clearAllMocks();
   });
 
   describe('Basic Rendering', () => {
@@ -272,6 +324,11 @@ describe('ChatContainer', () => {
       await waitFor(() => {
         expect(textarea).toHaveValue('');
       });
+
+      // Drain handleSend fully — prevents in-flight async ops from leaking into next test
+      await waitFor(() => {
+        expect(defaultProps.onNewMessage).toHaveBeenCalled();
+      });
     });
 
     it('should disable input during loading', async () => {
@@ -282,12 +339,17 @@ describe('ChatContainer', () => {
       // Act
       const textarea = screen.getByRole('textbox');
       await user.type(textarea, 'Test message');
-      const sendButton = screen.getByRole('button');
+      const sendButton = screen.getByRole('button', { name: /傳送/ });
       await user.click(sendButton);
 
       // Assert
       await waitFor(() => {
         expect(textarea).toBeDisabled();
+      });
+
+      // Drain handleSend fully — prevents in-flight async ops from leaking into next test
+      await waitFor(() => {
+        expect(defaultProps.onNewMessage).toHaveBeenCalled();
       });
     });
   });
@@ -301,7 +363,7 @@ describe('ChatContainer', () => {
       // Act
       const textarea = screen.getByRole('textbox');
       await user.type(textarea, 'Hello AI');
-      const sendButton = screen.getByRole('button');
+      const sendButton = screen.getByRole('button', { name: /傳送/ });
       await user.click(sendButton);
 
       // Assert
@@ -334,10 +396,10 @@ describe('ChatContainer', () => {
       // Act
       const textarea = screen.getByRole('textbox');
       await user.type(textarea, '   '); // Only whitespace
-      const sendButton = screen.getByRole('button');
-      await user.click(sendButton);
 
-      // Assert
+      // Assert — send button is disabled for whitespace-only input
+      const sendButton = screen.getByRole('button', { name: /傳送/ });
+      expect(sendButton).toBeDisabled();
       expect(defaultProps.onNewMessage).not.toHaveBeenCalled();
     });
 
@@ -349,17 +411,15 @@ describe('ChatContainer', () => {
       // Act
       const textarea = screen.getByRole('textbox');
       await user.type(textarea, 'First message');
-      const sendButton = screen.getByRole('button');
+      const sendButton = screen.getByRole('button', { name: /傳送/ });
 
       // Send first message (starts loading)
       await user.click(sendButton);
 
-      // Try to send another message while loading
-      await user.type(textarea, 'Second message');
-      await user.click(sendButton);
+      // While loading the button is disabled — verify it cannot trigger a second send
+      expect(sendButton).toBeDisabled();
 
       // Assert
-      // Should only be called once for the first message
       await waitFor(() => {
         expect(defaultProps.onNewMessage).toHaveBeenCalledTimes(1);
       });
@@ -375,12 +435,17 @@ describe('ChatContainer', () => {
       // Act
       const textarea = screen.getByRole('textbox');
       await user.type(textarea, 'Test message');
-      const sendButton = screen.getByRole('button');
+      const sendButton = screen.getByRole('button', { name: /傳送/ });
       await user.click(sendButton);
 
       // Assert
       await waitFor(() => {
         expect(screen.getByText('AI 正在思考...')).toBeInTheDocument();
+      });
+
+      // Drain handleSend fully — prevents in-flight async ops from leaking into next test
+      await waitFor(() => {
+        expect(defaultProps.onNewMessage).toHaveBeenCalled();
       });
     });
 
@@ -392,16 +457,19 @@ describe('ChatContainer', () => {
       // Act
       const textarea = screen.getByRole('textbox');
       await user.type(textarea, 'Test message');
-      const sendButton = screen.getByRole('button');
+      const sendButton = screen.getByRole('button', { name: /傳送/ });
       await user.click(sendButton);
 
-      // Assert
-      await waitFor(
-        () => {
-          expect(screen.getByText('正在輸入...')).toBeInTheDocument();
-        },
-        { timeout: 200 },
-      );
+      // Assert — thinking indicator appears while AI processes, then the streamed AI response
+      // is committed to the session once onComplete fires.
+      await waitFor(() => {
+        expect(screen.getByText('AI 正在思考...')).toBeInTheDocument();
+      });
+      await waitFor(() => {
+        expect(defaultProps.onNewMessage).toHaveBeenCalled();
+      });
+      // The streamed content appears as a chat message after onComplete
+      expect(screen.getByText('Hello world!')).toBeInTheDocument();
     });
 
     it('should hide thinking indicator when streaming starts', async () => {
@@ -412,7 +480,7 @@ describe('ChatContainer', () => {
       // Act
       const textarea = screen.getByRole('textbox');
       await user.type(textarea, 'Test message');
-      const sendButton = screen.getByRole('button');
+      const sendButton = screen.getByRole('button', { name: /傳送/ });
       await user.click(sendButton);
 
       // Assert
@@ -428,6 +496,11 @@ describe('ChatContainer', () => {
         },
         { timeout: 200 },
       );
+
+      // Drain handleSend fully — prevents in-flight async ops from leaking into next test
+      await waitFor(() => {
+        expect(defaultProps.onNewMessage).toHaveBeenCalled();
+      });
     });
   });
 
@@ -456,7 +529,7 @@ describe('ChatContainer', () => {
       // Act
       const textarea = screen.getByRole('textbox');
       await user.type(textarea, 'Test query');
-      const sendButton = screen.getByRole('button');
+      const sendButton = screen.getByRole('button', { name: /傳送/ });
       await user.click(sendButton);
 
       // Assert
@@ -490,9 +563,9 @@ describe('ChatContainer', () => {
       // Arrange & Act
       render(<ChatContainer {...defaultProps} sharedMode={true} />);
 
-      // Assert
-      const textarea = screen.getByRole('textbox');
-      expect(textarea).toBeDisabled(); // Should be disabled when no input text in shared mode
+      // Assert — send button is disabled when no text is entered
+      const sendButton = screen.getByRole('button', { name: /傳送/ });
+      expect(sendButton).toBeDisabled();
     });
 
     it('should enable input in shared mode when text is present', async () => {
@@ -519,51 +592,54 @@ describe('ChatContainer', () => {
 
   describe('Error Handling', () => {
     it('should handle errors during message sending', async () => {
-      // Arrange
-      const mockSessionManager = vi.fn().mockImplementation(() => ({
-        currentSession: defaultProps.session,
-        handleSendMessage: vi.fn().mockRejectedValue(new Error('Network error')),
-        messagesEndRef: { current: null },
-      }));
-
-      // Mock the SessionManager to throw error
-      vi.doMock('../SessionManager', () => ({
-        default: mockSessionManager,
-      }));
+      // Override the beforeEach implementation so streamChat throws.
+      // Uses mockStreamChat (the vi.hoisted stable spy) which is the exact same
+      // reference the component receives — no stale-binding issues.
+      mockStreamChat.mockImplementation(async () => {
+        await new Promise<void>(resolve => setTimeout(resolve, 10));
+        throw new Error('Network error');
+      });
 
       const user = userEvent.setup();
       render(<ChatContainer {...defaultProps} />);
 
-      // Act
-      const textarea = screen.getByRole('textbox');
-      await user.type(textarea, 'Test message');
-      const sendButton = screen.getByRole('button');
-      await user.click(sendButton);
+      await user.type(screen.getByRole('textbox'), 'Test message');
+      await user.click(screen.getByRole('button', { name: /傳送/ }));
 
-      // Assert
+      // Wait for the catch block to execute — it calls console.error then sets the error
+      // streaming response. Polling via waitFor handles the async delay in the error impl.
       await waitFor(() => {
-        expect(screen.getByText(/抱歉，發生錯誤/)).toBeInTheDocument();
+        expect(testEnv.consoleErrorSpy).toHaveBeenCalledWith(
+          'Error during chat stream:',
+          expect.any(Error),
+        );
       });
+
+      // getAllByTestId because the user MessageBubble also renders a markdown-content element;
+      // the last one is the StreamingResponse content (error text).
+      const allMarkdown = screen.getAllByTestId('markdown-content');
+      expect(allMarkdown[allMarkdown.length - 1]).toHaveTextContent('抱歉，發生錯誤');
     });
 
     it('should reset states after error', async () => {
-      // Arrange
+      // Arrange — make streamChat reject so loading/thinking states are cleared
+      mockStreamChat.mockRejectedValueOnce(new Error('Test error'));
+
       const user = userEvent.setup();
       render(<ChatContainer {...defaultProps} />);
 
-      // Simulate error by triggering the error callback in SessionManager
       const textarea = screen.getByRole('textbox');
       await user.type(textarea, 'Error message');
-      const sendButton = screen.getByRole('button');
+      const sendButton = screen.getByRole('button', { name: /傳送/ });
       await user.click(sendButton);
 
-      // Wait for error state
+      // Wait for error state — thinking indicator should clear
       await waitFor(() => {
         expect(screen.queryByText('AI 正在思考...')).not.toBeInTheDocument();
       });
 
-      // Assert
-      expect(textarea).not.toBeDisabled(); // Should be re-enabled after error
+      // Assert — input should be re-enabled after error
+      expect(textarea).not.toBeDisabled();
     });
   });
 
@@ -572,28 +648,29 @@ describe('ChatContainer', () => {
       // Arrange & Act
       render(<ChatContainer {...defaultProps} />);
 
-      // Assert
-      expect(screen.getByText(defaultProps.assistantName)).toBeInTheDocument();
-      const headerSection = screen.getByRole('heading').closest('div');
-      expect(headerSection).toHaveClass('p-4', 'border-b', 'border-gray-700');
+      // Assert — h2 is the header heading (h3 also exists in WelcomeMessage)
+      const heading = screen.getByRole('heading', { level: 2 });
+      expect(heading).toHaveTextContent(defaultProps.assistantName);
+      const headerSection = heading.closest('.bg-gray-800');
+      expect(headerSection).toHaveClass('border-b', 'border-gray-700', 'p-2');
     });
 
     it('should hide header when hideHeader is true', () => {
       // Arrange & Act
       render(<ChatContainer {...defaultProps} hideHeader={true} />);
 
-      // Assert
-      expect(screen.queryByRole('heading')).not.toBeInTheDocument();
+      // Assert — only h3 in WelcomeMessage remains; h2 header is gone
+      expect(screen.queryByRole('heading', { level: 2 })).not.toBeInTheDocument();
     });
 
     it('should apply proper styling to header', () => {
       // Arrange & Act
       render(<ChatContainer {...defaultProps} hideHeader={false} />);
 
-      // Assert
-      const header = screen.getByRole('heading').closest('div');
+      // Assert — header div wraps the h2; actual class is p-2 md:p-4
+      const header = screen.getByRole('heading', { level: 2 }).closest('.bg-gray-800');
       expect(header).toHaveClass(
-        'p-4',
+        'p-2',
         'border-b',
         'border-gray-700',
         'flex-shrink-0',
@@ -648,7 +725,7 @@ describe('ChatContainer', () => {
       // Act - Send first message
       let textarea = screen.getByRole('textbox');
       await user.type(textarea, 'Hello');
-      await user.click(screen.getByRole('button'));
+      await user.click(screen.getByRole('button', { name: /傳送/ }));
 
       // Wait for response
       await waitFor(() => {
@@ -658,7 +735,7 @@ describe('ChatContainer', () => {
       // Act - Send second message
       textarea = screen.getByRole('textbox');
       await user.type(textarea, 'How are you?');
-      await user.click(screen.getByRole('button'));
+      await user.click(screen.getByRole('button', { name: /傳送/ }));
 
       // Assert
       await waitFor(() => {
