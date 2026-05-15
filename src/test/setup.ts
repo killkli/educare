@@ -1,6 +1,27 @@
 import '@testing-library/jest-dom';
 import { vi } from 'vitest';
 
+// Define IDB globals missing from jsdom (required by idb library instanceof checks)
+/* global EventTarget */
+class FakeIDBRequest extends EventTarget {}
+class FakeIDBDatabase extends EventTarget {}
+class FakeIDBTransaction extends EventTarget {}
+class FakeIDBObjectStore {}
+class FakeIDBIndex {}
+class FakeIDBCursor {}
+// @ts-ignore
+global.IDBRequest = FakeIDBRequest;
+// @ts-ignore
+global.IDBDatabase = FakeIDBDatabase;
+// @ts-ignore
+global.IDBTransaction = FakeIDBTransaction;
+// @ts-ignore
+global.IDBObjectStore = FakeIDBObjectStore;
+// @ts-ignore
+global.IDBIndex = FakeIDBIndex;
+// @ts-ignore
+global.IDBCursor = FakeIDBCursor;
+
 // Mock window.indexedDB for testing
 Object.defineProperty(window, 'indexedDB', {
   value: {
@@ -44,7 +65,9 @@ globalThis.Element.prototype.scrollIntoView = vi.fn();
 Object.defineProperty(navigator, 'clipboard', {
   value: {
     writeText: vi.fn().mockResolvedValue(undefined),
+    readText: vi.fn().mockResolvedValue(''),
   },
+  configurable: true,
   writable: true,
 });
 

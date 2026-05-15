@@ -29,13 +29,13 @@ export const createMockAssistant = (overrides: Partial<Assistant> = {}): Assista
   ...overrides,
 });
 
-// Mock clipboard API
+// Mock clipboard API - uses defineProperty to survive userEvent redefining it as getter-only
 export const mockClipboard = () => {
   const writeText = vi.fn().mockResolvedValue(undefined);
-  Object.assign(navigator, {
-    clipboard: {
-      writeText,
-    },
+  Object.defineProperty(navigator, 'clipboard', {
+    value: { writeText, readText: vi.fn().mockResolvedValue('') },
+    configurable: true,
+    writable: true,
   });
   return { writeText };
 };
