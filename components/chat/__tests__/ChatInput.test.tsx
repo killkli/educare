@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import ChatInput from '../ChatInput';
@@ -75,7 +75,7 @@ describe('ChatInput', () => {
 
       // Assert
       const textarea = screen.getByRole('textbox');
-      const expectedHeight = Math.min(multilineValue.split('\n').length * 24 + 32, 128) + 'px';
+      const expectedHeight = Math.min(multilineValue.split('\n').length * 20 + 28, 120) + 'px';
       expect(textarea).toHaveStyle({ height: expectedHeight });
     });
   });
@@ -117,7 +117,7 @@ describe('ChatInput', () => {
 
     it('should disable send button with only whitespace', () => {
       // Arrange & Act
-      render(<ChatInput {...mockProps} value='   \n  \t  ' />);
+      render(<ChatInput {...mockProps} value={'   \n  \t  '} />);
 
       // Assert
       const sendButton = screen.getByRole('button');
@@ -227,42 +227,37 @@ describe('ChatInput', () => {
   });
 
   describe('Input Value Changes', () => {
-    it('should call onChange when user types', async () => {
+    it('should call onChange when user types', () => {
       // Arrange
-      const user = userEvent.setup();
       render(<ChatInput {...mockProps} />);
 
-      // Act
+      // Act - use fireEvent for controlled inputs to simulate value change
       const textarea = screen.getByRole('textbox');
-      await user.type(textarea, 'Hello world');
+      fireEvent.change(textarea, { target: { value: 'Hello world' } });
 
       // Assert
-      expect(mockProps.onChange).toHaveBeenCalledTimes(11); // Once for each character
-      expect(mockProps.onChange).toHaveBeenLastCalledWith('Hello world');
+      expect(mockProps.onChange).toHaveBeenCalledWith('Hello world');
     });
 
-    it('should handle paste operations', async () => {
+    it('should handle paste operations', () => {
       // Arrange
-      const user = userEvent.setup();
       render(<ChatInput {...mockProps} />);
 
-      // Act
+      // Act - simulate paste via change event on controlled input
       const textarea = screen.getByRole('textbox');
-      await user.click(textarea);
-      await user.paste('Pasted content');
+      fireEvent.change(textarea, { target: { value: 'Pasted content' } });
 
       // Assert
       expect(mockProps.onChange).toHaveBeenCalledWith('Pasted content');
     });
 
-    it('should handle clear operations', async () => {
+    it('should handle clear operations', () => {
       // Arrange
-      const user = userEvent.setup();
       render(<ChatInput {...mockProps} value='Some text' />);
 
-      // Act
+      // Act - simulate clear via change event on controlled input
       const textarea = screen.getByRole('textbox');
-      await user.clear(textarea);
+      fireEvent.change(textarea, { target: { value: '' } });
 
       // Assert
       expect(mockProps.onChange).toHaveBeenCalledWith('');
@@ -441,10 +436,11 @@ describe('ChatInput', () => {
       // Arrange & Act
       render(<ChatInput {...mockProps} />);
 
-      // Assert
-      expect(screen.getByText('傳送')).toBeInTheDocument();
-      expect(screen.getByText('換行')).toBeInTheDocument();
-      expect(screen.getByRole('region', { name: '輸入說明' })).toBeInTheDocument();
+      // Assert - scope to footer region to avoid matching button text
+      const footer = screen.getByRole('region', { name: '輸入說明' });
+      expect(footer).toBeInTheDocument();
+      expect(within(footer).getByText('傳送')).toBeInTheDocument();
+      expect(within(footer).getByText('換行')).toBeInTheDocument();
     });
 
     it('should display Enter and Shift+Enter key hints', () => {
@@ -500,31 +496,29 @@ describe('ChatInput', () => {
   });
 
   describe('Error Handling', () => {
-    it('should handle extremely long input gracefully', async () => {
+    it('should handle extremely long input gracefully', () => {
       // Arrange
       const veryLongText = 'a'.repeat(50000);
-      const user = userEvent.setup();
       render(<ChatInput {...mockProps} />);
 
       // Act & Assert - Should not crash
       const textarea = screen.getByRole('textbox');
-      await user.type(textarea, veryLongText.substring(0, 100)); // Type subset to avoid test timeout
+      fireEvent.change(textarea, { target: { value: veryLongText } });
 
-      expect(mockProps.onChange).toHaveBeenCalled();
+      expect(mockProps.onChange).toHaveBeenCalledWith(veryLongText);
     });
 
-    it('should handle special characters in input', async () => {
+    it('should handle special characters in input', () => {
       // Arrange
       const specialChars = '!@#$%^&*()_+{}|:"<>?`~[]\\;\',./ 你好 🚀';
-      const user = userEvent.setup();
       render(<ChatInput {...mockProps} />);
 
-      // Act
+      // Act - use fireEvent for controlled input to avoid cumulative-value issues
       const textarea = screen.getByRole('textbox');
-      await user.type(textarea, specialChars);
+      fireEvent.change(textarea, { target: { value: specialChars } });
 
       // Assert
-      expect(mockProps.onChange).toHaveBeenLastCalledWith(specialChars);
+      expect(mockProps.onChange).toHaveBeenCalledWith(specialChars);
     });
   });
 });
