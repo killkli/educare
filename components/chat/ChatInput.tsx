@@ -13,13 +13,11 @@ const ChatInput: React.FC<ChatInputProps> = ({
   const [isComposing, setIsComposing] = React.useState(false);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // 檢查是否正在輸入法組合狀態（如中文拼音輸入）
-    // 使用雙重檢查：React 事件的 isComposing 和我們自己的狀態追蹤
-    if (e.key === 'Enter' && e.shiftKey && !e.nativeEvent.isComposing && !isComposing) {
+    // Enter (without Shift) sends; Shift+Enter inserts a newline
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && !isComposing) {
       e.preventDefault();
       onSend();
     }
-    // Enter 不加 shift 就是換行，不需要特別處理，讓預設行為發生
   };
 
   // 輸入法組合開始事件
@@ -143,7 +141,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
               >
                 Enter
               </kbd>
-              <span>換行</span>
+              <span>傳送</span>
             </div>
             <div className='flex items-center gap-2 bg-gray-700/30 px-2 py-1 md:px-3 md:py-1.5 rounded-full border border-gray-600/30'>
               <kbd
@@ -152,7 +150,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
               >
                 Shift + Enter
               </kbd>
-              <span>傳送</span>
+              <span>換行</span>
             </div>
           </div>
         </div>
