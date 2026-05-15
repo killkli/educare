@@ -5,7 +5,7 @@ import { useTursoAssistantStatus } from '../../hooks/useTursoAssistantStatus';
 
 interface AssistantEditorProps {
   assistant: Assistant | null;
-  onSave: (assistant: Assistant) => void;
+  onSave: (assistant: Assistant) => Promise<void> | void;
   onCancel: () => void;
   onShare?: (assistant: Assistant) => void;
 }
@@ -60,7 +60,9 @@ export const AssistantEditor: React.FC<AssistantEditorProps> = ({
       // 只保存到本地，不自動上傳到 Turso
       console.log('Assistant saved locally. Use migration settings to sync to Turso if needed.');
 
-      onSave(newAssistant);
+      await onSave(newAssistant);
+    } catch (error) {
+      console.error('Failed to save assistant:', error);
     } finally {
       setIsSaving(false);
     }

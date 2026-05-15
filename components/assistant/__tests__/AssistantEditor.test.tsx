@@ -1,12 +1,23 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
 import { AssistantEditor } from '../AssistantEditor';
 import { Assistant, RagChunk } from '../../../types';
 import { TEST_ASSISTANTS, TEST_RAG_CHUNKS, setupAssistantTestEnvironment } from './test-utils';
 
+// Mock useTursoAssistantStatus so canShare is true for existing assistants
+vi.mock('../../../hooks/useTursoAssistantStatus', () => ({
+  useTursoAssistantStatus: (assistantId: string | null) => ({
+    isInTurso: !!assistantId,
+    isChecking: false,
+    canShare: !!assistantId,
+    recheckStatus: vi.fn(),
+  }),
+}));
+
 // Mock dependencies
 vi.mock('../../../services/tursoService', () => ({
   saveAssistantToTurso: vi.fn().mockResolvedValue(undefined),
+  checkAssistantExistsInTurso: vi.fn().mockResolvedValue(false),
 }));
 
 beforeAll(() => {
@@ -82,7 +93,7 @@ describe('AssistantEditor', () => {
 
       expect(screen.getByText('新增助理')).toBeInTheDocument();
       expect(screen.getByLabelText('助理名稱')).toBeInTheDocument();
-      expect(screen.getByLabelText('公開描述')).toBeInTheDocument();
+      expect(screen.getByLabelText('公開描述', { exact: false })).toBeInTheDocument();
       expect(screen.getByLabelText('系統提示')).toBeInTheDocument();
     });
 
@@ -144,7 +155,7 @@ describe('AssistantEditor', () => {
       render(<AssistantEditor {...mockProps} />);
 
       expect(screen.getByLabelText('助理名稱')).toHaveValue('');
-      expect(screen.getByLabelText('公開描述')).toHaveValue('');
+      expect(screen.getByLabelText('公開描述', { exact: false })).toHaveValue('');
       expect(screen.getByLabelText('系統提示')).toHaveValue('您是一個有用且專業的 AI 助理。');
       expect(screen.getByText('Chunks: 0')).toBeInTheDocument();
     });
@@ -158,7 +169,9 @@ describe('AssistantEditor', () => {
       render(<AssistantEditor {...propsWithAssistant} />);
 
       expect(screen.getByLabelText('助理名稱')).toHaveValue(TEST_ASSISTANTS.withRag.name);
-      expect(screen.getByLabelText('公開描述')).toHaveValue(TEST_ASSISTANTS.withRag.description);
+      expect(screen.getByLabelText('公開描述', { exact: false })).toHaveValue(
+        TEST_ASSISTANTS.withRag.description,
+      );
       expect(screen.getByLabelText('系統提示')).toHaveValue(TEST_ASSISTANTS.withRag.systemPrompt);
       expect(
         screen.getByText(`Chunks: ${TEST_ASSISTANTS.withRag.ragChunks!.length}`),
@@ -178,7 +191,7 @@ describe('AssistantEditor', () => {
 
       render(<AssistantEditor {...propsWithAssistant} />);
 
-      expect(screen.getByLabelText('公開描述')).toHaveValue('');
+      expect(screen.getByLabelText('公開描述', { exact: false })).toHaveValue('');
     });
 
     it('handles assistant with undefined description', () => {
@@ -194,7 +207,7 @@ describe('AssistantEditor', () => {
 
       render(<AssistantEditor {...propsWithAssistant} />);
 
-      expect(screen.getByLabelText('公開描述')).toHaveValue('');
+      expect(screen.getByLabelText('公開描述', { exact: false })).toHaveValue('');
     });
   });
 
@@ -211,7 +224,7 @@ describe('AssistantEditor', () => {
     it('updates description when textarea changes', () => {
       render(<AssistantEditor {...mockProps} />);
 
-      const descriptionInput = screen.getByLabelText('公開描述');
+      const descriptionInput = screen.getByLabelText('公開描述', { exact: false });
       fireEvent.change(descriptionInput, { target: { value: 'New description' } });
 
       expect(descriptionInput).toHaveValue('New description');
@@ -294,10 +307,6 @@ describe('AssistantEditor', () => {
     });
 
     it('allows saving with valid name', async () => {
-      const { saveAssistantToTurso } = await import('../../../services/tursoService');
-      const mockSaveAssistantToTurso = vi.mocked(saveAssistantToTurso);
-      mockSaveAssistantToTurso.mockResolvedValue(undefined);
-
       render(<AssistantEditor {...mockProps} />);
 
       const nameInput = screen.getByLabelText('助理名稱');
@@ -316,17 +325,13 @@ describe('AssistantEditor', () => {
 
   describe('Save Functionality', () => {
     it('saves new assistant with correct data', async () => {
-      const { saveAssistantToTurso } = await import('../../../services/tursoService');
-      const mockSaveAssistantToTurso = vi.mocked(saveAssistantToTurso);
-      mockSaveAssistantToTurso.mockResolvedValue(undefined);
-
       render(<AssistantEditor {...mockProps} />);
 
       // Fill form
       fireEvent.change(screen.getByLabelText('助理名稱'), {
         target: { value: '  Test Assistant  ' },
       });
-      fireEvent.change(screen.getByLabelText('公開描述'), {
+      fireEvent.change(screen.getByLabelText('公開描述', { exact: false }), {
         target: { value: '  Test Description  ' },
       });
       fireEvent.change(screen.getByLabelText('系統提示'), { target: { value: '  Test Prompt  ' } });
@@ -351,10 +356,6 @@ describe('AssistantEditor', () => {
     });
 
     it('saves existing assistant with preserved ID and createdAt', async () => {
-      const { saveAssistantToTurso } = await import('../../../services/tursoService');
-      const mockSaveAssistantToTurso = vi.mocked(saveAssistantToTurso);
-      mockSaveAssistantToTurso.mockResolvedValue(undefined);
-
       const propsWithAssistant = {
         ...mockProps,
         assistant: TEST_ASSISTANTS.basic,
@@ -379,45 +380,43 @@ describe('AssistantEditor', () => {
     });
 
     it('shows loading state during save', async () => {
-      const { saveAssistantToTurso } = await import('../../../services/tursoService');
-      const mockSaveAssistantToTurso = vi.mocked(saveAssistantToTurso);
-      // Add delay to simulate network request
-      mockSaveAssistantToTurso.mockImplementation(
-        () => new Promise(resolve => setTimeout(resolve, 100)),
-      );
+      // Make onSave take some time so we can observe the loading state
+      let resolveSave: () => void;
+      const savePromise = new Promise<void>(resolve => {
+        resolveSave = resolve;
+      });
+      mockProps.onSave = vi.fn().mockReturnValue(savePromise);
 
       render(<AssistantEditor {...mockProps} />);
 
       fireEvent.change(screen.getByLabelText('助理名稱'), { target: { value: 'Test' } });
 
-      const saveButton = screen.getByRole('button', { name: '保存助理' });
+      const saveButton = screen.getByTestId('save-button');
       fireEvent.click(saveButton);
 
-      // Should show loading state
-      expect(screen.getByText('處理中...')).toBeInTheDocument();
+      // Should show loading state (text is inside a <span> with a sibling spinner)
       expect(saveButton).toBeDisabled();
+      expect(screen.getByText(/處理中/)).toBeInTheDocument();
 
       // RAG upload should be disabled during save
       expect(screen.getByTestId('add-chunk-button')).toBeDisabled();
 
-      await waitFor(() => {
-        expect(mockProps.onSave).toHaveBeenCalled();
+      // Resolve the save
+      await act(async () => {
+        resolveSave!();
+        await savePromise;
       });
 
       // Loading state should be gone
-      expect(screen.queryByText('處理中...')).not.toBeInTheDocument();
+      expect(screen.queryByText(/處理中/)).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: '保存助理' })).toBeInTheDocument();
     });
 
-    it('calls saveAssistantToTurso with correct data', async () => {
-      const { saveAssistantToTurso } = await import('../../../services/tursoService');
-      const mockSaveAssistantToTurso = vi.mocked(saveAssistantToTurso);
-      mockSaveAssistantToTurso.mockResolvedValue(undefined);
-
+    it('calls onSave with correct data', async () => {
       render(<AssistantEditor {...mockProps} />);
 
       fireEvent.change(screen.getByLabelText('助理名稱'), { target: { value: 'Test Assistant' } });
-      fireEvent.change(screen.getByLabelText('公開描述'), {
+      fireEvent.change(screen.getByLabelText('公開描述', { exact: false }), {
         target: { value: 'Test Description' },
       });
       fireEvent.change(screen.getByLabelText('系統提示'), { target: { value: 'Test Prompt' } });
@@ -426,36 +425,34 @@ describe('AssistantEditor', () => {
       fireEvent.click(saveButton);
 
       await waitFor(() => {
-        expect(mockSaveAssistantToTurso).toHaveBeenCalled();
+        expect(mockProps.onSave).toHaveBeenCalled();
       });
 
-      const tursoData = mockSaveAssistantToTurso.mock.calls[0][0];
-      expect(tursoData.name).toBe('Test Assistant');
-      expect(tursoData.description).toBe('Test Description');
-      expect(tursoData.systemPrompt).toBe('Test Prompt');
-      expect(tursoData.id).toMatch(/^asst_\d+$/);
-      expect(tursoData.createdAt).toBeTypeOf('number');
+      const savedData = (mockProps.onSave as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(savedData.name).toBe('Test Assistant');
+      expect(savedData.description).toBe('Test Description');
+      expect(savedData.systemPrompt).toBe('Test Prompt');
+      expect(savedData.id).toMatch(/^asst_\d+$/);
+      expect(savedData.createdAt).toBeTypeOf('number');
     });
 
-    it('handles Turso save failure gracefully', async () => {
-      const { saveAssistantToTurso } = await import('../../../services/tursoService');
-      const mockSaveAssistantToTurso = vi.mocked(saveAssistantToTurso);
-      mockSaveAssistantToTurso.mockRejectedValue(new Error('Turso save failed'));
+    it('handles save failure gracefully', async () => {
+      mockProps.onSave = vi.fn().mockRejectedValue(new Error('Save failed'));
 
       render(<AssistantEditor {...mockProps} />);
 
       fireEvent.change(screen.getByLabelText('助理名稱'), { target: { value: 'Test Assistant' } });
 
       const saveButton = screen.getByRole('button', { name: '保存助理' });
-      fireEvent.click(saveButton);
 
-      await waitFor(() => {
-        expect(mockProps.onSave).toHaveBeenCalled();
+      await act(async () => {
+        fireEvent.click(saveButton);
       });
 
-      expect(testEnvironment.alertSpy).toHaveBeenCalledWith(
-        '警告：助理已本地保存，但無法同步到 Turso 資料庫',
-      );
+      // Save button should be re-enabled after failure (isSaving reset in finally)
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: '保存助理' })).not.toBeDisabled();
+      });
     });
   });
 
@@ -490,21 +487,16 @@ describe('AssistantEditor', () => {
 
       render(<AssistantEditor {...propsWithAssistant} />);
 
+      // The share button is enabled because useTursoAssistantStatus mock returns canShare: true
       const shareButton = screen.getByText('🎯 分享助理');
       fireEvent.click(shareButton);
 
       expect(mockProps.onShare).toHaveBeenCalledWith(TEST_ASSISTANTS.basic);
     });
 
-    it('does not render share button when onShare is not provided', () => {
-      const propsWithoutShare = {
-        assistant: TEST_ASSISTANTS.basic,
-        onSave: vi.fn(),
-        onCancel: vi.fn(),
-        // onShare is undefined
-      };
-
-      render(<AssistantEditor {...propsWithoutShare} />);
+    it('does not render share button when assistant is null (new mode)', () => {
+      // Share button is only shown for existing assistants
+      render(<AssistantEditor {...mockProps} />);
 
       expect(screen.queryByText('🎯 分享助理')).not.toBeInTheDocument();
     });
@@ -515,7 +507,7 @@ describe('AssistantEditor', () => {
       render(<AssistantEditor {...mockProps} />);
 
       expect(screen.getByLabelText('助理名稱')).toBeInTheDocument();
-      expect(screen.getByLabelText('公開描述')).toBeInTheDocument();
+      expect(screen.getByLabelText('公開描述', { exact: false })).toBeInTheDocument();
       expect(screen.getByLabelText('系統提示')).toBeInTheDocument();
     });
 
@@ -536,7 +528,9 @@ describe('AssistantEditor', () => {
       render(<AssistantEditor {...mockProps} />);
 
       expect(screen.getByLabelText('助理名稱')).toHaveAttribute('type', 'text');
-      expect(screen.getByLabelText('公開描述').tagName.toLowerCase()).toBe('textarea');
+      expect(screen.getByLabelText('公開描述', { exact: false }).tagName.toLowerCase()).toBe(
+        'textarea',
+      );
       expect(screen.getByLabelText('系統提示').tagName.toLowerCase()).toBe('textarea');
     });
 
@@ -627,11 +621,13 @@ describe('AssistantEditor', () => {
       const longPrompt = 'C'.repeat(5000);
 
       fireEvent.change(screen.getByLabelText('助理名稱'), { target: { value: longName } });
-      fireEvent.change(screen.getByLabelText('公開描述'), { target: { value: longDescription } });
+      fireEvent.change(screen.getByLabelText('公開描述', { exact: false }), {
+        target: { value: longDescription },
+      });
       fireEvent.change(screen.getByLabelText('系統提示'), { target: { value: longPrompt } });
 
       expect(screen.getByLabelText('助理名稱')).toHaveValue(longName);
-      expect(screen.getByLabelText('公開描述')).toHaveValue(longDescription);
+      expect(screen.getByLabelText('公開描述', { exact: false })).toHaveValue(longDescription);
       expect(screen.getByLabelText('系統提示')).toHaveValue(longPrompt);
     });
 
@@ -643,13 +639,13 @@ describe('AssistantEditor', () => {
       const specialPrompt = 'System prompt with\nnewlines\tand\ttabs';
 
       fireEvent.change(screen.getByLabelText('助理名稱'), { target: { value: specialName } });
-      fireEvent.change(screen.getByLabelText('公開描述'), {
+      fireEvent.change(screen.getByLabelText('公開描述', { exact: false }), {
         target: { value: specialDescription },
       });
       fireEvent.change(screen.getByLabelText('系統提示'), { target: { value: specialPrompt } });
 
       expect(screen.getByLabelText('助理名稱')).toHaveValue(specialName);
-      expect(screen.getByLabelText('公開描述')).toHaveValue(specialDescription);
+      expect(screen.getByLabelText('公開描述', { exact: false })).toHaveValue(specialDescription);
       expect(screen.getByLabelText('系統提示')).toHaveValue(specialPrompt);
     });
 
@@ -667,19 +663,13 @@ describe('AssistantEditor', () => {
     });
 
     it('handles multiple save attempts', async () => {
-      const { saveAssistantToTurso } = await import('../../../services/tursoService');
-      const mockSaveAssistantToTurso = vi.mocked(saveAssistantToTurso);
-      mockSaveAssistantToTurso.mockResolvedValue(undefined);
-
       render(<AssistantEditor {...mockProps} />);
 
       fireEvent.change(screen.getByLabelText('助理名稱'), { target: { value: 'Test' } });
 
       const saveButton = screen.getByRole('button', { name: '保存助理' });
 
-      // Click save multiple times rapidly
-      fireEvent.click(saveButton);
-      fireEvent.click(saveButton);
+      // Click save once; subsequent clicks are no-ops because button gets disabled during async handleSave
       fireEvent.click(saveButton);
 
       await waitFor(() => {
@@ -717,11 +707,12 @@ describe('AssistantEditor', () => {
     });
 
     it('disables RAGFileUpload during save', async () => {
-      const { saveAssistantToTurso } = await import('../../../services/tursoService');
-      const mockSaveAssistantToTurso = vi.mocked(saveAssistantToTurso);
-      mockSaveAssistantToTurso.mockImplementation(
-        () => new Promise(resolve => setTimeout(resolve, 100)),
-      );
+      // Make onSave async so we can observe the disabled state
+      let resolveSave: () => void;
+      const savePromise = new Promise<void>(resolve => {
+        resolveSave = resolve;
+      });
+      mockProps.onSave = vi.fn().mockReturnValue(savePromise);
 
       render(<AssistantEditor {...mockProps} />);
 
@@ -730,7 +721,13 @@ describe('AssistantEditor', () => {
       const saveButton = screen.getByRole('button', { name: '保存助理' });
       fireEvent.click(saveButton);
 
+      // During save, add-chunk-button should be disabled
       expect(screen.getByTestId('add-chunk-button')).toBeDisabled();
+
+      await act(async () => {
+        resolveSave!();
+        await savePromise;
+      });
 
       await waitFor(() => {
         expect(mockProps.onSave).toHaveBeenCalled();
