@@ -8,21 +8,38 @@ import {
   TEST_SESSIONS,
   TEST_ASSISTANTS,
   createMockChatSession,
-  mockReactMarkdown,
-  mockMarkdownDependencies,
-  mockIcons,
-  mockEmbeddingService,
-  mockTursoService,
-  mockLLMService,
 } from './test-utils';
 
-// Mock external dependencies
-mockReactMarkdown();
-mockMarkdownDependencies();
-mockIcons();
-mockEmbeddingService();
-mockTursoService();
-mockLLMService();
+vi.mock('react-markdown', () => ({
+  default: ({ children }: { children: string }) => (
+    <div data-testid='markdown-content'>{children}</div>
+  ),
+}));
+vi.mock('remark-gfm', () => ({ default: vi.fn() }));
+vi.mock('rehype-highlight', () => ({ default: vi.fn() }));
+vi.mock('highlight.js/styles/github-dark.css', () => ({}));
+vi.mock('../../ui/Icons', () => ({
+  GeminiIcon: ({ className }: { className?: string }) => (
+    <span data-testid='gemini-icon' className={className}>
+      Gemini
+    </span>
+  ),
+  UserIcon: ({ className }: { className?: string }) => (
+    <span data-testid='user-icon' className={className}>
+      User
+    </span>
+  ),
+}));
+vi.mock('../../../services/embeddingService', () => ({
+  generateEmbedding: vi.fn().mockResolvedValue([0.1, 0.2, 0.3]),
+  cosineSimilarity: vi.fn().mockReturnValue(0.8),
+}));
+vi.mock('../../../services/tursoService', () => ({
+  searchSimilarChunks: vi.fn().mockResolvedValue([]),
+}));
+vi.mock('../../../services/llmService', () => ({
+  streamChat: vi.fn().mockResolvedValue(undefined),
+}));
 
 // Mock SessionManager
 vi.mock('../SessionManager', () => ({
