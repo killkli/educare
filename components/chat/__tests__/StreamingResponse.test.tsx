@@ -1,17 +1,31 @@
 import { render, screen } from '@testing-library/react';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import StreamingResponse from '../StreamingResponse';
-import {
-  setupTestEnvironment,
-  mockReactMarkdown,
-  mockMarkdownDependencies,
-  mockIcons,
-} from './test-utils';
+import { setupTestEnvironment } from './test-utils';
 
-// Mock external dependencies
-mockReactMarkdown();
-mockMarkdownDependencies();
-mockIcons();
+vi.mock('react-markdown', () => {
+  const React = require('react');
+  return {
+    default: function MockReactMarkdown(props: { children?: unknown }) {
+      return React.createElement('div', { 'data-testid': 'markdown-content' }, props.children);
+    },
+  };
+});
+vi.mock('remark-gfm', () => ({ default: vi.fn() }));
+vi.mock('rehype-highlight', () => ({ default: vi.fn() }));
+vi.mock('highlight.js/styles/github-dark.css', () => ({}));
+vi.mock('../../ui/Icons', () => ({
+  GeminiIcon: ({ className }: { className?: string }) => (
+    <span data-testid='gemini-icon' className={className}>
+      Gemini
+    </span>
+  ),
+  UserIcon: ({ className }: { className?: string }) => (
+    <span data-testid='user-icon' className={className}>
+      User
+    </span>
+  ),
+}));
 
 describe('StreamingResponse', () => {
   let testEnv: ReturnType<typeof setupTestEnvironment>;
@@ -145,7 +159,9 @@ describe('StreamingResponse', () => {
 
       // Assert
       expect(screen.getByTestId('markdown-content')).toBeInTheDocument();
-      expect(screen.getByTestId('markdown-content')).toHaveTextContent(markdownContent);
+      expect(screen.getByTestId('markdown-content')).toHaveTextContent(markdownContent, {
+        normalizeWhitespace: false,
+      });
     });
 
     it('should handle empty content', () => {
@@ -165,7 +181,9 @@ describe('StreamingResponse', () => {
       render(<StreamingResponse content={partialMarkdown} />);
 
       // Assert
-      expect(screen.getByTestId('markdown-content')).toHaveTextContent(partialMarkdown);
+      expect(screen.getByTestId('markdown-content')).toHaveTextContent(partialMarkdown, {
+        normalizeWhitespace: false,
+      });
     });
 
     it('should process markdown with special characters', () => {
@@ -388,7 +406,9 @@ describe('StreamingResponse', () => {
       render(<StreamingResponse content={multilineContent} />);
 
       // Assert
-      expect(screen.getByTestId('markdown-content')).toHaveTextContent(multilineContent);
+      expect(screen.getByTestId('markdown-content')).toHaveTextContent(multilineContent, {
+        normalizeWhitespace: false,
+      });
     });
   });
 
@@ -452,8 +472,8 @@ describe('StreamingResponse', () => {
       // Arrange & Act
       render(<StreamingResponse content='Themed content' />);
 
-      // Assert
-      const bubble = screen.getByTestId('markdown-content').closest('div');
+      // Assert - traverse up past the mock div to the actual bubble container
+      const bubble = screen.getByTestId('markdown-content').closest('.bg-gray-800\\/80');
       expect(bubble).toHaveClass('bg-gray-800/80', 'text-gray-100');
 
       const icon = screen.getByTestId('gemini-icon');
