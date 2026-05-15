@@ -5,7 +5,9 @@ import { describe, it, expect, beforeEach, afterEach, beforeAll } from 'vitest';
 import { vi } from 'vitest';
 import { ShareModal } from '../ShareModal';
 import { Assistant } from '../../../types';
-import { TEST_ASSISTANTS, setupAssistantTestEnvironment, mockQRCode } from './test-utils';
+import { ApiKeyManager } from '../../../services/apiKeyManager';
+import { providerManager } from '../../../services/providerRegistry';
+import { TEST_ASSISTANTS, setupAssistantTestEnvironment } from './test-utils';
 
 // Mock dependencies
 vi.mock('../../../services/tursoService', () => ({
@@ -21,7 +23,6 @@ vi.mock('../../../services/cryptoService', () => ({
 }));
 
 // Mock API key manager
-// Mock API key manager - moved to beforeEach for reliability
 vi.mock('../../../services/apiKeyManager', () => ({
   ApiKeyManager: {
     getUserApiKeys: vi.fn().mockReturnValue({
@@ -31,8 +32,28 @@ vi.mock('../../../services/apiKeyManager', () => ({
   },
 }));
 
+// Mock provider registry (required by ShareModal to check available providers)
+vi.mock('../../../services/providerRegistry', () => ({
+  providerManager: {
+    getSettings: vi.fn().mockReturnValue({ providers: {} }),
+    getAvailableProviders: vi.fn().mockReturnValue([]),
+  },
+}));
+
+// Mock short URL service
+vi.mock('../../../services/shortUrlService', () => ({
+  generateShortUrl: vi.fn().mockResolvedValue('https://short.url/abc123'),
+  buildShortUrl: vi.fn().mockReturnValue('https://short.url/abc123'),
+}));
+
+vi.mock('qrcode', () => ({
+  default: {
+    toDataURL: vi.fn().mockResolvedValue('data:image/png;base64,mocked-qr-code'),
+  },
+  toDataURL: vi.fn().mockResolvedValue('data:image/png;base64,mocked-qr-code-direct'),
+}));
+
 beforeAll(() => {
-  mockQRCode();
   // Mock window.location
   Object.defineProperty(window, 'location', {
     value: {
@@ -72,8 +93,16 @@ describe('ShareModal', () => {
       assistant: TEST_ASSISTANTS.basic,
     };
 
-    // Clear all mocks
+    // Clear all mocks then re-establish critical return values
+    // (vi.clearAllMocks resets mockReturnValue implementations in this env)
     vi.clearAllMocks();
+    vi.mocked(ApiKeyManager.getUserApiKeys).mockReturnValue({
+      geminiApiKey: 'mock-gemini-key',
+      tursoWriteApiKey: 'mock-turso-key',
+    } as ReturnType<typeof ApiKeyManager.getUserApiKeys>);
+    vi.mocked(providerManager.getSettings).mockReturnValue({ providers: {} } as ReturnType<
+      typeof providerManager.getSettings
+    >);
   });
 
   afterEach(() => {
