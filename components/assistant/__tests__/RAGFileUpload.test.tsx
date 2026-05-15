@@ -24,7 +24,7 @@ vi.mock('../../../services/documentParserService', () => ({
     getFileTypeName: vi.fn().mockReturnValue('PDF'),
     parseDocument: vi.fn().mockResolvedValue({
       content: 'Mocked document content for testing purposes.',
-      metadata: { fileName: 'test.pdf', fileType: 'pdf' },
+      metadata: { pages: 1, title: 'test.pdf', author: '' },
     }),
   },
 }));
@@ -107,7 +107,7 @@ describe('RAGFileUpload', () => {
       mockSaveRagChunk.mockResolvedValue(undefined);
       mockParseDocument.mockResolvedValue({
         content: 'Test document content',
-        metadata: { fileName: 'test.pdf', fileType: 'pdf' },
+        metadata: { pages: 1, title: 'test.pdf', author: '' },
       });
 
       render(<RAGFileUpload {...mockProps} />);
@@ -144,7 +144,7 @@ describe('RAGFileUpload', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (mockParseDocument as any).mockResolvedValue({
         content: 'Test document content',
-        metadata: { fileName: 'test.pdf', fileType: 'pdf' },
+        metadata: { pages: 1, title: 'test.pdf', author: '' },
       });
 
       render(<RAGFileUpload {...mockProps} />);
@@ -379,7 +379,7 @@ describe('RAGFileUpload', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (mockParseDocument as any).mockResolvedValue({
         content: 'Test content',
-        metadata: { fileName: 'test.pdf', fileType: 'pdf' },
+        metadata: { pages: 1, title: 'test.pdf', author: '' },
       });
       mockGenerateEmbedding.mockRejectedValue(new Error('Embedding error'));
 

@@ -2,10 +2,25 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { AssistantCard } from '../AssistantCard';
 import { AssistantCardProps } from '../types';
-import { TEST_ASSISTANTS, setupAssistantTestEnvironment, mockIcons } from './test-utils';
+import { TEST_ASSISTANTS, setupAssistantTestEnvironment } from './test-utils';
 
-// Mock dependencies
-mockIcons();
+vi.mock('../../ui/Icons', () => ({
+  PlusIcon: ({ className }: { className?: string }) => (
+    <span data-testid='plus-icon' className={className}>
+      Plus
+    </span>
+  ),
+  EditIcon: ({ className }: { className?: string }) => (
+    <span data-testid='edit-icon' className={className}>
+      Edit
+    </span>
+  ),
+  TrashIcon: ({ className }: { className?: string }) => (
+    <span data-testid='trash-icon' className={className}>
+      Trash
+    </span>
+  ),
+}));
 
 describe('AssistantCard', () => {
   let mockProps: AssistantCardProps;

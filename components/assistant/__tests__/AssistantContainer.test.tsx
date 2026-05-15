@@ -1,21 +1,71 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { AssistantContainer } from '../AssistantContainer';
 import { AssistantContainerProps } from '../types';
-import {
-  TEST_ASSISTANTS,
-  setupAssistantTestEnvironment,
-  mockDbService,
-  mockAssistantEditor,
-  mockShareModal,
-} from './test-utils';
+import { TEST_ASSISTANTS, setupAssistantTestEnvironment } from './test-utils';
 
-// Mock dependencies
-beforeAll(() => {
-  mockDbService();
-  mockAssistantEditor();
-  mockShareModal();
-});
+vi.mock('../../services/db', () => ({
+  getAssistant: vi.fn().mockResolvedValue(null),
+  saveAssistant: vi.fn().mockResolvedValue(undefined),
+  deleteAssistant: vi.fn().mockResolvedValue(undefined),
+  getAllAssistants: vi.fn().mockResolvedValue([]),
+}));
+vi.mock('../AssistantEditor', () => ({
+  AssistantEditor: ({
+    assistant,
+    onSave,
+    onCancel,
+    onShare,
+  }: {
+    assistant: { id?: string; name?: string } | null;
+    onSave: (a: object) => void;
+    onCancel: () => void;
+    onShare?: (a: object) => void;
+  }) => {
+    const React = require('react');
+    const mockAssistant = assistant || { id: 'new', name: 'New', systemPrompt: '' };
+    return React.createElement('div', { 'data-testid': 'assistant-editor' }, [
+      React.createElement('div', { key: 'mode' }, assistant ? 'Edit Mode' : 'New Mode'),
+      React.createElement(
+        'button',
+        { key: 'save', onClick: () => onSave(mockAssistant), 'data-testid': 'save-button' },
+        'Save',
+      ),
+      React.createElement(
+        'button',
+        { key: 'cancel', onClick: onCancel, 'data-testid': 'cancel-button' },
+        'Cancel',
+      ),
+      onShare &&
+        React.createElement(
+          'button',
+          { key: 'share', onClick: () => onShare(mockAssistant), 'data-testid': 'share-button' },
+          'Share',
+        ),
+    ]);
+  },
+}));
+vi.mock('../ShareModal', () => ({
+  ShareModal: ({
+    isOpen,
+    onClose,
+  }: {
+    isOpen: boolean;
+    onClose: () => void;
+    assistant: object;
+  }) => {
+    const React = require('react');
+    return isOpen
+      ? React.createElement('div', { 'data-testid': 'share-modal' }, [
+          React.createElement(
+            'button',
+            { key: 'close', onClick: onClose, 'data-testid': 'close-share-modal' },
+            'Close',
+          ),
+        ])
+      : null;
+  },
+}));
 
 describe('AssistantContainer', () => {
   let mockProps: AssistantContainerProps;
