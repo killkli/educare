@@ -1,8 +1,8 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  readonly BASE_URL: string;
-  // Add other env variables as needed
+  readonly VITE_TURSO_URL?: string;
+  readonly VITE_TURSO_READ_API_KEY?: string;
 }
 
 interface ImportMeta {

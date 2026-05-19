@@ -168,9 +168,9 @@ export class ApiKeyManager {
    * 獲取 Turso 只讀配置 (內建)
    */
   static getTursoReadConfig(): { url: string; authToken: string } | null {
-    // 從編譯時內建的配置 - 使用共用 URL 和只讀 API KEY
-    const url = process.env.TURSO_URL;
-    const authToken = process.env.TURSO_READ_API_KEY;
+    // 從 Vite runtime env 讀取共用 URL 和只讀 API KEY
+    const url = import.meta.env.VITE_TURSO_URL;
+    const authToken = import.meta.env.VITE_TURSO_READ_API_KEY;
 
     if (!url || !authToken) {
       console.warn('內建 Turso 只讀配置不存在');
@@ -191,7 +191,7 @@ export class ApiKeyManager {
     }
 
     // 使用共用的 URL，但是用戶提供的寫入權限 API KEY
-    const url = process.env.TURSO_URL;
+    const url = import.meta.env.VITE_TURSO_URL;
     if (!url) {
       return null;
     }
