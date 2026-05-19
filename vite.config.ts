@@ -67,7 +67,7 @@ export default defineConfig(({ mode }) => {
               if (id.includes('@huggingface/transformers')) {
                 return 'transformers';
               }
-              if (id.includes('@google/genai') || id.includes('@themaximalist/llm.js')) {
+              if (id.includes('@google/genai')) {
                 return 'ai-libs';
               }
               
