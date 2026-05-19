@@ -371,7 +371,7 @@ export const mockChatComponents = () => {
 };
 
 export const mockSharedAssistant = () => {
-  vi.mock('../../SharedAssistant', () => ({
+  vi.mock('../../features/SharedAssistant', () => ({
     default: ({ assistantId }: { assistantId: string }) => {
       const React = require('react');
       return React.createElement(
@@ -384,14 +384,14 @@ export const mockSharedAssistant = () => {
 };
 
 export const mockOtherComponents = () => {
-  vi.mock('../../MigrationPanel', () => ({
+  vi.mock('../../settings/MigrationPanel', () => ({
     default: () => {
       const React = require('react');
       return React.createElement('div', { 'data-testid': 'migration-panel' }, 'Migration Panel');
     },
   }));
 
-  vi.mock('../../ApiKeySetup', () => ({
+  vi.mock('../../settings/ApiKeySetup', () => ({
     default: ({ onComplete, onCancel }: ApiSetupProps) => {
       const React = require('react');
       return React.createElement('div', { 'data-testid': 'api-key-setup' }, [
@@ -417,7 +417,7 @@ export const mockOtherComponents = () => {
     },
   }));
 
-  vi.mock('../../ProviderSettings', () => ({
+  vi.mock('../../settings/ProviderSettings', () => ({
     default: ({ onClose }: SettingsModalProps) => {
       const React = require('react');
       return React.createElement('div', { 'data-testid': 'provider-settings' }, [

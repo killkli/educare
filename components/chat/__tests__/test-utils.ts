@@ -43,15 +43,13 @@ export const mockClipboard = () => {
 // Mock Date functions for consistent timestamps
 export const mockDateNow = (timestamp = 1640995200000) => {
   const spy = vi.spyOn(Date, 'now').mockReturnValue(timestamp);
-  const spyConstructor = vi.spyOn(global, 'Date').mockImplementation(() => new Date(timestamp));
-  return { spy, spyConstructor };
+  return { spy };
 };
 
 // Mock toLocaleTimeString for consistent time formatting
 export const mockLocaleTimeString = (timeString = '12:00') => {
   const mockDate = new Date();
   const spy = vi.spyOn(mockDate, 'toLocaleTimeString').mockReturnValue(timeString);
-  vi.spyOn(global, 'Date').mockImplementation(() => mockDate);
   return spy;
 };
 
