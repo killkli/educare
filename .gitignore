@@ -52,3 +52,4 @@ work.png
 # E2E Test Results
 playwright-report/
 test-results*/
+.omc/
