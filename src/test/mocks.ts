@@ -23,10 +23,6 @@ export const mockDbService = {
   ...mockTursoService,
 };
 
-export const mockGeminiService = {
-  streamChat: vi.fn(),
-};
-
 export const mockEmbeddingService = {
   isEmbeddingModelLoaded: vi.fn().mockReturnValue(false),
   preloadEmbeddingModel: vi.fn().mockImplementation(async callback => {
@@ -85,10 +81,6 @@ export const setupMocks = () => {
 
   vi.mock('@/services/db', () => ({
     ...mockDbService,
-  }));
-
-  vi.mock('@/services/geminiService', () => ({
-    ...mockGeminiService,
   }));
 
   vi.mock('@/services/embeddingService', () => ({
