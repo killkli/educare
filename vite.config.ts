@@ -1,10 +1,12 @@
 /// <reference types="vitest" />
 import path from 'path';
+import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 import { visualizer } from 'rollup-plugin-visualizer';
 
 export default defineConfig(() => {
     return {
+      plugins: [tailwindcss()],
       test: {
         globals: true,
         deps: {
