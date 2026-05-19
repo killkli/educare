@@ -49,7 +49,7 @@
   },
   "dependencies": {
     "@google/genai": "^1.18.0",
-    "@huggingface/transformers": "latest",
+    "@huggingface/transformers": "4.2.0",
     "@libsql/client": "^0.15.15",
     "@types/qrcode": "^1.5.5",
     "highlight.js": "^11.11.1",

@@ -12,7 +12,7 @@ importers:
         specifier: ^1.18.0
         version: 1.18.0
       '@huggingface/transformers':
-        specifier: latest
+        specifier: 4.2.0
         version: 4.2.0
       '@libsql/client':
         specifier: ^0.15.15
@@ -5108,7 +5108,7 @@ snapshots:
       es6-error: 4.1.1
       matcher: 3.0.0
       roarr: 2.15.4
-      semver: 7.7.2
+      semver: 7.8.0
       serialize-error: 7.0.1
 
   globals@14.0.0: {}
