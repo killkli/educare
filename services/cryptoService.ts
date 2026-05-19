@@ -153,9 +153,12 @@ export class CryptoService {
    */
   static generateRandomPassword(): string {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const randomValues = new Uint32Array(16);
+    crypto.getRandomValues(randomValues);
+
     let result = '';
-    for (let i = 0; i < 16; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    for (let i = 0; i < randomValues.length; i++) {
+      result += chars.charAt(randomValues[i] % chars.length);
     }
     return result;
   }
