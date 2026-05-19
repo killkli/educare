@@ -17,7 +17,7 @@ export default defineConfig(() => {
           },
         },
         environment: 'happy-dom',
-        setupFiles: ['./src/vitest.setup.ts'],
+        setupFiles: ['./src/test/setup.ts'],
         poolOptions: {
           threads: {
             singleThread: true,
