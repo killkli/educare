@@ -230,21 +230,24 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
         console.error('Failed to initialize providers:', error);
       });
 
-      // Preload embedding model if not loaded and not in shared mode
+      // Preload embedding model if not loaded and not in shared mode (in the background!)
       if (!isEmbeddingModelLoaded() && state.isShared === false) {
         dispatch({ type: 'SET_MODEL_LOADING', payload: { isLoading: true } });
-        try {
-          await preloadEmbeddingModel(progress => {
-            dispatch({
-              type: 'SET_MODEL_LOADING',
-              payload: { isLoading: true, progress: progress as ModelLoadingProgress },
-            });
+        preloadEmbeddingModel(progress => {
+          dispatch({
+            type: 'SET_MODEL_LOADING',
+            payload: { isLoading: true, progress: progress as ModelLoadingProgress },
           });
-        } catch (error) {
-          console.error('Failed to preload embedding model:', error);
-        } finally {
-          dispatch({ type: 'SET_MODEL_LOADING', payload: { isLoading: false, progress: null } });
-        }
+        })
+          .then(() => {
+            console.log('✅ Embedding model preloaded successfully');
+          })
+          .catch(error => {
+            console.error('Failed to preload embedding model:', error);
+          })
+          .finally(() => {
+            dispatch({ type: 'SET_MODEL_LOADING', payload: { isLoading: false, progress: null } });
+          });
       }
 
       if (storedAssistants.length > 0) {
