@@ -16,23 +16,28 @@ export class GeminiProvider implements LLMProvider {
 
   private ai: GoogleGenAI | null = null;
   private initializationAttempted = false;
+  private initializationPromise: Promise<void> | null = null;
   private config: ProviderConfig = {};
 
   async initialize(config: ProviderConfig): Promise<void> {
     this.config = config;
     this.initializationAttempted = true;
 
-    const userApiKey = ApiKeyManager.getGeminiApiKey();
-    const builtInApiKey =
-      typeof process !== 'undefined' && process.env ? process.env.API_KEY : undefined;
-    const apiKey = config.apiKey || userApiKey || builtInApiKey;
+    this.initializationPromise = (async () => {
+      const userApiKey = ApiKeyManager.getGeminiApiKey();
+      const builtInApiKey =
+        typeof process !== 'undefined' && process.env ? process.env.API_KEY : undefined;
+      const apiKey = config.apiKey || userApiKey || builtInApiKey;
 
-    if (apiKey) {
-      this.ai = new GoogleGenAI({ apiKey });
-    } else {
-      this.ai = null;
-      console.warn('No Gemini API key available. Please configure one in settings.');
-    }
+      if (apiKey) {
+        this.ai = new GoogleGenAI({ apiKey });
+      } else {
+        this.ai = null;
+        console.warn('No Gemini API key available. Please configure one in settings.');
+      }
+    })();
+
+    await this.initializationPromise;
   }
 
   isAvailable(): boolean {
@@ -62,6 +67,7 @@ export class GeminiProvider implements LLMProvider {
   reinitialize(): void {
     this.ai = null;
     this.initializationAttempted = false;
+    this.initializationPromise = null;
     // Don't call initialize here - it will be called by ProviderManager
     // with the correct updated config
   }
@@ -71,15 +77,18 @@ export class GeminiProvider implements LLMProvider {
     return this.supportedModels;
   }
 
-  private getAi(): GoogleGenAI | null {
+  private async getAi(): Promise<GoogleGenAI | null> {
     if (!this.initializationAttempted) {
-      this.initialize(this.config);
+      await this.initialize(this.config);
+    } else if (this.initializationPromise) {
+      await this.initializationPromise;
     }
+
     return this.ai;
   }
 
   async *streamChat(params: ChatParams): AsyncIterable<StreamingResponse> {
-    const genAI = this.getAi();
+    const genAI = await this.getAi();
 
     if (!genAI) {
       throw new Error('請先在設定中配置 Gemini API KEY 才能使用聊天功能。');
