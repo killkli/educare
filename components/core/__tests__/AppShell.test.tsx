@@ -187,7 +187,7 @@ beforeEach(() => {
   });
 
   // Reset mocked service return values to baseline defaults
-  vi.mocked(dbMock.getAssistant).mockResolvedValue(null);
+  vi.mocked(dbMock.getAssistant).mockResolvedValue(undefined);
   vi.mocked(dbMock.saveAssistant).mockResolvedValue(undefined);
   vi.mocked(dbMock.deleteAssistant).mockResolvedValue(undefined);
   vi.mocked(dbMock.getAllAssistants).mockResolvedValue([]);
@@ -200,7 +200,7 @@ beforeEach(() => {
   vi.mocked(embeddingMock.generateEmbedding).mockResolvedValue([0.1, 0.2, 0.3]);
 
   vi.mocked(providerMock.initializeProviders).mockResolvedValue(undefined);
-  vi.mocked(providerMock.providerManager.getAvailableProviders).mockReturnValue(['gemini']);
+  vi.mocked(providerMock.providerManager.getAvailableProviders).mockReturnValue(['gemini'] as any);
   vi.mocked(providerMock.providerManager.getActiveProvider).mockReturnValue(null);
 });
 
@@ -509,7 +509,7 @@ describe('AppShell', () => {
       // Welcome state appears when assistants exist in DB but getAssistant returns null
       // (selectAssistant no-ops → viewMode stays 'chat', currentAssistant stays null)
       vi.mocked(dbMock.getAllAssistants).mockResolvedValue([TEST_ASSISTANTS.basic]);
-      vi.mocked(dbMock.getAssistant).mockResolvedValue(null);
+      vi.mocked(dbMock.getAssistant).mockResolvedValue(undefined);
 
       render(<AppShell />);
 
