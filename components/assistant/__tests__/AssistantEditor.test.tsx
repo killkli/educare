@@ -764,4 +764,53 @@ describe('AssistantEditor', () => {
       ).toBeInTheDocument();
     });
   });
+
+  describe('Default Templates Integration', () => {
+    it('renders template selector in new mode', () => {
+      render(<AssistantEditor {...mockProps} />);
+
+      expect(screen.getByText('💡 選擇預設助理樣板')).toBeInTheDocument();
+      expect(screen.getByText('程式開發導師')).toBeInTheDocument();
+      expect(screen.getByText('品牌社群寫手')).toBeInTheDocument();
+      expect(screen.getByText('英文口說寫作助教')).toBeInTheDocument();
+      expect(screen.getByText('商業數據分析師')).toBeInTheDocument();
+    });
+
+    it('does not render template selector in edit mode', () => {
+      const propsWithAssistant = {
+        ...mockProps,
+        assistant: TEST_ASSISTANTS.basic,
+      };
+      render(<AssistantEditor {...propsWithAssistant} />);
+
+      expect(screen.queryByText('💡 選擇預設助理樣板')).not.toBeInTheDocument();
+    });
+
+    it('displays preview when a template is clicked, and populates form when applied', async () => {
+      render(<AssistantEditor {...mockProps} />);
+
+      // Initially, the "⚡ 套用此樣板" button should not be present since no template is selected
+      expect(screen.queryByText('⚡ 套用此樣板')).not.toBeInTheDocument();
+
+      // Click on "檢視樣板" or the template card title
+      const codeTplCard = screen.getByText('程式開發導師');
+      fireEvent.click(codeTplCard);
+
+      // Now preview section should show "⚡ 套用此樣板"
+      const applyBtn = screen.getByText('⚡ 套用此樣板');
+      expect(applyBtn).toBeInTheDocument();
+
+      // Click apply template
+      fireEvent.click(applyBtn);
+
+      // Verify the editor fields are populated
+      expect(screen.getByLabelText('助理名稱')).toHaveValue('程式開發導師');
+      expect(screen.getByLabelText('公開描述', { exact: false })).toHaveValue(
+        '專精於演算法、系統架構設計與程式碼優化，提供高品質重構指引與最佳實踐。',
+      );
+      expect(screen.getByLabelText('系統提示')).toHaveValue(
+        '你是一位資深的軟體架構師與程式開發導師。你擅長以清晰、嚴謹且符合最佳實踐（Best Practices）的方式回答程式開發問題。在回覆時，請提供具體的程式碼範例、分析其時間/空間複雜度，並指出潛在的邊界狀況（Edge Cases）與重構建議。',
+      );
+    });
+  });
 });
