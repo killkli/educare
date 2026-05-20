@@ -369,8 +369,8 @@ export class ApiKeyManager {
    * 檢查 Groq API KEY 格式是否有效
    */
   static validateGroqApiKey(apiKey: string): boolean {
-    // Groq API KEY 通常以 gsk_ 開頭
-    return /^gsk_[A-Za-z0-9]{52}$/.test(apiKey);
+    // Groq API KEY 通常以 gsk_ 開頭，後綴長度可能變動
+    return /^gsk_[A-Za-z0-9]{16,}$/.test(apiKey);
   }
 
   /**
