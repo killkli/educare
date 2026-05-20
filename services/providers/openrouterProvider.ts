@@ -1,4 +1,5 @@
 import { LLMProvider, ProviderConfig, ChatParams, StreamingResponse } from '../llmAdapter';
+import { readSseDataLines } from './sse';
 
 interface OpenRouterModel {
   id: string;
@@ -120,58 +121,40 @@ export class OpenRouterProvider implements LLMProvider {
         throw new Error('Failed to get response reader');
       }
 
-      const decoder = new TextDecoder();
       let promptTokenCount = 0;
       let candidatesTokenCount = 0;
 
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            break;
-          }
-
-          const chunk = decoder.decode(value);
-          const lines = chunk.split('\n');
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6);
-              if (data === '[DONE]') {
-                break;
-              }
-
-              try {
-                const parsed = JSON.parse(data);
-                const deltaContent = parsed.choices?.[0]?.delta?.content;
-
-                if (deltaContent) {
-                  candidatesTokenCount++;
-
-                  yield {
-                    text: deltaContent,
-                    isComplete: false,
-                    metadata: {
-                      model,
-                      provider: this.name,
-                    },
-                  };
-                }
-
-                // Get usage info if available
-                if (parsed.usage) {
-                  promptTokenCount = parsed.usage.prompt_tokens || 0;
-                  candidatesTokenCount = parsed.usage.completion_tokens || candidatesTokenCount;
-                }
-              } catch {
-                // Skip invalid JSON lines
-                continue;
-              }
-            }
-          }
+      for await (const data of readSseDataLines(reader)) {
+        if (data === '[DONE]') {
+          break;
         }
-      } finally {
-        reader.releaseLock();
+
+        try {
+          const parsed = JSON.parse(data);
+          const deltaContent = parsed.choices?.[0]?.delta?.content;
+
+          if (deltaContent) {
+            candidatesTokenCount++;
+
+            yield {
+              text: deltaContent,
+              isComplete: false,
+              metadata: {
+                model,
+                provider: this.name,
+              },
+            };
+          }
+
+          // Get usage info if available
+          if (parsed.usage) {
+            promptTokenCount = parsed.usage.prompt_tokens || 0;
+            candidatesTokenCount = parsed.usage.completion_tokens || candidatesTokenCount;
+          }
+        } catch {
+          // Skip invalid JSON lines
+          continue;
+        }
       }
 
       // Final response with metadata
