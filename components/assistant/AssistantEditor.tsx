@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Assistant, RagChunk } from '../../types';
 import { RAGFileUpload } from './RAGFileUpload';
 import { useTursoAssistantStatus } from '../../hooks/useTursoAssistantStatus';
+import { TemplateSelector, AssistantTemplate } from './TemplateSelector';
 
 interface AssistantEditorProps {
   assistant: Assistant | null;
@@ -21,6 +22,7 @@ export const AssistantEditor: React.FC<AssistantEditorProps> = ({
   const [systemPrompt, setSystemPrompt] = useState('');
   const [ragChunks, setRagChunks] = useState<RagChunk[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [highlightFields, setHighlightFields] = useState(false);
 
   // Check if assistant exists in Turso for sharing
   const { canShare } = useTursoAssistantStatus(assistant?.id || null);
@@ -81,6 +83,18 @@ export const AssistantEditor: React.FC<AssistantEditorProps> = ({
         {assistant ? '編輯助理' : '新增助理'}
       </h2>
 
+      {!assistant && (
+        <TemplateSelector
+          onSelectTemplate={(template: AssistantTemplate) => {
+            setName(template.name);
+            setDescription(template.description);
+            setSystemPrompt(template.systemPrompt);
+            setHighlightFields(true);
+            setTimeout(() => setHighlightFields(false), 1000);
+          }}
+        />
+      )}
+
       <div className='mb-6'>
         <label htmlFor='name' className='block text-sm font-semibold text-gray-300 mb-2'>
           助理名稱
@@ -90,7 +104,11 @@ export const AssistantEditor: React.FC<AssistantEditorProps> = ({
           id='name'
           value={name}
           onChange={e => setName(e.target.value)}
-          className='w-full bg-gray-700/80 border-2 border-gray-600/50 rounded-xl px-4 py-3 text-white placeholder-gray-400 focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 focus:bg-gray-700 transition-all duration-200 shadow-inner'
+          className={`w-full bg-gray-700/80 border-2 rounded-xl px-4 py-3 text-white placeholder-gray-400 focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 focus:bg-gray-700 transition-all duration-300 shadow-inner ${
+            highlightFields
+              ? 'border-cyan-500 ring-4 ring-cyan-500/30 bg-gray-750/90 animate-pulse'
+              : 'border-gray-600/50'
+          }`}
           placeholder='例如：行銷文案寫手'
         />
       </div>
@@ -105,7 +123,11 @@ export const AssistantEditor: React.FC<AssistantEditorProps> = ({
           value={description}
           onChange={e => setDescription(e.target.value)}
           rows={3}
-          className='w-full bg-gray-700/80 border-2 border-gray-600/50 rounded-xl px-4 py-3 text-white placeholder-gray-400 focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 focus:bg-gray-700 transition-all duration-200 shadow-inner resize-none'
+          className={`w-full bg-gray-700/80 border-2 rounded-xl px-4 py-3 text-white placeholder-gray-400 focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 focus:bg-gray-700 transition-all duration-300 shadow-inner resize-none ${
+            highlightFields
+              ? 'border-cyan-500 ring-4 ring-cyan-500/30 bg-gray-750/90 animate-pulse'
+              : 'border-gray-600/50'
+          }`}
           placeholder='簡單描述這個助理能幫助什麼...'
         />
       </div>
@@ -119,7 +141,11 @@ export const AssistantEditor: React.FC<AssistantEditorProps> = ({
           value={systemPrompt}
           onChange={e => setSystemPrompt(e.target.value)}
           rows={8}
-          className='w-full bg-gray-700/80 border-2 border-gray-600/50 rounded-xl px-4 py-3 text-white placeholder-gray-400 focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 focus:bg-gray-700 transition-all duration-200 shadow-inner resize-none'
+          className={`w-full bg-gray-700/80 border-2 rounded-xl px-4 py-3 text-white placeholder-gray-400 focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 focus:bg-gray-700 transition-all duration-300 shadow-inner resize-none ${
+            highlightFields
+              ? 'border-cyan-500 ring-4 ring-cyan-500/30 bg-gray-750/90 animate-pulse'
+              : 'border-gray-600/50'
+          }`}
           placeholder='定義助理的角色、個性和指導。'
         />
       </div>
