@@ -77,24 +77,26 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
       });
       console.log('💬 [SHARED ASSISTANT] Session set:', newSession);
 
-      // Preload embedding model if not loaded - similar to main app logic
+      // Preload embedding model if not loaded - similar to main app logic (in the background!)
       if (!isEmbeddingModelLoaded()) {
         console.log('📦 [SHARED ASSISTANT] Starting embedding model preload...');
         dispatch({ type: 'SET_MODEL_LOADING', payload: { isLoading: true } });
-        try {
-          await preloadEmbeddingModel(progress => {
-            dispatch({
-              type: 'SET_MODEL_LOADING',
-              payload: { isLoading: true, progress: progress as ModelLoadingProgress },
-            });
+        preloadEmbeddingModel(progress => {
+          dispatch({
+            type: 'SET_MODEL_LOADING',
+            payload: { isLoading: true, progress: progress as ModelLoadingProgress },
           });
-          console.log('✅ [SHARED ASSISTANT] Embedding model preloaded successfully');
-        } catch (error) {
-          console.error('❌ [SHARED ASSISTANT] Failed to preload embedding model:', error);
-        } finally {
-          dispatch({ type: 'SET_MODEL_LOADING', payload: { isLoading: false, progress: null } });
-          console.log('🔄 [SHARED ASSISTANT] Model loading state cleared');
-        }
+        })
+          .then(() => {
+            console.log('✅ [SHARED ASSISTANT] Embedding model preloaded successfully');
+          })
+          .catch(error => {
+            console.error('❌ [SHARED ASSISTANT] Failed to preload embedding model:', error);
+          })
+          .finally(() => {
+            dispatch({ type: 'SET_MODEL_LOADING', payload: { isLoading: false, progress: null } });
+            console.log('🔄 [SHARED ASSISTANT] Model loading state cleared');
+          });
       }
 
       // Handle encrypted keys directly with prompt (improved logic matching AppContext)
