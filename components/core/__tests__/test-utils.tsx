@@ -180,6 +180,7 @@ export const mockProviderRegistry = () => {
     initializeProviders: vi.fn().mockResolvedValue(undefined),
     providerManager: {
       getAvailableProviders: vi.fn().mockReturnValue(['gemini']),
+      getActiveProvider: vi.fn().mockReturnValue(null),
     },
   }));
 };

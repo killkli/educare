@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { vi } from 'vitest';
 import React from 'react';
 import { AppShell } from '../AppShell';
-import { TEST_ASSISTANTS, TEST_SESSIONS } from './test-utils';
+import { TEST_ASSISTANTS, TEST_SESSIONS } from './test-constants';
 import * as dbMock from '../../../services/db';
 import * as embeddingMock from '../../../services/embeddingService';
 import * as providerMock from '../../../services/providerRegistry';
@@ -111,10 +111,12 @@ vi.mock('../../assistant', () => ({
 vi.mock('../../chat', () => ({
   ChatContainer: ({
     assistantName,
+    session,
     onNewMessage,
   }: {
     assistantName: string;
-    onNewMessage?: (msg: string) => void;
+    session: any;
+    onNewMessage?: (session: any, msg: string, response?: string, tokenInfo?: any) => void;
   }) =>
     React.createElement('div', { 'data-testid': 'chat-container' }, [
       React.createElement('span', { key: 'name' }, `Chatting with ${assistantName}`),
@@ -123,7 +125,12 @@ vi.mock('../../chat', () => ({
         {
           key: 'send',
           'data-testid': 'send-message',
-          onClick: () => onNewMessage && onNewMessage('test message'),
+          onClick: () =>
+            onNewMessage &&
+            onNewMessage(session, 'test message', 'model response', {
+              promptTokenCount: 10,
+              candidatesTokenCount: 15,
+            }),
         },
         'Send',
       ),
@@ -178,6 +185,23 @@ beforeEach(() => {
     value: mockURLSearchParams,
     writable: true,
   });
+
+  // Reset mocked service return values to baseline defaults
+  vi.mocked(dbMock.getAssistant).mockResolvedValue(null);
+  vi.mocked(dbMock.saveAssistant).mockResolvedValue(undefined);
+  vi.mocked(dbMock.deleteAssistant).mockResolvedValue(undefined);
+  vi.mocked(dbMock.getAllAssistants).mockResolvedValue([]);
+  vi.mocked(dbMock.getSessionsForAssistant).mockResolvedValue([]);
+  vi.mocked(dbMock.saveSession).mockResolvedValue(undefined);
+  vi.mocked(dbMock.deleteSession).mockResolvedValue(undefined);
+
+  vi.mocked(embeddingMock.preloadEmbeddingModel).mockResolvedValue(undefined);
+  vi.mocked(embeddingMock.isEmbeddingModelLoaded).mockReturnValue(true);
+  vi.mocked(embeddingMock.generateEmbedding).mockResolvedValue([0.1, 0.2, 0.3]);
+
+  vi.mocked(providerMock.initializeProviders).mockResolvedValue(undefined);
+  vi.mocked(providerMock.providerManager.getAvailableProviders).mockReturnValue(['gemini']);
+  vi.mocked(providerMock.providerManager.getActiveProvider).mockReturnValue(null);
 });
 
 afterEach(() => {
@@ -305,37 +329,12 @@ describe('AppShell', () => {
     it('should render ChatContainer in chat mode with session', async () => {
       render(<AppShell />);
 
-      // Flush microtasks after render
-      await act(async () => {
-        await new Promise(r => setTimeout(r, 200));
-      });
-
-      console.log(
-        'DIAG getAllAssistants calls:',
-        vi.mocked(dbMock.getAllAssistants).mock.calls.length,
-      );
-      console.log('DIAG getAssistant calls:', vi.mocked(dbMock.getAssistant).mock.calls.length);
-      console.log(
-        'DIAG getSessionsForAssistant calls:',
-        vi.mocked(dbMock.getSessionsForAssistant).mock.calls.length,
-      );
-      console.log(
-        'DIAG chat-container in DOM:',
-        !!document.querySelector('[data-testid="chat-container"]'),
-      );
-      console.log(
-        'DIAG loading text in DOM:',
-        !!document.querySelector('[data-testid="loading-spinner"]'),
-      );
-      const bodyText = document.body.textContent?.substring(0, 300);
-      console.log('DIAG body text:', bodyText);
-
       await waitFor(
         () => {
           expect(screen.getByTestId('chat-container')).toBeInTheDocument();
           expect(screen.getByText('Chatting with Basic Assistant')).toBeInTheDocument();
         },
-        { timeout: 5000 },
+        { timeout: 3000 },
       );
     });
 
@@ -473,6 +472,8 @@ describe('AppShell', () => {
   describe('Empty States', () => {
     it('should show empty state when no assistant is selected and not loading', async () => {
       vi.mocked(dbMock.getAllAssistants).mockResolvedValue([TEST_ASSISTANTS.basic]);
+      vi.mocked(dbMock.getAssistant).mockResolvedValue(TEST_ASSISTANTS.basic);
+      vi.mocked(dbMock.getSessionsForAssistant).mockResolvedValue([TEST_SESSIONS.withMessages]);
 
       render(<AppShell />);
 
