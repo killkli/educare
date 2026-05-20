@@ -1,3 +1,4 @@
+/* eslint-disable no-undef */
 export async function* readSseDataLines(
   reader: ReadableStreamDefaultReader<Uint8Array>,
 ): AsyncIterable<string> {
