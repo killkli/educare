@@ -53,3 +53,5 @@ work.png
 playwright-report/
 test-results*/
 .omc/
+/.antigravitycli
+/.omg/state
