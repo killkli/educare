@@ -49,6 +49,9 @@ const useSessionManager = ({ session, onSessionUpdate }: SessionManagerProps) =>
         systemPrompt,
         history: currentSession.messages,
         message: userMessage,
+        assistantId,
+        sessionId: currentSession.id,
+        activeProjectId: currentSession.activeProjectId ?? null,
         knowledgeChunks: ragChunks,
         onChunk: chunk => {
           setIsThinking(false);

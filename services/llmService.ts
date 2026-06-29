@@ -1,4 +1,4 @@
-import { ChatMessage, RagChunk } from '../types';
+import { ChatMessage, RagChunk, type HtmlProjectWorkspaceUpdate } from '../types';
 import { ToolCall } from './llmAdapter';
 import { providerManager, initializeProviders } from './providerRegistry';
 import {
@@ -10,14 +10,24 @@ import {
   KNOWLEDGE_SEARCH_TOOL_NAME,
   KNOWLEDGE_SEARCH_TOOL_SCHEMA,
 } from './knowledgeSearchService';
+import {
+  executeHtmlProjectToolCall,
+  getHtmlProjectToolDefinitions,
+  isHtmlProjectToolName,
+} from './htmlProjectToolService';
+import { buildHtmlProjectSystemPrompt, shouldEnableHtmlProjectTools } from './htmlProjectPrompting';
 
 export interface StreamChatParams {
   systemPrompt: string;
   ragContext?: string;
   history: ChatMessage[];
   message: string;
+  assistantId: string;
+  sessionId?: string | null;
+  activeProjectId?: string | null;
   knowledgeChunks?: RagChunk[];
   onChunk: (text: string) => void;
+  onProjectToolActivity?: (update: HtmlProjectWorkspaceUpdate) => void;
   onComplete: (
     metadata: { promptTokenCount: number; candidatesTokenCount: number },
     fullText: string,
@@ -30,12 +40,15 @@ export const streamChat = async (params: StreamChatParams) => {
     ragContext,
     history,
     message,
+    assistantId,
+    sessionId,
+    activeProjectId,
     knowledgeChunks = [],
     onChunk,
+    onProjectToolActivity,
     onComplete,
   } = params;
 
-  // Ensure providers are initialized
   await initializeProviders();
 
   const activeProvider = providerManager.getActiveProvider();
@@ -50,22 +63,58 @@ export const streamChat = async (params: StreamChatParams) => {
   let fullResponseText = '';
   let promptTokenCount = 0;
   let candidatesTokenCount = 0;
+  let resolvedActiveProjectId = activeProjectId ?? null;
 
-  const toolEnabled = hasKnowledgeChunks(knowledgeChunks);
-  const finalSystemPrompt = toolEnabled
-    ? `${systemPrompt}\n\n${KNOWLEDGE_SEARCH_SYSTEM_PROMPT}`
-    : systemPrompt;
+  const knowledgeToolEnabled = hasKnowledgeChunks(knowledgeChunks);
+  const htmlProjectToolEnabled = shouldEnableHtmlProjectTools(message, resolvedActiveProjectId);
+
+  const finalSystemPrompt = [
+    systemPrompt,
+    knowledgeToolEnabled ? KNOWLEDGE_SEARCH_SYSTEM_PROMPT : '',
+    htmlProjectToolEnabled ? buildHtmlProjectSystemPrompt(resolvedActiveProjectId) : '',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 
   const executeTool = async (call: ToolCall) => {
-    if (call.name !== KNOWLEDGE_SEARCH_TOOL_NAME) {
-      return { error: `Unsupported tool: ${call.name}` };
+    if (call.name === KNOWLEDGE_SEARCH_TOOL_NAME) {
+      return buildKnowledgeSearchResponse(
+        knowledgeChunks,
+        call.args as unknown as KnowledgeSearchArgs,
+      );
     }
 
-    return buildKnowledgeSearchResponse(
-      knowledgeChunks,
-      call.args as unknown as KnowledgeSearchArgs,
-    );
+    if (htmlProjectToolEnabled && isHtmlProjectToolName(call.name)) {
+      const toolResult = await executeHtmlProjectToolCall(call, {
+        assistantId,
+        sessionId,
+        activeProjectId: resolvedActiveProjectId,
+      });
+
+      resolvedActiveProjectId = toolResult.workspace.activeProjectId;
+      onProjectToolActivity?.(toolResult.workspace);
+
+      return {
+        ...toolResult.result,
+        summary: toolResult.summary,
+      };
+    }
+
+    return { error: `Unsupported tool: ${call.name}` };
   };
+
+  const tools = [
+    ...(knowledgeToolEnabled
+      ? [
+          {
+            name: KNOWLEDGE_SEARCH_TOOL_NAME,
+            description: KNOWLEDGE_SEARCH_TOOL_DESCRIPTION,
+            parameters: KNOWLEDGE_SEARCH_TOOL_SCHEMA,
+          },
+        ]
+      : []),
+    ...(htmlProjectToolEnabled ? getHtmlProjectToolDefinitions() : []),
+  ];
 
   try {
     const chatParams = {
@@ -73,16 +122,8 @@ export const streamChat = async (params: StreamChatParams) => {
       ragContext,
       history,
       message,
-      tools: toolEnabled
-        ? [
-            {
-              name: KNOWLEDGE_SEARCH_TOOL_NAME,
-              description: KNOWLEDGE_SEARCH_TOOL_DESCRIPTION,
-              parameters: KNOWLEDGE_SEARCH_TOOL_SCHEMA,
-            },
-          ]
-        : undefined,
-      executeTool: toolEnabled ? executeTool : undefined,
+      tools: tools.length > 0 ? tools : undefined,
+      executeTool: tools.length > 0 ? executeTool : undefined,
     };
 
     for await (const response of activeProvider.streamChat(chatParams)) {
@@ -108,7 +149,6 @@ export const streamChat = async (params: StreamChatParams) => {
   } catch (error) {
     console.error('LLM streaming error:', error);
 
-    // Provide user-friendly error messages
     if (error instanceof Error) {
       if (error.message.includes('API key') || error.message.includes('unauthorized')) {
         throw new Error(`API 金鑰錯誤：請檢查 ${activeProvider.displayName} 的 API 金鑰是否正確。`);

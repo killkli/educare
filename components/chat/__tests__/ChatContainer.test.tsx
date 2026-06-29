@@ -4,17 +4,28 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ChatContainer from '../ChatContainer';
 import { createMockChatSession, TEST_ASSISTANTS } from './test-utils';
 import { useAppContext } from '../../core/useAppContext';
+import type { HtmlProjectPreviewArtifact } from '../../../types';
 
 const {
   mockCreateNewSession,
   mockStreamChat,
   mockPerformCachedRagQuery,
   mockResultsToContextString,
+  mockSetActiveProject,
+  mockSetProjectWorkspaceOpen,
+  mockSetProjectPreview,
+  mockAppendProjectActivity,
+  mockClearProjectWorkspace,
 } = vi.hoisted(() => ({
   mockCreateNewSession: vi.fn().mockResolvedValue(undefined),
   mockStreamChat: vi.fn(),
   mockPerformCachedRagQuery: vi.fn(),
   mockResultsToContextString: vi.fn(),
+  mockSetActiveProject: vi.fn(),
+  mockSetProjectWorkspaceOpen: vi.fn(),
+  mockSetProjectPreview: vi.fn(),
+  mockAppendProjectActivity: vi.fn(),
+  mockClearProjectWorkspace: vi.fn(),
 }));
 
 vi.mock('../../core/useAppContext', async () => {
@@ -23,6 +34,11 @@ vi.mock('../../core/useAppContext', async () => {
     AppContext: React.createContext({
       actions: {
         createNewSession: mockCreateNewSession,
+        setActiveProject: mockSetActiveProject,
+        setProjectWorkspaceOpen: mockSetProjectWorkspaceOpen,
+        setProjectPreview: mockSetProjectPreview,
+        appendProjectActivity: mockAppendProjectActivity,
+        clearProjectWorkspace: mockClearProjectWorkspace,
       },
     }),
     useAppContext: vi.fn(),
@@ -78,6 +94,11 @@ describe('ChatContainer', () => {
     vi.mocked(useAppContext).mockReturnValue({
       actions: {
         createNewSession: mockCreateNewSession,
+        setActiveProject: mockSetActiveProject,
+        setProjectWorkspaceOpen: mockSetProjectWorkspaceOpen,
+        setProjectPreview: mockSetProjectPreview,
+        appendProjectActivity: mockAppendProjectActivity,
+        clearProjectWorkspace: mockClearProjectWorkspace,
       },
     } as unknown as ReturnType<typeof useAppContext>);
 
@@ -142,11 +163,70 @@ describe('ChatContainer', () => {
     });
   });
 
+  it('passes assistant, session, and active project ids to streamChat', async () => {
+    const user = userEvent.setup();
+    const session = createMockChatSession({ activeProjectId: 'project-42' });
+
+    render(<ChatContainer {...defaultProps} session={session} />);
+
+    await user.type(screen.getByRole('textbox', { name: '輸入訊息' }), 'Continue building');
+    await user.click(screen.getByRole('button', { name: '傳送訊息' }));
+
+    await waitFor(() => {
+      expect(mockStreamChat).toHaveBeenCalledWith(
+        expect.objectContaining({
+          assistantId: defaultProps.assistantId,
+          sessionId: session.id,
+          activeProjectId: 'project-42',
+          message: 'Continue building',
+        }),
+      );
+    });
+  });
+
+  it('wires project tool activity into AppContext workspace actions', async () => {
+    const user = userEvent.setup();
+    const preview: HtmlProjectPreviewArtifact = {
+      projectId: 'project-99',
+      previewVersion: 3,
+      entryFile: '/index.html',
+      previewReady: true,
+      previewUrlType: 'blob',
+      html: '<html></html>',
+      url: 'blob:preview-99',
+      warnings: [],
+      error: null,
+      generatedAt: Date.now(),
+    };
+
+    mockStreamChat.mockImplementationOnce(async ({ onProjectToolActivity, onComplete }) => {
+      onProjectToolActivity({
+        activeProjectId: 'project-99',
+        preview,
+        activityMessage: 'Updated preview',
+      });
+      onComplete({ promptTokenCount: 1, candidatesTokenCount: 2 }, 'Done');
+    });
+
+    render(<ChatContainer {...defaultProps} />);
+
+    await user.type(screen.getByRole('textbox', { name: '輸入訊息' }), 'Make a landing page');
+    await user.click(screen.getByRole('button', { name: '傳送訊息' }));
+
+    await waitFor(() => {
+      expect(mockSetActiveProject).toHaveBeenCalledWith('project-99');
+      expect(mockSetProjectWorkspaceOpen).toHaveBeenCalledWith(true);
+      expect(mockSetProjectPreview).toHaveBeenCalledWith(preview);
+      expect(mockAppendProjectActivity).toHaveBeenCalledWith('Updated preview');
+    });
+  });
+
   it('starts a new shared conversation from the header button', async () => {
     const user = userEvent.setup();
     const session = createMockChatSession({
       messages: [{ role: 'user', content: 'Existing message' }],
       tokenCount: 99,
+      activeProjectId: 'project-7',
     });
 
     render(<ChatContainer {...defaultProps} session={session} sharedMode={true} />);
@@ -157,6 +237,7 @@ describe('ChatContainer', () => {
       expect(mockCreateNewSession).toHaveBeenCalledWith(defaultProps.assistantId);
     });
 
+    expect(mockClearProjectWorkspace).toHaveBeenCalled();
     expect(screen.getByTestId('welcome-message')).toBeInTheDocument();
     expect(screen.queryByText('Existing message')).not.toBeInTheDocument();
   });

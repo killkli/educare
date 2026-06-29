@@ -7,7 +7,7 @@ import WelcomeMessage from './WelcomeMessage';
 import ThinkingIndicator from './ThinkingIndicator';
 import StreamingResponse from './StreamingResponse';
 import { streamChat } from '../../services/llmService';
-import { ChatMessage } from '../../types';
+import { ChatMessage, HtmlProjectWorkspaceUpdate } from '../../types';
 
 const ChatContainer: React.FC<ChatContainerProps> = ({
   session,
@@ -28,6 +28,7 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
   const [isThinking, setIsThinking] = useState(false);
   const [currentSession, setCurrentSession] = useState(session);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const sessionRef = useRef(session);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -35,11 +36,40 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
 
   useEffect(() => {
     setCurrentSession(session);
+    sessionRef.current = session;
   }, [session]);
+
+  useEffect(() => {
+    sessionRef.current = currentSession;
+  }, [currentSession]);
 
   useEffect(() => {
     scrollToBottom();
   }, [currentSession.messages, streamingResponse, isThinking]);
+
+  const handleProjectToolActivity = (update: HtmlProjectWorkspaceUpdate) => {
+    const nextProjectId = update.activeProjectId ?? sessionRef.current.activeProjectId ?? null;
+
+    setCurrentSession(prev => {
+      const nextSession = {
+        ...prev,
+        activeProjectId: nextProjectId,
+      };
+      sessionRef.current = nextSession;
+      return nextSession;
+    });
+
+    actions?.setActiveProject?.(nextProjectId);
+    actions?.setProjectWorkspaceOpen?.(Boolean(nextProjectId));
+
+    if (update.preview) {
+      actions?.setProjectPreview?.(update.preview);
+    }
+
+    if (update.activityMessage) {
+      actions?.appendProjectActivity?.(update.activityMessage);
+    }
+  };
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) {
@@ -56,6 +86,7 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
       ...currentSession,
       messages: [...currentSession.messages, newUserMessage],
     };
+    sessionRef.current = updatedSession;
     setCurrentSession(updatedSession);
 
     try {
@@ -87,6 +118,9 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
         systemPrompt: enhancedSystemPrompt,
         history: chatHistory,
         message: userMessage,
+        assistantId,
+        sessionId: currentSession.id,
+        activeProjectId: currentSession.activeProjectId ?? null,
         knowledgeChunks: ragChunks,
         onChunk: chunk => {
           if (isThinking) {
@@ -94,21 +128,24 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
           }
           setStreamingResponse(prev => prev + chunk);
         },
+        onProjectToolActivity: handleProjectToolActivity,
         onComplete: (tokenInfo, fullModelResponse) => {
           setIsLoading(false);
           setIsThinking(false);
           setStatusText('');
 
+          const baseSession = sessionRef.current;
           const newAiMessage = { role: 'model' as const, content: fullModelResponse };
           const finalSession = {
-            ...updatedSession,
-            messages: [...updatedSession.messages, newAiMessage],
+            ...baseSession,
+            messages: [...baseSession.messages, newAiMessage],
             tokenCount:
-              (updatedSession.tokenCount || 0) +
+              (baseSession.tokenCount || 0) +
               tokenInfo.promptTokenCount +
               tokenInfo.candidatesTokenCount,
           };
 
+          sessionRef.current = finalSession;
           setCurrentSession(finalSession);
           setStreamingResponse('');
           onNewMessage(finalSession, userMessage, fullModelResponse, tokenInfo);
@@ -138,7 +175,15 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
                 <button
                   onClick={async () => {
                     await actions?.createNewSession?.(assistantId);
-                    setCurrentSession({ ...currentSession, messages: [], tokenCount: 0 });
+                    const resetSession = {
+                      ...currentSession,
+                      messages: [],
+                      tokenCount: 0,
+                      activeProjectId: null,
+                    };
+                    setCurrentSession(resetSession);
+                    sessionRef.current = resetSession;
+                    actions?.clearProjectWorkspace?.();
                     setStreamingResponse('');
                     setIsThinking(false);
                     setStatusText('');
