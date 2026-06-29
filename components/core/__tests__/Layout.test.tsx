@@ -763,6 +763,120 @@ describe('Layout', () => {
     });
   });
 
+  describe('Sidebar Collapse (Desktop)', () => {
+    it('should render a desktop collapse toggle, expanded by default', async () => {
+      Object.defineProperty(window, 'innerWidth', {
+        value: RESPONSIVE_BREAKPOINTS.desktop + 100,
+        writable: true,
+      });
+
+      render(
+        <TestLayoutWrapper>
+          <TestLayoutContent />
+        </TestLayoutWrapper>,
+      );
+
+      await waitFor(() => {
+        expect(getSidebarDiv()).toHaveClass('w-72'); // expanded by default
+      });
+
+      const toggle = screen.getByTestId('sidebar-collapse-toggle');
+      expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      expect(toggle).toHaveAccessibleName('收折側邊欄');
+    });
+
+    it('should collapse to icon rail (w-20 / ml-20) when toggle is clicked', async () => {
+      Object.defineProperty(window, 'innerWidth', {
+        value: RESPONSIVE_BREAKPOINTS.desktop + 100,
+        writable: true,
+      });
+
+      render(
+        <TestLayoutWrapper>
+          <TestLayoutContent />
+        </TestLayoutWrapper>,
+      );
+
+      await waitFor(() => {
+        expect(getSidebarDiv()).toHaveClass('w-72');
+      });
+
+      const toggle = screen.getByTestId('sidebar-collapse-toggle');
+      await act(async () => {
+        fireEvent.click(toggle);
+      });
+
+      await waitFor(() => {
+        expect(getSidebarDiv()).toHaveClass('w-20');
+        expect(screen.getByRole('main')).toHaveClass('ml-20');
+        expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      });
+    });
+
+    it('should expand back when toggle is clicked again (no dead-end)', async () => {
+      Object.defineProperty(window, 'innerWidth', {
+        value: RESPONSIVE_BREAKPOINTS.desktop + 100,
+        writable: true,
+      });
+
+      render(
+        <TestLayoutWrapper>
+          <TestLayoutContent />
+        </TestLayoutWrapper>,
+      );
+
+      await waitFor(() => {
+        expect(getSidebarDiv()).toHaveClass('w-72');
+      });
+
+      const toggle = screen.getByTestId('sidebar-collapse-toggle');
+
+      await act(async () => {
+        fireEvent.click(toggle);
+      });
+      await waitFor(() => {
+        expect(getSidebarDiv()).toHaveClass('w-20');
+      });
+
+      await act(async () => {
+        fireEvent.click(toggle);
+      });
+      await waitFor(() => {
+        expect(getSidebarDiv()).toHaveClass('w-72');
+        expect(screen.getByRole('main')).toHaveClass('ml-72');
+        expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      });
+    });
+
+    it('should persist the collapse preference to localStorage', async () => {
+      Object.defineProperty(window, 'innerWidth', {
+        value: RESPONSIVE_BREAKPOINTS.desktop + 100,
+        writable: true,
+      });
+
+      render(
+        <TestLayoutWrapper>
+          <TestLayoutContent />
+        </TestLayoutWrapper>,
+      );
+
+      await waitFor(() => {
+        expect(getSidebarDiv()).toHaveClass('w-72');
+      });
+
+      const toggle = screen.getByTestId('sidebar-collapse-toggle');
+      await act(async () => {
+        fireEvent.click(toggle);
+      });
+
+      await waitFor(() => {
+        expect(getSidebarDiv()).toHaveClass('w-20');
+      });
+
+      expect(window.localStorage.setItem).toHaveBeenCalledWith('sidebarCollapsed', 'true');
+    });
+  });
+
   describe('Assistant List Integration', () => {
     it('should render assistant list with loaded assistants', async () => {
       render(
