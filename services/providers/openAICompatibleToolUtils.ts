@@ -1,4 +1,5 @@
 import { ChatParams, StreamingResponse, ToolCall, ToolDefinition } from '../llmAdapter';
+import { readSseDataLines } from './sse';
 
 interface OpenAICompatibleToolCall {
   id?: string;
@@ -239,56 +240,35 @@ export async function* streamOpenAICompatibleChat(
     throw new Error('Failed to get response reader');
   }
 
-  const decoder = new TextDecoder();
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-
-      const chunk = decoder.decode(value);
-      const lines = chunk.split('\n');
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) {
-          continue;
-        }
-
-        const data = line.slice(6);
-        if (data === '[DONE]') {
-          break;
-        }
-
-        try {
-          const parsed = JSON.parse(data);
-          const deltaContent = parsed.choices?.[0]?.delta?.content;
-
-          if (deltaContent) {
-            candidatesTokenCount++;
-
-            yield {
-              text: deltaContent,
-              isComplete: false,
-              metadata: {
-                model,
-                provider: providerName,
-              },
-            };
-          }
-
-          if (parsed.usage) {
-            promptTokenCount = parsed.usage.prompt_tokens || promptTokenCount;
-            candidatesTokenCount = parsed.usage.completion_tokens || candidatesTokenCount;
-          }
-        } catch {
-          continue;
-        }
-      }
+  for await (const data of readSseDataLines(reader)) {
+    if (data === '[DONE]') {
+      break;
     }
-  } finally {
-    reader.releaseLock();
+
+    try {
+      const parsed = JSON.parse(data);
+      const deltaContent = parsed.choices?.[0]?.delta?.content;
+
+      if (deltaContent) {
+        candidatesTokenCount++;
+
+        yield {
+          text: deltaContent,
+          isComplete: false,
+          metadata: {
+            model,
+            provider: providerName,
+          },
+        };
+      }
+
+      if (parsed.usage) {
+        promptTokenCount = parsed.usage.prompt_tokens || promptTokenCount;
+        candidatesTokenCount = parsed.usage.completion_tokens || candidatesTokenCount;
+      }
+    } catch {
+      continue;
+    }
   }
 
   yield {

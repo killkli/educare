@@ -1,4 +1,11 @@
-import { GoogleGenAI, Chat, GenerateContentResponse } from '@google/genai';
+import {
+  Chat,
+  createPartFromFunctionResponse,
+  FunctionCallingConfigMode,
+  type FunctionDeclaration,
+  GenerateContentResponse,
+  GoogleGenAI,
+} from '@google/genai';
 import { LLMProvider, ProviderConfig, ChatParams, StreamingResponse } from '../llmAdapter';
 import { ApiKeyManager } from '../apiKeyManager';
 
@@ -41,22 +48,18 @@ export class GeminiProvider implements LLMProvider {
   }
 
   isAvailable(): boolean {
-    // Check if already initialized
     if (this.ai) {
       return true;
     }
 
-    // Check if we have API key from config
     if (this.config.apiKey) {
       return true;
     }
 
-    // Check global API key manager (for backward compatibility)
     if (ApiKeyManager.hasGeminiApiKey()) {
       return true;
     }
 
-    // Check environment variable
     if (typeof process !== 'undefined' && process.env?.API_KEY) {
       return true;
     }
@@ -73,7 +76,6 @@ export class GeminiProvider implements LLMProvider {
   }
 
   async getAvailableModels(): Promise<string[]> {
-    // Gemini doesn't have a public models list API, so we return the supported models
     return this.supportedModels;
   }
 
@@ -87,6 +89,53 @@ export class GeminiProvider implements LLMProvider {
     return this.ai;
   }
 
+  private buildFinalSystemPrompt(params: ChatParams): string {
+    if (!params.ragContext) {
+      return params.systemPrompt;
+    }
+
+    const ragPreamble = `Use the information from the following context to inform your response to the user's question. Provide a natural, conversational answer as if the information is part of your general knowledge, without mentioning the context or documents directly. If the answer is not found in the provided information, state that you don't have the relevant information to answer the question. <context> ${params.ragContext} </context>`;
+    return `${params.systemPrompt}\n\n${ragPreamble}`;
+  }
+
+  private createChat(params: ChatParams, finalSystemPrompt: string, model: string): Chat {
+    const MAX_HISTORY_MESSAGES = 20;
+    const truncatedHistory =
+      params.history.length > MAX_HISTORY_MESSAGES
+        ? params.history.slice(-MAX_HISTORY_MESSAGES)
+        : params.history;
+
+    const functionDeclarations: FunctionDeclaration[] | undefined = params.tools?.map(tool => ({
+      name: tool.name,
+      description: tool.prompt ? `${tool.description} ${tool.prompt}` : tool.description,
+      parametersJsonSchema: tool.parameters,
+    }));
+
+    return this.getAi()!.chats.create({
+      model,
+      config: {
+        systemInstruction: finalSystemPrompt,
+        temperature: (params.temperature as number | undefined) || this.config.temperature || 0.7,
+        maxOutputTokens: (params.maxTokens as number | undefined) || this.config.maxTokens || 4096,
+        ...(functionDeclarations?.length
+          ? {
+              tools: [{ functionDeclarations }],
+              toolConfig: {
+                functionCallingConfig: {
+                  mode: FunctionCallingConfigMode.AUTO,
+                  allowedFunctionNames: functionDeclarations.map(tool => tool.name || ''),
+                },
+              },
+            }
+          : {}),
+      },
+      history: truncatedHistory.map(msg => ({
+        role: msg.role,
+        parts: [{ text: msg.content }],
+      })),
+    });
+  }
+
   async *streamChat(params: ChatParams): AsyncIterable<StreamingResponse> {
     const genAI = await this.getAi();
 
@@ -98,61 +147,127 @@ export class GeminiProvider implements LLMProvider {
       throw new Error('請先在設定中配置 Gemini API KEY 才能使用聊天功能。');
     }
 
-    const MAX_HISTORY_MESSAGES = 20;
-    const truncatedHistory =
-      params.history.length > MAX_HISTORY_MESSAGES
-        ? params.history.slice(-MAX_HISTORY_MESSAGES)
-        : params.history;
-
-    let finalSystemPrompt = params.systemPrompt;
-    if (params.ragContext) {
-      const ragPreamble = `Use the information from the following context to inform your response to the user's question. Provide a natural, conversational answer as if the information is part of your general knowledge, without mentioning the context or documents directly. If the answer is not found in the provided information, state that you don't have the relevant information to answer the question. <context> ${params.ragContext} </context>`;
-      finalSystemPrompt = `${params.systemPrompt}\n\n${ragPreamble}`;
-    }
-
     const model = params.model || this.config.model || 'gemini-2.5-flash';
-    const chat: Chat = genAI.chats.create({
-      model,
-      config: {
-        systemInstruction: finalSystemPrompt,
-        temperature: params.temperature || this.config.temperature || 0.7,
-        maxOutputTokens: params.maxTokens || this.config.maxTokens || 4096,
-      },
-      history: truncatedHistory.map(msg => ({
-        role: msg.role,
-        parts: [{ text: msg.content }],
-      })),
-    });
+    const finalSystemPrompt = this.buildFinalSystemPrompt(params);
 
-    const stream = await chat.sendMessageStream({ message: params.message });
+    try {
+      if (params.tools?.length && params.executeTool) {
+        const chat = this.createChat(params, finalSystemPrompt, model);
+        const initialResponse = await chat.sendMessage({ message: params.message });
+        const functionCalls = initialResponse.functionCalls || [];
 
-    let aggregatedResponse: GenerateContentResponse | null = null;
+        if (functionCalls.length > 0) {
+          const toolResponses = [];
 
-    for await (const chunk of stream) {
-      const chunkText = chunk.text;
-      if (chunkText) {
+          for (const functionCall of functionCalls) {
+            if (!functionCall.name) {
+              continue;
+            }
+
+            const result = await params.executeTool({
+              name: functionCall.name,
+              args:
+                functionCall.args && typeof functionCall.args === 'object'
+                  ? (functionCall.args as Record<string, unknown>)
+                  : {},
+            });
+
+            toolResponses.push(
+              createPartFromFunctionResponse(functionCall.id ?? '', functionCall.name, {
+                output: result,
+              }),
+            );
+          }
+
+          const finalStream = await chat.sendMessageStream({ message: toolResponses });
+          let aggregatedResponse: GenerateContentResponse | null = null;
+
+          for await (const chunk of finalStream) {
+            const chunkText = chunk.text;
+            if (chunkText) {
+              yield {
+                text: chunkText,
+                isComplete: false,
+                metadata: {
+                  model,
+                  provider: this.name,
+                },
+              };
+            }
+            aggregatedResponse = chunk;
+          }
+
+          yield {
+            text: '',
+            isComplete: true,
+            metadata: {
+              promptTokenCount: aggregatedResponse?.usageMetadata?.promptTokenCount ?? 0,
+              candidatesTokenCount: aggregatedResponse?.usageMetadata?.candidatesTokenCount ?? 0,
+              model,
+              provider: this.name,
+            },
+          };
+          return;
+        }
+
+        const initialText = initialResponse.text;
+        if (initialText) {
+          yield {
+            text: initialText,
+            isComplete: false,
+            metadata: {
+              model,
+              provider: this.name,
+            },
+          };
+        }
+
         yield {
-          text: chunkText,
-          isComplete: false,
+          text: '',
+          isComplete: true,
           metadata: {
+            promptTokenCount: initialResponse.usageMetadata?.promptTokenCount ?? 0,
+            candidatesTokenCount: initialResponse.usageMetadata?.candidatesTokenCount ?? 0,
             model,
             provider: this.name,
           },
         };
+        return;
       }
-      aggregatedResponse = chunk;
-    }
 
-    // Final response with complete metadata
-    yield {
-      text: '',
-      isComplete: true,
-      metadata: {
-        promptTokenCount: aggregatedResponse?.usageMetadata?.promptTokenCount ?? 0,
-        candidatesTokenCount: aggregatedResponse?.usageMetadata?.candidatesTokenCount ?? 0,
-        model,
-        provider: this.name,
-      },
-    };
+      const chat = this.createChat(params, finalSystemPrompt, model);
+      const stream = await chat.sendMessageStream({ message: params.message });
+
+      let aggregatedResponse: GenerateContentResponse | null = null;
+
+      for await (const chunk of stream) {
+        const chunkText = chunk.text;
+        if (chunkText) {
+          yield {
+            text: chunkText,
+            isComplete: false,
+            metadata: {
+              model,
+              provider: this.name,
+            },
+          };
+        }
+        aggregatedResponse = chunk;
+      }
+
+      yield {
+        text: '',
+        isComplete: true,
+        metadata: {
+          promptTokenCount: aggregatedResponse?.usageMetadata?.promptTokenCount ?? 0,
+          candidatesTokenCount: aggregatedResponse?.usageMetadata?.candidatesTokenCount ?? 0,
+          model,
+          provider: this.name,
+        },
+      };
+    } catch (error) {
+      console.error('Gemini streaming error:', error);
+      throw error;
+    }
   }
 }

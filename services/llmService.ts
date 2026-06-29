@@ -1,11 +1,22 @@
-import { ChatMessage } from '../types';
+import { ChatMessage, RagChunk } from '../types';
+import { ToolCall } from './llmAdapter';
 import { providerManager, initializeProviders } from './providerRegistry';
+import {
+  buildKnowledgeSearchResponse,
+  hasKnowledgeChunks,
+  type KnowledgeSearchArgs,
+  KNOWLEDGE_SEARCH_SYSTEM_PROMPT,
+  KNOWLEDGE_SEARCH_TOOL_DESCRIPTION,
+  KNOWLEDGE_SEARCH_TOOL_NAME,
+  KNOWLEDGE_SEARCH_TOOL_SCHEMA,
+} from './knowledgeSearchService';
 
 export interface StreamChatParams {
   systemPrompt: string;
   ragContext?: string;
   history: ChatMessage[];
   message: string;
+  knowledgeChunks?: RagChunk[];
   onChunk: (text: string) => void;
   onComplete: (
     metadata: { promptTokenCount: number; candidatesTokenCount: number },
@@ -14,7 +25,15 @@ export interface StreamChatParams {
 }
 
 export const streamChat = async (params: StreamChatParams) => {
-  const { systemPrompt, ragContext, history, message, onChunk, onComplete } = params;
+  const {
+    systemPrompt,
+    ragContext,
+    history,
+    message,
+    knowledgeChunks = [],
+    onChunk,
+    onComplete,
+  } = params;
 
   // Ensure providers are initialized
   await initializeProviders();
@@ -32,12 +51,38 @@ export const streamChat = async (params: StreamChatParams) => {
   let promptTokenCount = 0;
   let candidatesTokenCount = 0;
 
+  const toolEnabled = hasKnowledgeChunks(knowledgeChunks);
+  const finalSystemPrompt = toolEnabled
+    ? `${systemPrompt}\n\n${KNOWLEDGE_SEARCH_SYSTEM_PROMPT}`
+    : systemPrompt;
+
+  const executeTool = async (call: ToolCall) => {
+    if (call.name !== KNOWLEDGE_SEARCH_TOOL_NAME) {
+      return { error: `Unsupported tool: ${call.name}` };
+    }
+
+    return buildKnowledgeSearchResponse(
+      knowledgeChunks,
+      call.args as unknown as KnowledgeSearchArgs,
+    );
+  };
+
   try {
     const chatParams = {
-      systemPrompt,
+      systemPrompt: finalSystemPrompt,
       ragContext,
       history,
       message,
+      tools: toolEnabled
+        ? [
+            {
+              name: KNOWLEDGE_SEARCH_TOOL_NAME,
+              description: KNOWLEDGE_SEARCH_TOOL_DESCRIPTION,
+              parameters: KNOWLEDGE_SEARCH_TOOL_SCHEMA,
+            },
+          ]
+        : undefined,
+      executeTool: toolEnabled ? executeTool : undefined,
     };
 
     for await (const response of activeProvider.streamChat(chatParams)) {
@@ -76,26 +121,4 @@ export const streamChat = async (params: StreamChatParams) => {
 
     throw error;
   }
-};
-
-export const isLLMAvailable = (): boolean => {
-  try {
-    const availableProviders = providerManager.getAvailableProviders();
-    return availableProviders.length > 0;
-  } catch {
-    // If providers aren't initialized yet, return false
-    return false;
-  }
-};
-
-export const getActiveProviderName = (): string => {
-  const activeProvider = providerManager.getActiveProvider();
-  return activeProvider ? activeProvider.displayName : '無';
-};
-
-export const getActiveProviderModel = (): string => {
-  const settings = providerManager.getSettings();
-  const activeProvider = settings.activeProvider;
-  const config = settings.providers[activeProvider]?.config;
-  return config?.model || '預設模型';
 };
