@@ -1,4 +1,5 @@
 import { createClient } from '@libsql/client';
+import { RagChunk } from '../types';
 import { ApiKeyManager } from './apiKeyManager';
 
 // 建立客戶端實例的工廠函數 - 支援動態配置
@@ -55,6 +56,7 @@ export interface TursoAssistant {
   description: string; // 給使用者看的友善描述
   systemPrompt: string; // 給 AI 的內部指令
   createdAt: number;
+  ragChunks?: RagChunk[];
 }
 
 export interface TursoRagChunk {
@@ -258,22 +260,34 @@ export const getAssistantFromTurso = async (id: string): Promise<TursoAssistant 
   try {
     const client = getReadClient(); // 只需要讀取權限
 
-    const result = await client.execute({
-      sql: 'SELECT * FROM assistants WHERE id = ?',
-      args: [id],
-    });
+    const [assistantResult, ragChunkResult] = await Promise.all([
+      client.execute({
+        sql: 'SELECT * FROM assistants WHERE id = ?',
+        args: [id],
+      }),
+      client.execute({
+        sql: 'SELECT file_name, content FROM rag_chunks WHERE assistant_id = ? ORDER BY created_at ASC',
+        args: [id],
+      }),
+    ]);
 
-    if (result.rows.length === 0) {
+    if (assistantResult.rows.length === 0) {
       return null;
     }
 
-    const row = result.rows[0];
+    const row = assistantResult.rows[0];
+    const ragChunks: RagChunk[] = ragChunkResult.rows.map(chunkRow => ({
+      fileName: chunkRow.file_name as string,
+      content: chunkRow.content as string,
+    }));
+
     return {
       id: row.id as string,
       name: row.name as string,
       description: (row.description as string) || '', // 提供預設值以防舊資料
       systemPrompt: row.system_prompt as string,
       createdAt: row.created_at as number,
+      ragChunks,
     };
   } catch (error) {
     console.error('Failed to get assistant from Turso:', error);
