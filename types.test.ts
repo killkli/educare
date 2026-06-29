@@ -149,6 +149,20 @@ describe('Type Definitions', () => {
       expect(session.compactContext).toBeUndefined();
       expect(session.lastCompactionAt).toBe('2025-09-10T10:00:00Z');
     });
+
+    it('should accept session with optional activeProjectId for HTML canvas continuity', () => {
+      const session: ChatSession = {
+        id: 'session-1',
+        assistantId: 'assistant-1',
+        title: 'Project Session',
+        messages: [],
+        createdAt: Date.now(),
+        tokenCount: 0,
+        activeProjectId: 'project-123',
+      };
+
+      expect(session.activeProjectId).toBe('project-123');
+    });
   });
 
   describe('Type compatibility', () => {

@@ -61,9 +61,84 @@ export interface ChatSession {
   createdAt: number;
   updatedAt?: number;
   tokenCount: number;
+  activeProjectId?: string | null;
   // 壓縮相關欄位
   compactContext?: CompactContext; // 壓縮的對話上下文
   lastCompactionAt?: string; // 最後壓縮時間 (ISO string)
+}
+
+export type HtmlProjectStatus = 'draft' | 'ready' | 'error';
+export type HtmlProjectFileKind = 'html' | 'css' | 'js' | 'json' | 'svg' | 'asset' | 'md';
+export type HtmlProjectPreviewUrlType = 'blob' | 'data';
+
+export interface HtmlProject {
+  id: string;
+  assistantId: string;
+  sessionId?: string | null;
+  name: string;
+  description?: string;
+  entryFile: string;
+  status: HtmlProjectStatus;
+  previewVersion: number;
+  assetPaths: string[];
+  createdAt: number;
+  updatedAt: number;
+  lastPrompt?: string;
+  lastBuildError?: string | null;
+  tags?: string[];
+}
+
+export interface HtmlProjectFile {
+  projectId: string;
+  path: string;
+  kind: HtmlProjectFileKind;
+  content: string;
+  encoding?: 'utf-8' | 'base64';
+  dependencies?: string[];
+  size: number;
+  updatedAt: number;
+}
+
+export interface HtmlProjectSnapshot {
+  projectId: string;
+  version: number;
+  files: string[];
+  createdAt: number;
+  note?: string;
+}
+
+export interface HtmlProjectFileDescriptor {
+  path: string;
+  kind: HtmlProjectFileKind;
+  size: number;
+  updatedAt: number;
+  dependencies?: string[];
+}
+
+export interface HtmlProjectPreviewArtifact {
+  projectId: string;
+  previewVersion: number;
+  entryFile: string;
+  previewReady: boolean;
+  previewUrlType: HtmlProjectPreviewUrlType;
+  html: string;
+  url?: string;
+  warnings: string[];
+  error?: string | null;
+  generatedAt: number;
+}
+
+export interface HtmlProjectWorkspaceUpdate {
+  activeProjectId: string | null;
+  preview: HtmlProjectPreviewArtifact | null;
+  activityMessage: string;
+}
+
+export interface HtmlProjectToolExecutionResult {
+  toolName: string;
+  summary: string;
+  result: Record<string, unknown>;
+  workspace: HtmlProjectWorkspaceUpdate;
 }
 
 /**
