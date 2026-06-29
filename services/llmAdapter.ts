@@ -3,12 +3,25 @@ import { ChatMessage } from '../types';
 export interface StreamingResponse {
   text: string;
   isComplete: boolean;
+  toolCalls?: ToolCall[];
   metadata?: {
     promptTokenCount?: number;
     candidatesTokenCount?: number;
     model?: string;
     provider?: string;
   };
+}
+
+export interface ToolCall {
+  name: string;
+  args: Record<string, unknown>;
+}
+
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+  prompt?: string;
 }
 
 export interface ProviderConfig {
@@ -28,6 +41,8 @@ export interface ChatParams {
   model?: string;
   temperature?: number;
   maxTokens?: number;
+  tools?: ToolDefinition[];
+  executeTool?: (call: ToolCall) => Promise<unknown> | unknown;
 }
 
 export interface LLMProvider {
