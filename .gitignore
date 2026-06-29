@@ -52,6 +52,12 @@ work.png
 # E2E Test Results
 playwright-report/
 test-results*/
+# oh-my-claudecode (OMC) tool state
 .omc/
+
+# Claude Code worktrees
+.claude/worktrees/
+
+# Other agent/CLI state
 /.antigravitycli
 /.omg/state
