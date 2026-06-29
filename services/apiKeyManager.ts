@@ -15,6 +15,7 @@ const STORAGE_KEYS = {
   OPENAI_API_KEY: 'user_openai_api_key',
   GROQ_API_KEY: 'user_groq_api_key',
   OPENROUTER_API_KEY: 'user_openrouter_api_key',
+  LMSTUDIO_API_KEY: 'user_lmstudio_api_key',
   // Local providers (use base URLs instead of API keys)
   OLLAMA_BASE_URL: 'user_ollama_base_url',
   LMSTUDIO_BASE_URL: 'user_lmstudio_base_url',
@@ -30,6 +31,7 @@ export interface UserApiKeys {
   openaiApiKey?: string;
   groqApiKey?: string;
   openrouterApiKey?: string;
+  lmstudioApiKey?: string;
   // Local provider base URLs
   ollamaBaseUrl?: string;
   lmstudioBaseUrl?: string;
@@ -143,6 +145,16 @@ export class ApiKeyManager {
   }
 
   /**
+   * 獲取 LM Studio API KEY (用戶設定)
+   */
+  static getLmstudioApiKey(): string | null {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+    return localStorage.getItem(STORAGE_KEYS.LMSTUDIO_API_KEY);
+  }
+
+  /**
    * 獲取 Ollama Base URL (用戶設定)
    */
   static getOllamaBaseUrl(): string | null {
@@ -232,6 +244,12 @@ export class ApiKeyManager {
       localStorage.removeItem(STORAGE_KEYS.OPENROUTER_API_KEY);
     }
 
+    if (keys.lmstudioApiKey) {
+      localStorage.setItem(STORAGE_KEYS.LMSTUDIO_API_KEY, keys.lmstudioApiKey);
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.LMSTUDIO_API_KEY);
+    }
+
     // Local Provider Base URLs
     if (keys.ollamaBaseUrl) {
       localStorage.setItem(STORAGE_KEYS.OLLAMA_BASE_URL, keys.ollamaBaseUrl);
@@ -277,14 +295,18 @@ export class ApiKeyManager {
    * 獲取所有用戶 API KEY
    */
   static getUserApiKeys(): UserApiKeys {
+    const lmstudioApiKey =
+      this.getLmstudioApiKey() || this.getProviderApiKey('lmstudio') || undefined;
+
     // Get API keys from both localStorage (new system) and providerManager (existing system)
-    const result: UserApiKeys = {
+    return {
       // AI Provider API Keys - check both systems
       geminiApiKey: this.getGeminiApiKey() || this.getProviderApiKey('gemini') || undefined,
       openaiApiKey: this.getOpenaiApiKey() || this.getProviderApiKey('openai') || undefined,
       groqApiKey: this.getGroqApiKey() || this.getProviderApiKey('groq') || undefined,
       openrouterApiKey:
         this.getOpenrouterApiKey() || this.getProviderApiKey('openrouter') || undefined,
+      lmstudioApiKey,
       // Local Provider Base URLs
       ollamaBaseUrl: this.getOllamaBaseUrl() || this.getProviderBaseUrl('ollama') || undefined,
       lmstudioBaseUrl:
@@ -294,8 +316,6 @@ export class ApiKeyManager {
       // Active provider
       provider: localStorage.getItem(STORAGE_KEYS.ACTIVE_PROVIDER) || undefined,
     };
-
-    return result;
   }
 
   /**

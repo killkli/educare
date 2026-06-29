@@ -38,7 +38,14 @@ export class LMStudioProvider implements LLMProvider {
     const baseUrl = this.config.baseUrl || 'http://localhost:1234/v1';
 
     try {
-      const response = await fetch(`${baseUrl}/models`);
+      const headers: Record<string, string> = {};
+      if (this.config.apiKey) {
+        headers.Authorization = `Bearer ${this.config.apiKey}`;
+      }
+
+      const response = await fetch(`${baseUrl}/models`, {
+        headers,
+      });
 
       if (!response.ok) {
         console.warn('Failed to fetch LM Studio models, using default list');
