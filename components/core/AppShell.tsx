@@ -7,7 +7,6 @@ import SharedAssistant from '../features/SharedAssistant';
 import MigrationPanel from '../settings/MigrationPanel';
 import ApiKeySetup from '../settings/ApiKeySetup';
 import ProviderSettings from '../settings/ProviderSettings';
-import { EmbeddingFallbackTest } from '../EmbeddingFallbackTest';
 import { providerManager } from '../../services/providerRegistry';
 import { canWriteToTurso } from '../../services/tursoService';
 import { ChatCompactorService } from '../../services/chatCompactorService';
@@ -297,14 +296,6 @@ function AppContent(): React.JSX.Element {
                 資料庫設定
               </button>
             </div>
-            <div className='flex gap-3'>
-              <button
-                onClick={() => actions.setViewMode('embedding_test')}
-                className='flex-1 px-6 py-3 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white rounded-xl font-medium shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5'
-              >
-                🧪 Embedding 測試
-              </button>
-            </div>
           </div>
 
           {/* Turso Migration Panel */}
@@ -326,23 +317,6 @@ function AppContent(): React.JSX.Element {
       {state.viewMode === 'provider_settings' && (
         <div className='bg-gray-800 absolute inset-0 overflow-y-auto'>
           <ProviderSettings onClose={() => actions.setViewMode('settings')} />
-        </div>
-      )}
-
-      {state.viewMode === 'embedding_test' && (
-        <div className='bg-white absolute inset-0 overflow-y-auto'>
-          <div className='max-w-4xl mx-auto p-6'>
-            <div className='flex items-center justify-between mb-6'>
-              <h1 className='text-2xl font-bold text-gray-900'>Embedding Fallback 測試</h1>
-              <button
-                onClick={() => actions.setViewMode('settings')}
-                className='px-4 py-2 text-gray-600 hover:text-gray-800'
-              >
-                ← 返回設定
-              </button>
-            </div>
-            <EmbeddingFallbackTest />
-          </div>
         </div>
       )}
 

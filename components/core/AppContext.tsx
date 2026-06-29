@@ -2,7 +2,6 @@ import React, { useReducer, useCallback, useEffect } from 'react';
 import { Assistant, ChatSession, EmbeddingConfig } from '../../types';
 import { ProviderType } from '../../services/llmAdapter';
 import * as db from '../../services/db';
-import { preloadEmbeddingModel, isEmbeddingModelLoaded } from '../../services/embeddingService';
 import { initializeProviders, providerManager } from '../../services/providerRegistry';
 import { CryptoService } from '../../services/cryptoService';
 import { ApiKeyManager } from '../../services/apiKeyManager';
@@ -13,13 +12,7 @@ import {
 } from '../../services/tursoService';
 import { resolveShortUrl, recordShortUrlClick } from '../../services/shortUrlService';
 import { AppContext } from './useAppContext';
-import type {
-  ViewMode,
-  ModelLoadingProgress,
-  AppState,
-  AppAction,
-  AppContextValue,
-} from './AppContext.types';
+import type { ViewMode, AppState, AppAction, AppContextValue } from './AppContext.types';
 
 // Load embedding config from localStorage
 const loadEmbeddingConfig = (): EmbeddingConfig => {
@@ -229,26 +222,6 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       initializeProviders().catch(error => {
         console.error('Failed to initialize providers:', error);
       });
-
-      // Preload embedding model if not loaded and not in shared mode (in the background!)
-      if (!isEmbeddingModelLoaded() && state.isShared === false) {
-        dispatch({ type: 'SET_MODEL_LOADING', payload: { isLoading: true } });
-        preloadEmbeddingModel(progress => {
-          dispatch({
-            type: 'SET_MODEL_LOADING',
-            payload: { isLoading: true, progress: progress as ModelLoadingProgress },
-          });
-        })
-          .then(() => {
-            console.log('✅ Embedding model preloaded successfully');
-          })
-          .catch(error => {
-            console.error('Failed to preload embedding model:', error);
-          })
-          .finally(() => {
-            dispatch({ type: 'SET_MODEL_LOADING', payload: { isLoading: false, progress: null } });
-          });
-      }
 
       if (storedAssistants.length > 0) {
         await selectAssistant(storedAssistants[0].id);

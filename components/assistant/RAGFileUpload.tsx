@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { RagChunk } from '../../types';
-import { generateEmbeddingRobust as generateEmbedding } from '../../services/embeddingService';
 import { DocumentParserService } from '../../services/documentParserService';
 import { chunkText, DEFAULT_CHUNKING_OPTIONS } from '../../services/textChunkingService';
 import { RAGFileUploadProps } from './types';
@@ -55,23 +54,10 @@ export const RAGFileUpload: React.FC<RAGFileUploadProps> = ({
         setProcessingStatus(`✅ ${fileTypeName} 解析完成，共 ${textChunks.length} 個區塊`);
 
         for (let i = 0; i < textChunks.length; i++) {
-          setProcessingStatus(`嵌入 ${file.name} 的 ${i + 1}/${textChunks.length} 區塊...`);
-          const vector = await generateEmbedding(textChunks[i], 'document', (progress: unknown) => {
-            if (
-              typeof progress === 'object' &&
-              progress !== null &&
-              'status' in progress &&
-              'progress' in progress
-            ) {
-              const progressObj = progress as { status: string; progress: number };
-              if (progressObj.status === 'progress') {
-                setProcessingStatus(`下載嵌入模型... ${Math.round(progressObj.progress)}%`);
-              }
-            }
-          });
+          setProcessingStatus(`儲存 ${file.name} 的 ${i + 1}/${textChunks.length} 區塊...`);
 
           // 只保存到本地，不自動上傳到 Turso
-          const ragChunk = { fileName: file.name, content: textChunks[i], vector };
+          const ragChunk = { fileName: file.name, content: textChunks[i] };
           successfulChunks.push(ragChunk);
           setProcessingStatus(`✅ 區塊 ${i + 1}/${textChunks.length} 已處理完成`);
         }

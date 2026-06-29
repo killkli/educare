@@ -7,8 +7,7 @@ export type ViewMode =
   | 'edit_assistant'
   | 'settings'
   | 'api_setup'
-  | 'provider_settings'
-  | 'embedding_test';
+  | 'provider_settings';
 
 export interface ModelLoadingProgress {
   status: string;

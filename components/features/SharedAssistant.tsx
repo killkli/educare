@@ -9,9 +9,8 @@ import { ProviderType } from '../../services/llmAdapter';
 import { getAssistantFromTurso } from '../../services/tursoService';
 import CryptoService from '../../services/cryptoService';
 import { ApiKeyManager } from '../../services/apiKeyManager';
-import { AppContextValue, ModelLoadingProgress } from '../core/AppContext.types';
+import { AppContextValue } from '../core/AppContext.types';
 import { Assistant } from '../../types';
-import { preloadEmbeddingModel, isEmbeddingModelLoaded } from '../../services/embeddingService';
 
 interface SharedAssistantProps {
   assistantId: string;
@@ -56,7 +55,7 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
 
       const assistant: Assistant = {
         ...tursoAssistant,
-        ragChunks: [],
+        ragChunks: tursoAssistant.ragChunks || [],
       };
 
       dispatch({ type: 'SET_CURRENT_ASSISTANT', payload: assistant });
@@ -76,28 +75,6 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
         payload: newSession,
       });
       console.log('💬 [SHARED ASSISTANT] Session set:', newSession);
-
-      // Preload embedding model if not loaded - similar to main app logic (in the background!)
-      if (!isEmbeddingModelLoaded()) {
-        console.log('📦 [SHARED ASSISTANT] Starting embedding model preload...');
-        dispatch({ type: 'SET_MODEL_LOADING', payload: { isLoading: true } });
-        preloadEmbeddingModel(progress => {
-          dispatch({
-            type: 'SET_MODEL_LOADING',
-            payload: { isLoading: true, progress: progress as ModelLoadingProgress },
-          });
-        })
-          .then(() => {
-            console.log('✅ [SHARED ASSISTANT] Embedding model preloaded successfully');
-          })
-          .catch(error => {
-            console.error('❌ [SHARED ASSISTANT] Failed to preload embedding model:', error);
-          })
-          .finally(() => {
-            dispatch({ type: 'SET_MODEL_LOADING', payload: { isLoading: false, progress: null } });
-            console.log('🔄 [SHARED ASSISTANT] Model loading state cleared');
-          });
-      }
 
       // Handle encrypted keys directly with prompt (improved logic matching AppContext)
       const encryptedKeys = CryptoService.extractKeysFromUrl();

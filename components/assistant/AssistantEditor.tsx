@@ -42,6 +42,10 @@ export const AssistantEditor: React.FC<AssistantEditorProps> = ({
   }, [assistant]);
 
   const handleSave = async () => {
+    if (isSaving) {
+      return;
+    }
+
     if (!name.trim()) {
       alert('助理名稱為必填。');
       return;
