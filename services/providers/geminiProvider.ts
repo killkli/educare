@@ -98,7 +98,11 @@ export class GeminiProvider implements LLMProvider {
     return `${params.systemPrompt}\n\n${ragPreamble}`;
   }
 
-  private createChat(params: ChatParams, finalSystemPrompt: string, model: string): Chat {
+  private async createChat(
+    params: ChatParams,
+    finalSystemPrompt: string,
+    model: string,
+  ): Promise<Chat> {
     const MAX_HISTORY_MESSAGES = 20;
     const truncatedHistory =
       params.history.length > MAX_HISTORY_MESSAGES
@@ -111,7 +115,11 @@ export class GeminiProvider implements LLMProvider {
       parametersJsonSchema: tool.parameters,
     }));
 
-    return this.getAi()!.chats.create({
+    const ai = await this.getAi();
+    if (!ai) {
+      throw new Error('請先在設定中配置 Gemini API KEY 才能使用聊天功能。');
+    }
+    return ai.chats.create({
       model,
       config: {
         systemInstruction: finalSystemPrompt,
@@ -152,7 +160,7 @@ export class GeminiProvider implements LLMProvider {
 
     try {
       if (params.tools?.length && params.executeTool) {
-        const chat = this.createChat(params, finalSystemPrompt, model);
+        const chat = await this.createChat(params, finalSystemPrompt, model);
         const initialResponse = await chat.sendMessage({ message: params.message });
         const functionCalls = initialResponse.functionCalls || [];
 
@@ -235,7 +243,7 @@ export class GeminiProvider implements LLMProvider {
         return;
       }
 
-      const chat = this.createChat(params, finalSystemPrompt, model);
+      const chat = await this.createChat(params, finalSystemPrompt, model);
       const stream = await chat.sendMessageStream({ message: params.message });
 
       let aggregatedResponse: GenerateContentResponse | null = null;
