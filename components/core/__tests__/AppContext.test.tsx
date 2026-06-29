@@ -1,14 +1,5 @@
 import { render, screen, act, waitFor } from '@testing-library/react';
-import {
-  describe,
-  it,
-  expect,
-  vi,
-  beforeEach,
-  afterEach,
-  beforeAll,
-  type MockInstance,
-} from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
 import React from 'react';
 import { AppProvider } from '../AppContext';
 import { useAppContext } from '../useAppContext';
@@ -154,18 +145,18 @@ function TestConsumer() {
 }
 
 // Window/console spies set up once
-let confirmSpy: MockInstance<typeof window.confirm>;
-let alertSpy: MockInstance<typeof window.alert>;
-let addEventListenerSpy: MockInstance<typeof window.addEventListener>;
-let errorSpy: MockInstance<typeof console.error>;
+const confirmSpy = vi.spyOn(window, 'confirm');
+const alertSpy = vi.spyOn(window, 'alert');
+const addEventListenerSpy = vi.spyOn(window, 'addEventListener');
+const errorSpy = vi.spyOn(console, 'error');
 let mockURLSearchParams: ReturnType<typeof vi.fn>;
 
 beforeAll(() => {
   // Set up window mocks once (not re-mocking modules)
-  confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
-  alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
-  addEventListenerSpy = vi.spyOn(window, 'addEventListener');
-  errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  confirmSpy.mockReturnValue(false);
+  alertSpy.mockImplementation(() => {});
+  addEventListenerSpy.mockImplementation(() => undefined);
+  errorSpy.mockImplementation(() => {});
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 

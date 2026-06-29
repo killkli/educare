@@ -113,7 +113,7 @@ describe('ShareModal', () => {
     >);
     vi.mocked(saveAssistantToTurso).mockResolvedValue(undefined);
     vi.mocked(QRCode.toDataURL).mockImplementation(
-      async () => 'data:image/png;base64,mocked-qr-code',
+      (async () => 'data:image/png;base64,mocked-qr-code') as never,
     );
     vi.mocked(CryptoService.generateRandomPassword).mockReturnValue('random-password-123');
     vi.mocked(CryptoService.encryptApiKeys).mockResolvedValue('encrypted-api-keys');
