@@ -35,7 +35,7 @@ export class CryptoService {
     return crypto.subtle.deriveKey(
       {
         name: 'PBKDF2',
-        salt: salt,
+        salt: salt.buffer as ArrayBuffer,
         iterations: 100000,
         hash: 'SHA-256',
       },
@@ -75,12 +75,14 @@ export class CryptoService {
 
       // 將結果編碼為 base64 URL-safe 字符串
       const encrypted: EncryptedData = {
-        iv: this.arrayBufferToBase64Url(iv),
+        iv: this.arrayBufferToBase64Url(iv.buffer as ArrayBuffer),
         data: this.arrayBufferToBase64Url(encryptedBuffer),
-        salt: this.arrayBufferToBase64Url(salt),
+        salt: this.arrayBufferToBase64Url(salt.buffer as ArrayBuffer),
       };
 
-      return this.arrayBufferToBase64Url(new TextEncoder().encode(JSON.stringify(encrypted)));
+      return this.arrayBufferToBase64Url(
+        new TextEncoder().encode(JSON.stringify(encrypted)).buffer as ArrayBuffer,
+      );
     } catch (error) {
       console.error('加密失敗:', error);
       throw new Error('無法加密 API 金鑰');

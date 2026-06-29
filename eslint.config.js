@@ -134,6 +134,7 @@ export default [
       'dist/**',
       'build/**',
       'node_modules/**',
+      '.claude/worktrees/**',
       '*.config.js',
       '*.config.ts',
       'coverage/**',

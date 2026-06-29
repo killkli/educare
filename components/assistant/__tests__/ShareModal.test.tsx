@@ -112,7 +112,9 @@ describe('ShareModal', () => {
       typeof providerManager.getSettings
     >);
     vi.mocked(saveAssistantToTurso).mockResolvedValue(undefined);
-    vi.mocked(QRCode.toDataURL).mockResolvedValue('data:image/png;base64,mocked-qr-code');
+    vi.mocked(QRCode.toDataURL).mockImplementation(
+      async () => 'data:image/png;base64,mocked-qr-code',
+    );
     vi.mocked(CryptoService.generateRandomPassword).mockReturnValue('random-password-123');
     vi.mocked(CryptoService.encryptApiKeys).mockResolvedValue('encrypted-api-keys');
     vi.mocked(generateShortUrl).mockResolvedValue('https://short.url/abc123');
@@ -780,8 +782,9 @@ describe('ShareModal', () => {
 
     it('handles QR code generation failure', async () => {
       const mockQRCode = vi.mocked(await import('qrcode')).default;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (mockQRCode.toDataURL as any).mockRejectedValue(new Error('QR generation failed'));
+      vi.mocked(mockQRCode.toDataURL).mockImplementation(async () => {
+        throw new Error('QR generation failed');
+      });
 
       // Should not crash the component
       render(<ShareModal {...mockProps} />);

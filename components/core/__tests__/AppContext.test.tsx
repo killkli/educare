@@ -1,5 +1,14 @@
 import { render, screen, act, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  beforeAll,
+  type MockInstance,
+} from 'vitest';
 import React from 'react';
 import { AppProvider } from '../AppContext';
 import { useAppContext } from '../useAppContext';
@@ -145,10 +154,10 @@ function TestConsumer() {
 }
 
 // Window/console spies set up once
-let confirmSpy: ReturnType<typeof vi.spyOn>;
-let alertSpy: ReturnType<typeof vi.spyOn>;
-let addEventListenerSpy: ReturnType<typeof vi.spyOn>;
-let errorSpy: ReturnType<typeof vi.spyOn>;
+let confirmSpy: MockInstance<typeof window.confirm>;
+let alertSpy: MockInstance<typeof window.alert>;
+let addEventListenerSpy: MockInstance<typeof window.addEventListener>;
+let errorSpy: MockInstance<typeof console.error>;
 let mockURLSearchParams: ReturnType<typeof vi.fn>;
 
 beforeAll(() => {

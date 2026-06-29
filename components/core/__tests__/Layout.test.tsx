@@ -903,7 +903,7 @@ describe('Layout', () => {
       });
 
       // Select via the select element
-      const selectEl = screen.getByTestId('assistant-select') as any;
+      const selectEl = screen.getByTestId('assistant-select');
       await act(async () => {
         fireEvent.change(selectEl, { target: { value: 'test-assistant-1' } });
       });
