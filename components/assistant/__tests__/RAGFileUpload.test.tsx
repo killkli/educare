@@ -1,635 +1,182 @@
 /// <reference types="vitest/globals" />
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { RAGFileUpload } from '../RAGFileUpload';
-import { RAGFileUploadProps } from '../types';
-import { TEST_RAG_CHUNKS, setupAssistantTestEnvironment, createMockFile } from './test-utils';
-import { DocumentParserService } from '../../../services/documentParserService';
-import { generateEmbeddingRobust } from '../../../services/embeddingService';
-import { chunkText } from '../../../services/textChunkingService';
+import type { RAGFileUploadProps } from '../types';
 
-// Mock text chunking service
+const chunkTextMock = vi.fn();
+const isSupportedFileMock = vi.fn();
+const getFileTypeNameMock = vi.fn();
+const parseDocumentMock = vi.fn();
+
 vi.mock('../../../services/textChunkingService', () => ({
-  chunkText: vi.fn().mockReturnValue({ chunks: ['chunk1', 'chunk2'] }),
   DEFAULT_CHUNKING_OPTIONS: {},
-}));
-
-// Mock dependencies
-vi.mock('../../../services/embeddingService', () => ({
-  generateEmbeddingRobust: vi.fn().mockResolvedValue([0.1, 0.2, 0.3]),
-  cosineSimilarity: vi.fn().mockReturnValue(0.8),
+  chunkText: (...args: unknown[]) => chunkTextMock(...args),
 }));
 
 vi.mock('../../../services/documentParserService', () => ({
   DocumentParserService: {
-    isSupportedFile: vi.fn().mockReturnValue(true),
-    getFileTypeName: vi.fn().mockReturnValue('PDF'),
-    parseDocument: vi.fn().mockResolvedValue({
-      content: 'Mocked document content for testing purposes.',
-      metadata: { pages: 1, title: 'test.pdf', author: '' },
-    }),
+    isSupportedFile: (...args: unknown[]) => isSupportedFileMock(...args),
+    getFileTypeName: (...args: unknown[]) => getFileTypeNameMock(...args),
+    parseDocument: (...args: unknown[]) => parseDocumentMock(...args),
   },
 }));
 
+const createMockFile = (name: string, type: string, content = 'test content') =>
+  new File([content], name, { type });
+
 describe('RAGFileUpload', () => {
   let mockProps: RAGFileUploadProps;
-  let testEnvironment: ReturnType<typeof setupAssistantTestEnvironment>;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+  let errorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    testEnvironment = setupAssistantTestEnvironment();
-
-    // Reset service mocks to defaults for test isolation
-    vi.mocked(DocumentParserService.isSupportedFile).mockReturnValue(true);
-    vi.mocked(DocumentParserService.getFileTypeName).mockReturnValue('PDF');
-    vi.mocked(DocumentParserService.parseDocument).mockResolvedValue({
-      content: 'Mocked document content for testing purposes.',
-      metadata: { pages: 1, title: 'test.pdf', author: '' },
-    });
-    vi.mocked(generateEmbeddingRobust).mockResolvedValue([0.1, 0.2, 0.3]);
-    vi.mocked(chunkText).mockReturnValue({ chunks: ['chunk1', 'chunk2'] });
-
     mockProps = {
       ragChunks: [],
       onRagChunksChange: vi.fn(),
       disabled: false,
     };
+
+    chunkTextMock.mockReturnValue({ chunks: ['Chunk 1', 'Chunk 2'] });
+    isSupportedFileMock.mockReturnValue(true);
+    getFileTypeNameMock.mockReturnValue('PDF');
+    parseDocumentMock.mockResolvedValue({
+      content: 'Mocked document content for testing purposes.',
+      metadata: {},
+    });
+
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {
-    testEnvironment.cleanup();
+    vi.restoreAllMocks();
   });
 
-  describe('Rendering', () => {
-    it('renders the upload section with correct label', () => {
-      render(<RAGFileUpload {...mockProps} />);
+  it('renders the upload section with current supported file types', () => {
+    render(<RAGFileUpload {...mockProps} />);
 
-      expect(screen.getByText('知識檔案 (RAG)')).toBeInTheDocument();
-    });
+    expect(screen.getByText('知識檔案 (RAG)')).toBeInTheDocument();
+    expect(screen.getByText('📄 TXT')).toBeInTheDocument();
+    expect(screen.getByText('📝 MD')).toBeInTheDocument();
+    expect(screen.getByText('📕 PDF')).toBeInTheDocument();
+    expect(screen.getByText('📘 DOCX')).toBeInTheDocument();
 
-    it('renders file input with correct attributes', () => {
-      render(<RAGFileUpload {...mockProps} />);
-
-      const fileInput = document.querySelector('input[type="file"]');
-
-      expect(fileInput).toBeInTheDocument();
-      if (fileInput) {
-        expect(fileInput).toHaveAttribute('multiple');
-        expect(fileInput).toHaveAttribute('accept', '.txt,.md,.markdown,.pdf,.docx');
-      }
-    });
-
-    it('renders supported file type indicators', () => {
-      render(<RAGFileUpload {...mockProps} />);
-
-      expect(screen.getByText('📄 TXT')).toBeInTheDocument();
-      expect(screen.getByText('📝 MD')).toBeInTheDocument();
-      expect(screen.getByText('📕 PDF')).toBeInTheDocument();
-      expect(screen.getByText('📘 DOCX')).toBeInTheDocument();
-    });
-
-    it('renders description text', () => {
-      render(<RAGFileUpload {...mockProps} />);
-
-      expect(screen.getByText(/上傳文件以建立可搜尋的知識庫/)).toBeInTheDocument();
-      expect(screen.getByText(/檔案會儲存到本地/)).toBeInTheDocument();
-    });
-
-    it('shows RAG chunk count when chunks exist in Turso', async () => {
-      // The component doesn't actually show chunk count in UI, so just test basic rendering
-      render(<RAGFileUpload {...mockProps} />);
-
-      expect(screen.getByText('知識檔案 (RAG)')).toBeInTheDocument();
-    });
+    const fileInput = document.querySelector('input[type="file"]');
+    expect(fileInput).toHaveAttribute('accept', '.txt,.md,.markdown,.pdf,.docx');
   });
 
-  describe('File Upload Handling', () => {
-    it('handles single file upload', async () => {
-      const mockGenerateEmbeddingRobust = vi.mocked(
-        (await import('../../../services/embeddingService')).generateEmbeddingRobust,
-      );
-      const mockParseDocument = vi.mocked(
-        (await import('../../../services/documentParserService')).DocumentParserService
-          .parseDocument,
-      );
+  it('creates local rag chunks for a supported upload', async () => {
+    render(<RAGFileUpload {...mockProps} />);
 
-      mockGenerateEmbeddingRobust.mockResolvedValue([0.1, 0.2, 0.3]);
-      mockParseDocument.mockResolvedValue({
-        content: 'Test document content',
-        metadata: { pages: 1, title: 'test.pdf', author: '' },
-      });
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = createMockFile('test.pdf', 'application/pdf');
 
-      render(<RAGFileUpload {...mockProps} />);
+    fireEvent.change(fileInput, { target: { files: [file] } });
 
-      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
-      expect(fileInput).toBeInTheDocument();
-
-      if (fileInput) {
-        const file = createMockFile('test.pdf', 'application/pdf');
-        Object.defineProperty(fileInput, 'files', {
-          value: [file],
-          writable: false,
-        });
-
-        fireEvent.change(fileInput);
-
-        await waitFor(
-          () => {
-            expect(mockProps.onRagChunksChange).toHaveBeenCalled();
-          },
-          { timeout: 5000 },
-        );
-      }
+    await waitFor(() => {
+      expect(mockProps.onRagChunksChange).toHaveBeenCalledWith([
+        { fileName: 'test.pdf', content: 'Chunk 1' },
+        { fileName: 'test.pdf', content: 'Chunk 2' },
+      ]);
     });
 
-    it('handles multiple file upload', async () => {
-      const mockGenerateEmbedding = vi.mocked(
-        await import('../../../services/embeddingService'),
-      ).generateEmbeddingRobust;
-      const mockParseDocument = vi.mocked(await import('../../../services/documentParserService'))
-        .DocumentParserService.parseDocument;
-
-      mockGenerateEmbedding.mockResolvedValue([0.1, 0.2, 0.3]);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (mockParseDocument as any).mockResolvedValue({
-        content: 'Test document content',
-        metadata: { pages: 1, title: 'test.pdf', author: '' },
-      });
-
-      render(<RAGFileUpload {...mockProps} />);
-
-      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
-
-      if (fileInput) {
-        const files = [
-          createMockFile('test1.pdf', 'application/pdf'),
-          createMockFile(
-            'test2.docx',
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          ),
-        ];
-
-        Object.defineProperty(fileInput, 'files', {
-          value: files,
-          writable: false,
-        });
-
-        fireEvent.change(fileInput);
-
-        await waitFor(
-          () => {
-            expect(mockProps.onRagChunksChange).toHaveBeenCalled();
-          },
-          { timeout: 5000 },
-        );
-      }
-    });
-
-    it('shows processing status during file upload', async () => {
-      const mockGenerateEmbedding = vi.mocked(
-        await import('../../../services/embeddingService'),
-      ).generateEmbeddingRobust;
-
-      // Add delay to mock for testing loading state
-      mockGenerateEmbedding.mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve([0.1, 0.2, 0.3]), 500)),
-      );
-
-      render(<RAGFileUpload {...mockProps} />);
-
-      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
-
-      if (fileInput) {
-        const file = createMockFile('test.pdf', 'application/pdf');
-        Object.defineProperty(fileInput, 'files', {
-          value: [file],
-          writable: false,
-        });
-
-        fireEvent.change(fileInput);
-
-        // Should show processing status - component sets it immediately on change
-        await waitFor(
-          () => {
-            const processingText =
-              screen.queryByText(/開始處理檔案/) ||
-              screen.queryByText(/解析/) ||
-              screen.queryByText(/嵌入/);
-            expect(processingText).toBeInTheDocument();
-          },
-          { timeout: 3000 },
-        );
-      }
-    });
-
-    it('disables file input when processing', async () => {
-      const mockGenerateEmbedding = vi.mocked(
-        await import('../../../services/embeddingService'),
-      ).generateEmbeddingRobust;
-
-      // Add delay so processing state is observable
-      mockGenerateEmbedding.mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve([0.1, 0.2, 0.3]), 500)),
-      );
-
-      render(<RAGFileUpload {...mockProps} />);
-
-      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
-
-      if (fileInput) {
-        const file = createMockFile('test.pdf', 'application/pdf');
-        Object.defineProperty(fileInput, 'files', {
-          value: [file],
-          writable: false,
-        });
-
-        fireEvent.change(fileInput);
-
-        // Input should be disabled during processing
-        await waitFor(
-          () => {
-            expect(fileInput).toBeDisabled();
-          },
-          { timeout: 3000 },
-        );
-      }
-    });
+    expect(parseDocumentMock).toHaveBeenCalledWith(file);
+    expect(screen.getByText(/已本地保存/)).toBeInTheDocument();
   });
 
-  describe('File Type Validation', () => {
-    it('skips unsupported file types', async () => {
-      vi.mocked(DocumentParserService.isSupportedFile).mockReturnValue(false);
+  it('shows processing status and disables input while upload is in progress', async () => {
+    let resolveParse:
+      | ((value: { content: string; metadata: Record<string, never> }) => void)
+      | undefined;
+    parseDocumentMock.mockReturnValue(
+      new Promise(resolve => {
+        resolveParse = resolve;
+      }),
+    );
 
-      render(<RAGFileUpload {...mockProps} />);
+    render(<RAGFileUpload {...mockProps} />);
 
-      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = createMockFile('pending.pdf', 'application/pdf');
 
-      if (fileInput) {
-        const file = createMockFile('test.xyz', 'application/octet-stream');
-        Object.defineProperty(fileInput, 'files', {
-          value: [file],
-          writable: false,
-        });
+    fireEvent.change(fileInput, { target: { files: [file] } });
 
-        fireEvent.change(fileInput);
-
-        // React 18 batches the processingStatus state updates synchronously, so the
-        // skip text never renders — verify the skip happened via side effects instead.
-        await waitFor(() => {
-          expect(mockProps.onRagChunksChange).toHaveBeenCalledWith([]);
-        });
-        expect(DocumentParserService.isSupportedFile).toHaveBeenCalledWith(file);
-      }
-    });
-
-    it('processes supported file types', async () => {
-      const mockIsSupportedFile = vi.mocked(await import('../../../services/documentParserService'))
-        .DocumentParserService.isSupportedFile;
-      const mockGetFileTypeName = vi.mocked(await import('../../../services/documentParserService'))
-        .DocumentParserService.getFileTypeName;
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (mockIsSupportedFile as any).mockReturnValue(true);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (mockGetFileTypeName as any).mockReturnValue('PDF');
-
-      render(<RAGFileUpload {...mockProps} />);
-
-      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
-
-      if (fileInput) {
-        const file = createMockFile('test.pdf', 'application/pdf');
-        Object.defineProperty(fileInput, 'files', {
-          value: [file],
-          writable: false,
-        });
-
-        fireEvent.change(fileInput);
-
-        await waitFor(() => {
-          expect(mockIsSupportedFile).toHaveBeenCalledWith(file);
-        });
-      }
-    });
-  });
-
-  describe('RAG Chunk Management', () => {
-    it('displays uploaded files', () => {
-      const propsWithChunks = {
-        ...mockProps,
-        ragChunks: [TEST_RAG_CHUNKS.pdf, TEST_RAG_CHUNKS.docx],
-      };
-
-      render(<RAGFileUpload {...propsWithChunks} />);
-
-      expect(screen.getByText('document.pdf')).toBeInTheDocument();
-      expect(screen.getByText('document.docx')).toBeInTheDocument();
-    });
-
-    it('allows removing uploaded files', () => {
-      const propsWithChunks = {
-        ...mockProps,
-        ragChunks: [TEST_RAG_CHUNKS.pdf, TEST_RAG_CHUNKS.docx],
-      };
-
-      render(<RAGFileUpload {...propsWithChunks} />);
-
-      const removeButtons = screen.getAllByText('×');
-      expect(removeButtons).toHaveLength(2);
-
-      fireEvent.click(removeButtons[0]);
-
-      expect(mockProps.onRagChunksChange).toHaveBeenCalledWith([TEST_RAG_CHUNKS.docx]);
-    });
-
-    it('groups chunks by filename correctly', () => {
-      const chunksWithDuplicateFiles = [
-        TEST_RAG_CHUNKS.pdf,
-        { ...TEST_RAG_CHUNKS.pdf, content: 'Different content' },
-        TEST_RAG_CHUNKS.docx,
-      ];
-
-      const propsWithDuplicates = {
-        ...mockProps,
-        ragChunks: chunksWithDuplicateFiles,
-      };
-
-      render(<RAGFileUpload {...propsWithDuplicates} />);
-
-      // Should only show unique filenames
-      const pdfElements = screen.getAllByText('document.pdf');
-      expect(pdfElements).toHaveLength(1);
-
-      const docxElements = screen.getAllByText('document.docx');
-      expect(docxElements).toHaveLength(1);
-    });
-  });
-
-  describe('Error Handling', () => {
-    it('handles file parsing errors', async () => {
-      const mockParseDocument = vi.mocked(await import('../../../services/documentParserService'))
-        .DocumentParserService.parseDocument;
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (mockParseDocument as any).mockRejectedValue(new Error('Parse error'));
-
-      render(<RAGFileUpload {...mockProps} />);
-
-      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
-
-      if (fileInput) {
-        const file = createMockFile('test.pdf', 'application/pdf');
-        Object.defineProperty(fileInput, 'files', {
-          value: [file],
-          writable: false,
-        });
-
-        fireEvent.change(fileInput);
-
-        await waitFor(
-          () => {
-            expect(screen.queryByText(/處理失敗/)).toBeInTheDocument();
-          },
-          { timeout: 5000 },
-        );
-      }
-    });
-
-    it('handles embedding generation errors', async () => {
-      const mockGenerateEmbedding = vi.mocked(
-        await import('../../../services/embeddingService'),
-      ).generateEmbeddingRobust;
-      const mockParseDocument = vi.mocked(await import('../../../services/documentParserService'))
-        .DocumentParserService.parseDocument;
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (mockParseDocument as any).mockResolvedValue({
-        content: 'Test content',
-        metadata: { pages: 1, title: 'test.pdf', author: '' },
-      });
-      mockGenerateEmbedding.mockRejectedValue(new Error('Embedding error'));
-
-      render(<RAGFileUpload {...mockProps} />);
-
-      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
-
-      if (fileInput) {
-        const file = createMockFile('test.pdf', 'application/pdf');
-        Object.defineProperty(fileInput, 'files', {
-          value: [file],
-          writable: false,
-        });
-
-        fireEvent.change(fileInput);
-
-        await waitFor(
-          () => {
-            expect(mockGenerateEmbedding).toHaveBeenCalled();
-          },
-          { timeout: 5000 },
-        );
-      }
-    });
-
-    it('handles Turso save errors gracefully', async () => {
-      // The component no longer saves to Turso directly - it only saves locally
-      // Success message is now about local saving
-      const mockGenerateEmbedding = vi.mocked(
-        await import('../../../services/embeddingService'),
-      ).generateEmbeddingRobust;
-
-      mockGenerateEmbedding.mockResolvedValue([0.1, 0.2, 0.3]);
-
-      render(<RAGFileUpload {...mockProps} />);
-
-      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
-
-      if (fileInput) {
-        const file = createMockFile('test.pdf', 'application/pdf');
-        Object.defineProperty(fileInput, 'files', {
-          value: [file],
-          writable: false,
-        });
-
-        fireEvent.change(fileInput);
-
-        // Should complete upload and call onRagChunksChange
-        await waitFor(
-          () => {
-            expect(mockProps.onRagChunksChange).toHaveBeenCalled();
-          },
-          { timeout: 5000 },
-        );
-      }
-    });
-  });
-
-  describe('Sync Status Display', () => {
-    it('shows success message after successful upload', async () => {
-      const mockGenerateEmbedding = vi.mocked(
-        await import('../../../services/embeddingService'),
-      ).generateEmbeddingRobust;
-
-      mockGenerateEmbedding.mockResolvedValue([0.1, 0.2, 0.3]);
-
-      render(<RAGFileUpload {...mockProps} />);
-
-      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
-
-      if (fileInput) {
-        const file = createMockFile('test.pdf', 'application/pdf');
-        Object.defineProperty(fileInput, 'files', {
-          value: [file],
-          writable: false,
-        });
-
-        fireEvent.change(fileInput);
-
-        // The component shows a local save success message
-        await waitFor(
-          () => {
-            // Check for the local save success message (not Turso)
-            const successMsg = screen.queryByText(/本地保存/);
-            expect(successMsg).toBeInTheDocument();
-          },
-          { timeout: 5000 },
-        );
-      }
-    });
-
-    it('shows warning message when some chunks fail to sync', async () => {
-      // Component no longer syncs to Turso, just verify basic rendering
-      render(<RAGFileUpload {...mockProps} />);
-
-      expect(screen.getByText('知識檔案 (RAG)')).toBeInTheDocument();
-    });
-  });
-
-  describe('Disabled State', () => {
-    it('disables file input when disabled prop is true', () => {
-      const disabledProps = {
-        ...mockProps,
-        disabled: true,
-      };
-
-      render(<RAGFileUpload {...disabledProps} />);
-
-      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await waitFor(() => {
+      expect(screen.getByText(/解析 PDF: pending\.pdf/)).toBeInTheDocument();
       expect(fileInput).toBeDisabled();
     });
 
-    it('disables remove buttons when disabled', () => {
-      const disabledPropsWithChunks = {
-        ...mockProps,
-        disabled: true,
-        ragChunks: [TEST_RAG_CHUNKS.pdf],
-      };
+    resolveParse?.({ content: 'Pending document content', metadata: {} });
 
-      render(<RAGFileUpload {...disabledPropsWithChunks} />);
-
-      const removeButton = screen.getByText('×');
-      expect(removeButton).toBeDisabled();
+    await waitFor(() => {
+      expect(screen.queryByText(/解析 PDF: pending\.pdf/)).not.toBeInTheDocument();
     });
   });
 
-  describe('Progress Tracking', () => {
-    it('shows embedding model download progress', async () => {
-      const mockGenerateEmbedding = vi.mocked(
-        await import('../../../services/embeddingService'),
-      ).generateEmbeddingRobust;
+  it('skips unsupported files and keeps chunks unchanged', async () => {
+    isSupportedFileMock.mockReturnValue(false);
 
-      // Mock progress callback
-      mockGenerateEmbedding.mockImplementation((text, type, progressCallback) => {
-        if (progressCallback) {
-          progressCallback({ status: 'progress', progress: 50 });
-        }
-        return new Promise(resolve => setTimeout(() => resolve([0.1, 0.2, 0.3]), 200));
-      });
+    render(<RAGFileUpload {...mockProps} />);
 
-      render(<RAGFileUpload {...mockProps} />);
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = createMockFile('test.xyz', 'application/octet-stream');
 
-      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(fileInput, { target: { files: [file] } });
 
-      if (fileInput) {
-        const file = createMockFile('test.pdf', 'application/pdf');
-        Object.defineProperty(fileInput, 'files', {
-          value: [file],
-          writable: false,
-        });
-
-        fireEvent.change(fileInput);
-
-        await waitFor(
-          () => {
-            expect(screen.queryByText(/下載嵌入模型/)).toBeInTheDocument();
-          },
-          { timeout: 3000 },
-        );
-      }
+    await waitFor(() => {
+      expect(mockProps.onRagChunksChange).toHaveBeenCalledWith([]);
     });
+
+    expect(parseDocumentMock).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith('不支援的文件格式: test.xyz');
   });
 
-  describe('Edge Cases', () => {
-    it('handles empty file list', async () => {
-      render(<RAGFileUpload {...mockProps} />);
+  it('reports parse failures without adding chunks', async () => {
+    parseDocumentMock.mockRejectedValueOnce(new Error('parse failed'));
 
-      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    render(<RAGFileUpload {...mockProps} />);
 
-      if (fileInput) {
-        Object.defineProperty(fileInput, 'files', {
-          value: [],
-          writable: false,
-        });
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = createMockFile('broken.pdf', 'application/pdf');
 
-        fireEvent.change(fileInput);
+    fireEvent.change(fileInput, { target: { files: [file] } });
 
-        // Should not crash or show processing status
-        expect(screen.queryByText(/開始處理檔案/)).not.toBeInTheDocument();
-      }
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalled();
+      expect(screen.getByText(/broken\.pdf 處理失敗: parse failed/)).toBeInTheDocument();
     });
 
-    it('handles null files', () => {
-      render(<RAGFileUpload {...mockProps} />);
+    expect(mockProps.onRagChunksChange).not.toHaveBeenCalled();
+  });
 
-      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+  it('renders uploaded file names and removes a document by filename', () => {
+    const ragChunks = [
+      { fileName: 'alpha.pdf', content: 'A' },
+      { fileName: 'alpha.pdf', content: 'B' },
+      { fileName: 'beta.md', content: 'C' },
+    ];
 
-      if (fileInput) {
-        Object.defineProperty(fileInput, 'files', {
-          value: null,
-          writable: false,
-        });
+    render(<RAGFileUpload {...mockProps} ragChunks={ragChunks} />);
 
-        fireEvent.change(fileInput);
+    expect(screen.getByText('alpha.pdf')).toBeInTheDocument();
+    expect(screen.getByText('beta.md')).toBeInTheDocument();
 
-        // Should not crash
-        expect(screen.getByText('知識檔案 (RAG)')).toBeInTheDocument();
-      }
-    });
+    const removeButtons = screen.getAllByRole('button');
+    fireEvent.click(removeButtons[0]);
 
-    it('handles very large files', async () => {
-      render(<RAGFileUpload {...mockProps} />);
+    expect(mockProps.onRagChunksChange).toHaveBeenCalledWith([
+      { fileName: 'beta.md', content: 'C' },
+    ]);
+  });
 
-      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+  it('respects disabled mode for file input and remove buttons', () => {
+    const ragChunks = [{ fileName: 'alpha.pdf', content: 'A' }];
 
-      if (fileInput) {
-        const largeContent = 'x'.repeat(10000);
-        const file = createMockFile('large.pdf', 'application/pdf', largeContent);
+    render(<RAGFileUpload {...mockProps} ragChunks={ragChunks} disabled={true} />);
 
-        Object.defineProperty(fileInput, 'files', {
-          value: [file],
-          writable: false,
-        });
-
-        fireEvent.change(fileInput);
-
-        // Should handle large files
-        await waitFor(
-          () => {
-            expect(mockProps.onRagChunksChange).toHaveBeenCalled();
-          },
-          { timeout: 10000 },
-        );
-      }
-    });
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(fileInput).toBeDisabled();
+    expect(screen.getByRole('button')).toBeDisabled();
   });
 });

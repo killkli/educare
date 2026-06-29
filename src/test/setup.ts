@@ -69,6 +69,7 @@ Object.defineProperty(navigator, 'clipboard', {
   },
   configurable: true,
   writable: true,
+  configurable: true,
 });
 
 // Mock environment variables
