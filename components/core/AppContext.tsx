@@ -11,6 +11,7 @@ import {
   canWriteToTurso,
 } from '../../services/tursoService';
 import { resolveShortUrl, recordShortUrlClick } from '../../services/shortUrlService';
+import { htmlPreviewService } from '../../services/htmlPreviewService';
 import { AppContext } from './useAppContext';
 import type { ViewMode, AppState, AppAction, AppContextValue } from './AppContext.types';
 
@@ -63,6 +64,10 @@ const initialState: AppState = {
   isShareModalOpen: false,
   assistantToShare: null,
   embeddingConfig: loadEmbeddingConfig(),
+  activeProjectId: null,
+  isProjectWorkspaceOpen: false,
+  projectPreview: null,
+  projectToolActivity: [],
 };
 
 function appReducer(state: AppState, action: AppAction): AppState {
@@ -152,6 +157,39 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         embeddingConfig: action.payload,
+      };
+    case 'SET_ACTIVE_PROJECT':
+      return {
+        ...state,
+        activeProjectId: action.payload,
+      };
+    case 'SET_PROJECT_WORKSPACE_OPEN':
+      return {
+        ...state,
+        isProjectWorkspaceOpen: action.payload,
+      };
+    case 'SET_PROJECT_PREVIEW':
+      return {
+        ...state,
+        projectPreview: action.payload,
+      };
+    case 'APPEND_PROJECT_ACTIVITY':
+      return {
+        ...state,
+        projectToolActivity: [...state.projectToolActivity, action.payload].slice(-20),
+      };
+    case 'CLEAR_PROJECT_ACTIVITY':
+      return {
+        ...state,
+        projectToolActivity: [],
+      };
+    case 'RESET_PROJECT_WORKSPACE':
+      return {
+        ...state,
+        activeProjectId: null,
+        isProjectWorkspaceOpen: false,
+        projectPreview: null,
+        projectToolActivity: [],
       };
     default:
       return state;
@@ -608,6 +646,63 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
     // Save to localStorage for persistence
     localStorage.setItem('embeddingConfig', JSON.stringify(config));
   }, []);
+
+  const setActiveProject = useCallback((projectId: string | null) => {
+    dispatch({ type: 'SET_ACTIVE_PROJECT', payload: projectId });
+  }, []);
+
+  const setProjectWorkspaceOpen = useCallback((open: boolean) => {
+    dispatch({ type: 'SET_PROJECT_WORKSPACE_OPEN', payload: open });
+  }, []);
+
+  const setProjectPreview = useCallback((preview: AppState['projectPreview']) => {
+    dispatch({ type: 'SET_PROJECT_PREVIEW', payload: preview });
+  }, []);
+
+  const appendProjectActivity = useCallback((message: string) => {
+    dispatch({ type: 'APPEND_PROJECT_ACTIVITY', payload: message });
+  }, []);
+
+  const clearProjectWorkspace = useCallback(() => {
+    if (state.activeProjectId) {
+      htmlPreviewService.revokePreviewUrl(state.activeProjectId);
+    }
+    dispatch({ type: 'RESET_PROJECT_WORKSPACE' });
+  }, [state.activeProjectId]);
+
+  const syncProjectWorkspaceForSession = useCallback(
+    async (session: ChatSession | null) => {
+      const projectId = session?.activeProjectId ?? null;
+
+      if (!projectId) {
+        clearProjectWorkspace();
+        return;
+      }
+
+      dispatch({ type: 'SET_ACTIVE_PROJECT', payload: projectId });
+      dispatch({ type: 'SET_PROJECT_WORKSPACE_OPEN', payload: true });
+
+      try {
+        const preview = await htmlPreviewService.resolveProjectForPreview(projectId);
+        dispatch({ type: 'SET_PROJECT_PREVIEW', payload: preview });
+      } catch (error) {
+        console.error('Failed to sync HTML project workspace:', error);
+        dispatch({ type: 'SET_PROJECT_PREVIEW', payload: null });
+        dispatch({
+          type: 'APPEND_PROJECT_ACTIVITY',
+          payload: `無法載入 HTML project 預覽：${(error as Error).message}`,
+        });
+      }
+    },
+    [clearProjectWorkspace],
+  );
+
+  useEffect(() => {
+    syncProjectWorkspaceForSession(state.currentSession).catch(error => {
+      console.error('Failed to update project workspace from session:', error);
+    });
+  }, [state.currentSession, syncProjectWorkspaceForSession]);
+
   const contextValue: AppContextValue = {
     state,
     dispatch,
@@ -628,6 +723,12 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       checkScreenSize,
       loadSharedAssistant,
       setEmbeddingConfig,
+      setActiveProject,
+      setProjectWorkspaceOpen,
+      setProjectPreview,
+      appendProjectActivity,
+      clearProjectWorkspace,
+      syncProjectWorkspaceForSession,
     },
   };
 

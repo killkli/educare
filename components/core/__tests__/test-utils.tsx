@@ -146,6 +146,10 @@ export const createMockAppState = (overrides: Partial<AppState> = {}): AppState 
     fallbackToSimple: true,
     showMethodUsed: false,
   },
+  activeProjectId: null,
+  isProjectWorkspaceOpen: false,
+  projectPreview: null,
+  projectToolActivity: [],
   ...overrides,
 });
 

@@ -4,11 +4,13 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { vi } from 'vitest';
 import React from 'react';
 import { AppShell } from '../AppShell';
+import { ChatSession } from '../../../types';
 import { TEST_ASSISTANTS, TEST_SESSIONS } from './test-constants';
 import * as dbMock from '../../../services/db';
 import * as embeddingMock from '../../../services/embeddingService';
 import * as providerMock from '../../../services/providerRegistry';
 import * as tursoMock from '../../../services/tursoService';
+import * as htmlPreviewMock from '../../../services/htmlPreviewService';
 
 // Mock ErrorBoundary separately to test error handling
 vi.mock('../ErrorBoundary', () => {
@@ -76,6 +78,24 @@ vi.mock('../../../services/providerRegistry', () => ({
   },
 }));
 
+vi.mock('../../../services/htmlPreviewService', () => ({
+  htmlPreviewService: {
+    resolveProjectForPreview: vi.fn().mockResolvedValue({
+      projectId: 'project-42',
+      previewVersion: 1,
+      entryFile: '/index.html',
+      previewReady: true,
+      previewUrlType: 'blob',
+      html: '<html></html>',
+      url: 'blob:preview-42',
+      warnings: [],
+      error: null,
+      generatedAt: 1700000000000,
+    }),
+    revokePreviewUrl: vi.fn(),
+  },
+}));
+
 vi.mock('../../assistant', () => ({
   AssistantEditor: ({
     assistant,
@@ -115,8 +135,13 @@ vi.mock('../../chat', () => ({
     onNewMessage,
   }: {
     assistantName: string;
-    session: any;
-    onNewMessage?: (session: any, msg: string, response?: string, tokenInfo?: any) => void;
+    session: ChatSession | null;
+    onNewMessage?: (
+      session: ChatSession | null,
+      msg: string,
+      response?: string,
+      tokenInfo?: { promptTokenCount: number; candidatesTokenCount: number },
+    ) => void;
   }) =>
     React.createElement('div', { 'data-testid': 'chat-container' }, [
       React.createElement('span', { key: 'name' }, `Chatting with ${assistantName}`),
@@ -135,6 +160,15 @@ vi.mock('../../chat', () => ({
         'Send',
       ),
     ]),
+}));
+
+vi.mock('../../canvas', () => ({
+  HtmlProjectWorkspace: ({ projectId }: { projectId: string }) =>
+    React.createElement(
+      'div',
+      { 'data-testid': 'html-project-workspace' },
+      `Workspace: ${projectId}`,
+    ),
 }));
 
 vi.mock('../../features/SharedAssistant', () => ({
@@ -200,7 +234,21 @@ beforeEach(() => {
   vi.mocked(embeddingMock.generateEmbedding).mockResolvedValue([0.1, 0.2, 0.3]);
 
   vi.mocked(providerMock.initializeProviders).mockResolvedValue(undefined);
-  vi.mocked(providerMock.providerManager.getAvailableProviders).mockReturnValue(['gemini'] as any);
+  vi.mocked(providerMock.providerManager.getAvailableProviders).mockReturnValue([
+    {
+      type: 'gemini',
+      provider: {
+        name: 'gemini',
+        displayName: 'Gemini',
+        supportedModels: [],
+        requiresApiKey: true,
+        supportsLocalMode: false,
+        initialize: vi.fn().mockResolvedValue(undefined),
+        isAvailable: vi.fn().mockReturnValue(true),
+        streamChat: vi.fn(),
+      },
+    },
+  ] as ReturnType<typeof providerMock.providerManager.getAvailableProviders>);
   vi.mocked(providerMock.providerManager.getActiveProvider).mockReturnValue(null);
 });
 
@@ -336,6 +384,29 @@ describe('AppShell', () => {
         },
         { timeout: 3000 },
       );
+    });
+
+    it('should render HTML project workspace when the active session has a project', async () => {
+      const projectSession = {
+        ...TEST_SESSIONS.withMessages,
+        activeProjectId: 'project-42',
+      };
+      vi.mocked(dbMock.getSessionsForAssistant).mockResolvedValue([projectSession]);
+
+      render(<AppShell />);
+
+      await waitFor(
+        () => {
+          expect(screen.getByTestId('chat-container')).toBeInTheDocument();
+          expect(screen.getByTestId('html-project-workspace')).toBeInTheDocument();
+          expect(screen.getByText('Workspace: project-42')).toBeInTheDocument();
+        },
+        { timeout: 3000 },
+      );
+
+      expect(
+        vi.mocked(htmlPreviewMock.htmlPreviewService.resolveProjectForPreview),
+      ).toHaveBeenCalledWith('project-42');
     });
 
     it('should render settings view with service status', async () => {

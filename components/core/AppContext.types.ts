@@ -1,5 +1,5 @@
 import React from 'react';
-import { Assistant, ChatSession, EmbeddingConfig } from '../../types';
+import { Assistant, ChatSession, EmbeddingConfig, HtmlProjectPreviewArtifact } from '../../types';
 
 export type ViewMode =
   | 'chat'
@@ -35,6 +35,10 @@ export interface AppState {
   assistantToShare: Assistant | null;
   currentProvider?: string;
   embeddingConfig: EmbeddingConfig;
+  activeProjectId: string | null;
+  isProjectWorkspaceOpen: boolean;
+  projectPreview: HtmlProjectPreviewArtifact | null;
+  projectToolActivity: string[];
 }
 
 export type AppAction =
@@ -59,7 +63,13 @@ export type AppAction =
   | { type: 'DELETE_SESSION'; payload: string }
   | { type: 'DELETE_ASSISTANT'; payload: string }
   | { type: 'SET_ACTIVE_PROVIDER'; payload: string }
-  | { type: 'SET_EMBEDDING_CONFIG'; payload: EmbeddingConfig };
+  | { type: 'SET_EMBEDDING_CONFIG'; payload: EmbeddingConfig }
+  | { type: 'SET_ACTIVE_PROJECT'; payload: string | null }
+  | { type: 'SET_PROJECT_WORKSPACE_OPEN'; payload: boolean }
+  | { type: 'SET_PROJECT_PREVIEW'; payload: HtmlProjectPreviewArtifact | null }
+  | { type: 'APPEND_PROJECT_ACTIVITY'; payload: string }
+  | { type: 'CLEAR_PROJECT_ACTIVITY' }
+  | { type: 'RESET_PROJECT_WORKSPACE' };
 
 export interface AppContextValue {
   state: AppState;
@@ -81,5 +91,11 @@ export interface AppContextValue {
     checkScreenSize: () => void;
     loadSharedAssistant: (assistantId: string) => Promise<void>;
     setEmbeddingConfig: (config: EmbeddingConfig) => void;
+    setActiveProject: (projectId: string | null) => void;
+    setProjectWorkspaceOpen: (open: boolean) => void;
+    setProjectPreview: (preview: HtmlProjectPreviewArtifact | null) => void;
+    appendProjectActivity: (message: string) => void;
+    clearProjectWorkspace: () => void;
+    syncProjectWorkspaceForSession: (session: ChatSession | null) => Promise<void>;
   };
 }

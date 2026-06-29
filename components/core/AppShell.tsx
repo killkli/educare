@@ -2,6 +2,7 @@ import React from 'react';
 import { AppProvider, useAppContext, ErrorBoundary, Layout, ModelLoadingOverlay } from './index';
 import { AssistantEditor, ShareModal } from '../assistant';
 import { ChatContainer } from '../chat';
+import { HtmlProjectWorkspace } from '../canvas';
 import { ChatSession } from '../../types';
 import SharedAssistant from '../features/SharedAssistant';
 import MigrationPanel from '../settings/MigrationPanel';
@@ -220,15 +221,26 @@ function AppContent(): React.JSX.Element {
       )}
 
       {state.viewMode === 'chat' && state.currentAssistant && state.currentSession && (
-        <ChatContainer
-          session={state.currentSession}
-          assistantName={state.currentAssistant.name}
-          systemPrompt={state.currentAssistant.systemPrompt}
-          assistantId={state.currentAssistant.id}
-          ragChunks={state.currentAssistant.ragChunks ?? []}
-          onNewMessage={handleNewMessage}
-          sharedMode={!!state.isShared}
-        />
+        <div className='flex h-full min-h-0 flex-col lg:flex-row'>
+          <div
+            className={`${state.isProjectWorkspaceOpen && state.activeProjectId ? 'lg:w-[55%]' : 'w-full'} min-h-0 flex-1`}
+          >
+            <ChatContainer
+              session={state.currentSession}
+              assistantName={state.currentAssistant.name}
+              systemPrompt={state.currentAssistant.systemPrompt}
+              assistantId={state.currentAssistant.id}
+              ragChunks={state.currentAssistant.ragChunks ?? []}
+              onNewMessage={handleNewMessage}
+              sharedMode={!!state.isShared}
+            />
+          </div>
+          {state.isProjectWorkspaceOpen && state.activeProjectId && (
+            <div className='min-h-[320px] border-t border-gray-800 lg:min-h-0 lg:w-[45%] lg:border-l lg:border-t-0'>
+              <HtmlProjectWorkspace projectId={state.activeProjectId} />
+            </div>
+          )}
+        </div>
       )}
 
       {state.viewMode === 'settings' && (
