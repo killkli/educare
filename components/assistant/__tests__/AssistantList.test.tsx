@@ -287,6 +287,60 @@ describe('AssistantList', () => {
     });
   });
 
+  describe('Collapsed Mode (Icon Rail)', () => {
+    it('does not render the label or CustomSelect when collapsed', () => {
+      render(<AssistantList {...mockProps} collapsed={true} />);
+
+      expect(screen.queryByText('選擇助理')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '請選擇一個助理' })).not.toBeInTheDocument();
+    });
+
+    it('renders an avatar button per assistant with the first initial', () => {
+      render(<AssistantList {...mockProps} collapsed={true} />);
+
+      const basicBtn = screen.getByRole('button', { name: '選擇助理 Basic Assistant' });
+      const ragBtn = screen.getByRole('button', { name: '選擇助理 RAG Assistant' });
+      expect(basicBtn).toHaveTextContent('B');
+      expect(ragBtn).toHaveTextContent('R');
+      expect(basicBtn).toHaveAttribute('title', 'Basic Assistant');
+    });
+
+    it('calls onSelect when an avatar is clicked', () => {
+      render(<AssistantList {...mockProps} collapsed={true} />);
+
+      fireEvent.click(screen.getByRole('button', { name: '選擇助理 Basic Assistant' }));
+      expect(mockProps.onSelect).toHaveBeenCalledWith(TEST_ASSISTANTS.basic.id);
+    });
+
+    it('renders a working new-assistant icon button', () => {
+      render(<AssistantList {...mockProps} collapsed={true} />);
+
+      fireEvent.click(screen.getByRole('button', { name: '新增助理' }));
+      expect(mockProps.onCreateNew).toHaveBeenCalled();
+    });
+
+    it('renders compact edit/share/delete for the selected assistant', () => {
+      render(
+        <AssistantList {...mockProps} selectedAssistant={TEST_ASSISTANTS.basic} collapsed={true} />,
+      );
+
+      expect(screen.getByRole('button', { name: '編輯助理' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '刪除助理' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '分享助理' })).toBeInTheDocument();
+    });
+
+    it('marks the selected assistant avatar as pressed', () => {
+      render(
+        <AssistantList {...mockProps} selectedAssistant={TEST_ASSISTANTS.basic} collapsed={true} />,
+      );
+
+      expect(screen.getByRole('button', { name: '選擇助理 Basic Assistant' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+    });
+  });
+
   describe('Styling and CSS Classes', () => {
     it('applies correct CSS classes to main container', () => {
       render(<AssistantList {...mockProps} />);

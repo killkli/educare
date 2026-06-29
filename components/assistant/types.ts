@@ -9,6 +9,7 @@ export interface AssistantListProps {
   onShare: (assistant: Assistant) => void;
   onCreateNew: () => void;
   canShare?: boolean;
+  collapsed?: boolean;
 }
 
 export interface AssistantCardProps {
