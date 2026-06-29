@@ -26,6 +26,7 @@ export interface AppState {
   isShared: boolean | null;
   sharedAssistantId: string | null;
   isSidebarOpen: boolean;
+  isSidebarCollapsed: boolean;
   isMobile: boolean;
   isTablet: boolean;
   isModelLoading: boolean;
@@ -46,6 +47,7 @@ export type AppAction =
   | { type: 'SET_ERROR'; payload: string | null }
   | { type: 'SET_SHARED_MODE'; payload: { isShared: boolean; assistantId: string | null } }
   | { type: 'SET_SIDEBAR_OPEN'; payload: boolean }
+  | { type: 'SET_SIDEBAR_COLLAPSED'; payload: boolean }
   | { type: 'SET_SCREEN_SIZE'; payload: { isMobile: boolean; isTablet: boolean } }
   | {
       type: 'SET_MODEL_LOADING';
@@ -72,6 +74,8 @@ export interface AppContextValue {
     updateSession: (session: ChatSession) => Promise<void>;
     setViewMode: (mode: ViewMode) => void;
     toggleSidebar: () => void;
+    setSidebarOpen: (open: boolean) => void;
+    toggleSidebarCollapse: () => void;
     openShareModal: (assistant: Assistant) => void;
     closeShareModal: () => void;
     checkScreenSize: () => void;

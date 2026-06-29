@@ -34,6 +34,16 @@ const loadEmbeddingConfig = (): EmbeddingConfig => {
   };
 };
 
+// Load desktop sidebar collapse preference from localStorage (default: expanded)
+const loadSidebarCollapsed = (): boolean => {
+  try {
+    return localStorage.getItem('sidebarCollapsed') === 'true';
+  } catch (error) {
+    console.warn('Failed to load sidebarCollapsed from localStorage:', error);
+    return false;
+  }
+};
+
 const initialState: AppState = {
   assistants: [],
   currentAssistant: null,
@@ -45,6 +55,7 @@ const initialState: AppState = {
   isShared: null, // Changed to null to indicate "not yet determined"
   sharedAssistantId: null,
   isSidebarOpen: true,
+  isSidebarCollapsed: loadSidebarCollapsed(),
   isMobile: false,
   isTablet: false,
   isModelLoading: false,
@@ -80,6 +91,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
       };
     case 'SET_SIDEBAR_OPEN':
       return { ...state, isSidebarOpen: action.payload };
+    case 'SET_SIDEBAR_COLLAPSED':
+      return { ...state, isSidebarCollapsed: action.payload };
     case 'SET_SCREEN_SIZE':
       return {
         ...state,
@@ -455,10 +468,26 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
     dispatch({ type: 'SET_VIEW_MODE', payload: mode });
   }, []);
 
-  // Toggle sidebar
+  // Toggle sidebar (open/close — used for mobile/tablet drawer and desktop visibility)
   const toggleSidebar = useCallback(() => {
     dispatch({ type: 'SET_SIDEBAR_OPEN', payload: !state.isSidebarOpen });
   }, [state.isSidebarOpen]);
+
+  // Set sidebar open state explicitly
+  const setSidebarOpen = useCallback((open: boolean) => {
+    dispatch({ type: 'SET_SIDEBAR_OPEN', payload: open });
+  }, []);
+
+  // Toggle desktop sidebar collapse (expanded ↔ icon rail). Persisted to localStorage.
+  const toggleSidebarCollapse = useCallback(() => {
+    const next = !state.isSidebarCollapsed;
+    dispatch({ type: 'SET_SIDEBAR_COLLAPSED', payload: next });
+    try {
+      localStorage.setItem('sidebarCollapsed', String(next));
+    } catch (error) {
+      console.warn('Failed to persist sidebarCollapsed to localStorage:', error);
+    }
+  }, [state.isSidebarCollapsed]);
 
   // Open share modal
   const openShareModal = useCallback((assistant: Assistant) => {
@@ -592,6 +621,8 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       updateSession,
       setViewMode,
       toggleSidebar,
+      setSidebarOpen,
+      toggleSidebarCollapse,
       openShareModal,
       closeShareModal,
       checkScreenSize,

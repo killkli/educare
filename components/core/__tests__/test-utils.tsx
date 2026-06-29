@@ -134,6 +134,7 @@ export const createMockAppState = (overrides: Partial<AppState> = {}): AppState 
   isShared: false,
   sharedAssistantId: null,
   isSidebarOpen: true,
+  isSidebarCollapsed: false,
   isMobile: false,
   isTablet: false,
   isModelLoading: false,
