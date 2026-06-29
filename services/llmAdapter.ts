@@ -24,6 +24,10 @@ export interface ToolDefinition {
   prompt?: string;
 }
 
+export type ToolChoicePolicy =
+  | { mode: 'auto' | 'none' | 'requireAny' }
+  | { mode: 'requireSpecific'; name: string };
+
 export interface ProviderConfig {
   apiKey?: string;
   baseUrl?: string;
@@ -42,6 +46,8 @@ export interface ChatParams {
   temperature?: number;
   maxTokens?: number;
   tools?: ToolDefinition[];
+  allowedToolNames?: string[];
+  toolChoice?: ToolChoicePolicy;
   executeTool?: (call: ToolCall) => Promise<unknown> | unknown;
 }
 
@@ -59,7 +65,14 @@ export interface LLMProvider {
   reinitialize?(): void;
 }
 
-export type ProviderType = 'gemini' | 'openai' | 'ollama' | 'groq' | 'openrouter' | 'lmstudio';
+export type ProviderType =
+  | 'gemini'
+  | 'openai'
+  | 'anthropic'
+  | 'ollama'
+  | 'groq'
+  | 'openrouter'
+  | 'lmstudio';
 
 export interface ProviderSettings {
   activeProvider: ProviderType;
@@ -86,6 +99,14 @@ export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
       enabled: false,
       config: {
         model: 'gpt-4o',
+        temperature: 0.7,
+        maxTokens: 4096,
+      },
+    },
+    anthropic: {
+      enabled: false,
+      config: {
+        model: 'claude-opus-4-8',
         temperature: 0.7,
         maxTokens: 4096,
       },

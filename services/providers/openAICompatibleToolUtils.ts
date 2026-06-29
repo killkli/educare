@@ -1,5 +1,6 @@
 import { ChatParams, StreamingResponse, ToolCall, ToolDefinition } from '../llmAdapter';
 import { readSseDataLines } from './sse';
+import { resolveToolPolicy } from './toolPolicyUtils';
 
 interface OpenAICompatibleToolCall {
   id?: string;
@@ -78,6 +79,31 @@ const buildTools = (tools?: ToolDefinition[]) => {
   }));
 };
 
+const buildToolChoice = (params: ChatParams, tools?: ToolDefinition[]) => {
+  if (!tools?.length) {
+    return undefined;
+  }
+
+  const { toolChoice } = resolveToolPolicy(params);
+
+  switch (toolChoice.mode) {
+    case 'none':
+      return 'none';
+    case 'requireAny':
+      return 'required';
+    case 'requireSpecific':
+      return {
+        type: 'function',
+        function: {
+          name: toolChoice.name,
+        },
+      };
+    case 'auto':
+    default:
+      return 'auto';
+  }
+};
+
 const parseToolArgs = (rawArgs?: string): Record<string, unknown> => {
   if (!rawArgs) {
     return {};
@@ -144,14 +170,16 @@ const fetchToolCallResponse = async (
     defaultMaxTokens = 4096,
   } = options;
 
+  const { visibleTools } = resolveToolPolicy(params);
+
   const response = await fetch(endpoint, {
     method: 'POST',
     headers,
     body: JSON.stringify({
       model,
       messages,
-      tools: buildTools(params.tools),
-      tool_choice: 'auto',
+      tools: buildTools(visibleTools),
+      tool_choice: buildToolChoice(params, visibleTools),
       stream: false,
       temperature: params.temperature || defaultTemperature,
       max_tokens: params.maxTokens || defaultMaxTokens,
@@ -183,8 +211,9 @@ export async function* streamOpenAICompatibleChat(
   let messages = buildMessages(params, systemPrompt);
   let promptTokenCount = 0;
   let candidatesTokenCount = 0;
+  const { visibleTools } = resolveToolPolicy(params);
 
-  if (params.tools?.length && params.executeTool) {
+  if (visibleTools?.length && params.executeTool) {
     const toolResponse = await fetchToolCallResponse(options, messages);
     const assistantMessage = toolResponse.choices?.[0]?.message;
 

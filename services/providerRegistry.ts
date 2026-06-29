@@ -1,6 +1,7 @@
 import { ProviderManager, ProviderType } from './llmAdapter';
 import { GeminiProvider } from './providers/geminiProvider';
 import { OpenAINativeProvider } from './providers/openaiNativeProvider';
+import { AnthropicProvider } from './providers/anthropicProvider';
 import { OpenRouterProvider } from './providers/openrouterProvider';
 import { LMStudioProvider } from './providers/lmstudioProvider';
 import { OllamaNativeProvider } from './providers/ollamaNativeProvider';
@@ -38,6 +39,7 @@ export async function initializeProviders(): Promise<void> {
     // Load native providers (no LLM.js dependencies)
     const nativeProviders = [
       { name: 'openai', ProviderClass: OpenAINativeProvider },
+      { name: 'anthropic', ProviderClass: AnthropicProvider },
       { name: 'openrouter', ProviderClass: OpenRouterProvider },
       { name: 'lmstudio', ProviderClass: LMStudioProvider },
       { name: 'ollama', ProviderClass: OllamaNativeProvider },

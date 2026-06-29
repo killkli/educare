@@ -8,6 +8,7 @@ import {
 } from '@google/genai';
 import { LLMProvider, ProviderConfig, ChatParams, StreamingResponse } from '../llmAdapter';
 import { ApiKeyManager } from '../apiKeyManager';
+import { resolveToolPolicy } from './toolPolicyUtils';
 
 export class GeminiProvider implements LLMProvider {
   readonly name = 'gemini';
@@ -109,7 +110,8 @@ export class GeminiProvider implements LLMProvider {
         ? params.history.slice(-MAX_HISTORY_MESSAGES)
         : params.history;
 
-    const functionDeclarations: FunctionDeclaration[] | undefined = params.tools?.map(tool => ({
+    const { visibleTools, toolChoice } = resolveToolPolicy(params);
+    const functionDeclarations: FunctionDeclaration[] | undefined = visibleTools?.map(tool => ({
       name: tool.name,
       description: tool.prompt ? `${tool.description} ${tool.prompt}` : tool.description,
       parametersJsonSchema: tool.parameters,
@@ -119,6 +121,30 @@ export class GeminiProvider implements LLMProvider {
     if (!ai) {
       throw new Error('請先在設定中配置 Gemini API KEY 才能使用聊天功能。');
     }
+
+    const functionCallingConfig = (() => {
+      switch (toolChoice.mode) {
+        case 'none':
+          return {
+            mode: FunctionCallingConfigMode.NONE,
+          };
+        case 'requireAny':
+          return {
+            mode: FunctionCallingConfigMode.ANY,
+          };
+        case 'requireSpecific':
+          return {
+            mode: FunctionCallingConfigMode.ANY,
+            allowedFunctionNames: [toolChoice.name],
+          };
+        case 'auto':
+        default:
+          return {
+            mode: FunctionCallingConfigMode.AUTO,
+          };
+      }
+    })();
+
     return ai.chats.create({
       model,
       config: {
@@ -129,10 +155,7 @@ export class GeminiProvider implements LLMProvider {
           ? {
               tools: [{ functionDeclarations }],
               toolConfig: {
-                functionCallingConfig: {
-                  mode: FunctionCallingConfigMode.AUTO,
-                  allowedFunctionNames: functionDeclarations.map(tool => tool.name || ''),
-                },
+                functionCallingConfig,
               },
             }
           : {}),
