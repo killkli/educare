@@ -167,4 +167,183 @@ describe('streamOpenAICompatibleChat', () => {
       },
     });
   });
+
+  it('handles two tool-call rounds before yielding the final assistant text', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    const executeTool = vi
+      .fn()
+      .mockResolvedValueOnce({ matches: ['doc-1'] })
+      .mockResolvedValueOnce({ html: '<div>preview</div>' });
+
+    fetchMock
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: null,
+                tool_calls: [
+                  {
+                    id: 'call-1',
+                    type: 'function',
+                    function: {
+                      name: 'search_docs',
+                      arguments: JSON.stringify({ query: 'financial aid' }),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+          usage: { prompt_tokens: 3, completion_tokens: 1 },
+        }),
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: null,
+                tool_calls: [
+                  {
+                    id: 'call-2',
+                    type: 'function',
+                    function: {
+                      name: 'render_preview',
+                      arguments: JSON.stringify({ projectId: 'proj-123' }),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+          usage: { prompt_tokens: 4, completion_tokens: 2 },
+        }),
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: 'Here is the completed preview.',
+              },
+            },
+          ],
+          usage: { prompt_tokens: 5, completion_tokens: 3 },
+        }),
+      );
+
+    const responses = [];
+    for await (const chunk of streamOpenAICompatibleChat({
+      endpoint: 'https://example.com/chat/completions',
+      headers: { Authorization: 'Bearer test' },
+      providerName: 'openai',
+      model: 'gpt-4o',
+      params: {
+        systemPrompt: 'You are helpful.',
+        history: [],
+        message: 'hello',
+        tools: [...TOOL_DEFINITIONS],
+        executeTool,
+      },
+    })) {
+      responses.push(chunk);
+    }
+
+    expect(executeTool).toHaveBeenNthCalledWith(1, {
+      name: 'search_docs',
+      args: { query: 'financial aid' },
+    });
+    expect(executeTool).toHaveBeenNthCalledWith(2, {
+      name: 'render_preview',
+      args: { projectId: 'proj-123' },
+    });
+    expect(responses).toEqual([
+      {
+        text: 'Here is the completed preview.',
+        isComplete: false,
+        metadata: {
+          model: 'gpt-4o',
+          provider: 'openai',
+        },
+      },
+      {
+        text: '',
+        isComplete: true,
+        metadata: {
+          promptTokenCount: 12,
+          candidatesTokenCount: 6,
+          model: 'gpt-4o',
+          provider: 'openai',
+        },
+      },
+    ]);
+
+    const secondRequestBody = JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string);
+    const thirdRequestBody = JSON.parse(fetchMock.mock.calls[2]?.[1]?.body as string);
+
+    expect(secondRequestBody.messages.at(-1)).toEqual({
+      role: 'tool',
+      tool_call_id: 'call-1',
+      content: JSON.stringify({ matches: ['doc-1'] }),
+    });
+    expect(thirdRequestBody.messages.at(-1)).toEqual({
+      role: 'tool',
+      tool_call_id: 'call-2',
+      content: JSON.stringify({ html: '<div>preview</div>' }),
+    });
+  });
+
+  it('throws a clear error after exceeding the maximum number of tool rounds', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
+      Promise.resolve(
+        createJsonResponse({
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: null,
+                tool_calls: [
+                  {
+                    id: 'loop-call',
+                    type: 'function',
+                    function: {
+                      name: 'search_docs',
+                      arguments: JSON.stringify({ query: 'loop forever' }),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+          usage: { prompt_tokens: 1, completion_tokens: 1 },
+        }),
+      ),
+    );
+    const executeTool = vi.fn().mockResolvedValue({ matches: [] });
+
+    await expect(async () => {
+      for await (const chunk of streamOpenAICompatibleChat({
+        endpoint: 'https://example.com/chat/completions',
+        headers: { Authorization: 'Bearer test' },
+        providerName: 'openai',
+        model: 'gpt-4o',
+        params: {
+          systemPrompt: 'You are helpful.',
+          history: [],
+          message: 'hello',
+          tools: [...TOOL_DEFINITIONS],
+          executeTool,
+        },
+      })) {
+        void chunk;
+      }
+    }).rejects.toThrow('OpenAI-compatible providers exceeded maximum tool rounds (5).');
+
+    expect(executeTool).toHaveBeenCalledTimes(5);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+  });
 });

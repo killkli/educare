@@ -212,38 +212,52 @@ export async function* streamOpenAICompatibleChat(
   let promptTokenCount = 0;
   let candidatesTokenCount = 0;
   const { visibleTools } = resolveToolPolicy(params);
+  const MAX_OPENAI_COMPATIBLE_TOOL_ROUNDS = 5;
 
   if (visibleTools?.length && params.executeTool) {
-    const toolResponse = await fetchToolCallResponse(options, messages);
-    const assistantMessage = toolResponse.choices?.[0]?.message;
+    let toolRoundCount = 0;
 
-    promptTokenCount = toolResponse.usage?.prompt_tokens || 0;
-    candidatesTokenCount = toolResponse.usage?.completion_tokens || 0;
+    while (true) {
+      const toolResponse = await fetchToolCallResponse(options, messages);
+      const assistantMessage = toolResponse.choices?.[0]?.message;
 
-    if (assistantMessage?.tool_calls?.length) {
+      promptTokenCount += toolResponse.usage?.prompt_tokens || 0;
+      candidatesTokenCount += toolResponse.usage?.completion_tokens || 0;
+
+      if (!assistantMessage?.tool_calls?.length) {
+        if (assistantMessage?.content) {
+          yield {
+            text: assistantMessage.content,
+            isComplete: false,
+            metadata: {
+              model,
+              provider: providerName,
+            },
+          };
+        }
+
+        yield {
+          text: '',
+          isComplete: true,
+          metadata: {
+            promptTokenCount,
+            candidatesTokenCount,
+            model,
+            provider: providerName,
+          },
+        };
+        return;
+      }
+
+      if (toolRoundCount >= MAX_OPENAI_COMPATIBLE_TOOL_ROUNDS) {
+        throw new Error(
+          `OpenAI-compatible providers exceeded maximum tool rounds (${MAX_OPENAI_COMPATIBLE_TOOL_ROUNDS}).`,
+        );
+      }
+
       const toolMessages = await executeToolCalls(assistantMessage.tool_calls, params.executeTool);
       messages = [...messages, assistantMessage, ...toolMessages];
-    } else if (assistantMessage?.content) {
-      yield {
-        text: assistantMessage.content,
-        isComplete: false,
-        metadata: {
-          model,
-          provider: providerName,
-        },
-      };
-
-      yield {
-        text: '',
-        isComplete: true,
-        metadata: {
-          promptTokenCount,
-          candidatesTokenCount,
-          model,
-          provider: providerName,
-        },
-      };
-      return;
+      toolRoundCount += 1;
     }
   }
 
