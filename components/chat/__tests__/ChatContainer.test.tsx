@@ -89,6 +89,12 @@ describe('ChatContainer', () => {
     assistantDescription: TEST_ASSISTANTS.basicAssistant.description,
   };
 
+  const sendMessage = async (message: string) => {
+    const user = userEvent.setup();
+    await user.type(screen.getByRole('textbox', { name: '輸入訊息' }), message);
+    await user.click(screen.getByRole('button', { name: '傳送訊息' }));
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useAppContext).mockReturnValue({
@@ -152,11 +158,9 @@ describe('ChatContainer', () => {
   });
 
   it('adds the user message immediately when sending', async () => {
-    const user = userEvent.setup();
     render(<ChatContainer {...defaultProps} />);
 
-    await user.type(screen.getByRole('textbox', { name: '輸入訊息' }), 'Need help');
-    await user.click(screen.getByRole('button', { name: '傳送訊息' }));
+    await sendMessage('Need help');
 
     await waitFor(() => {
       expect(screen.getByText('Need help')).toBeInTheDocument();
@@ -164,13 +168,11 @@ describe('ChatContainer', () => {
   });
 
   it('passes assistant, session, and active project ids to streamChat', async () => {
-    const user = userEvent.setup();
     const session = createMockChatSession({ activeProjectId: 'project-42' });
 
     render(<ChatContainer {...defaultProps} session={session} />);
 
-    await user.type(screen.getByRole('textbox', { name: '輸入訊息' }), 'Continue building');
-    await user.click(screen.getByRole('button', { name: '傳送訊息' }));
+    await sendMessage('Continue building');
 
     await waitFor(() => {
       expect(mockStreamChat).toHaveBeenCalledWith(
@@ -185,7 +187,6 @@ describe('ChatContainer', () => {
   });
 
   it('wires project tool activity into AppContext workspace actions', async () => {
-    const user = userEvent.setup();
     const preview: HtmlProjectPreviewArtifact = {
       projectId: 'project-99',
       previewVersion: 3,
@@ -210,8 +211,7 @@ describe('ChatContainer', () => {
 
     render(<ChatContainer {...defaultProps} />);
 
-    await user.type(screen.getByRole('textbox', { name: '輸入訊息' }), 'Make a landing page');
-    await user.click(screen.getByRole('button', { name: '傳送訊息' }));
+    await sendMessage('Make a landing page');
 
     await waitFor(() => {
       expect(mockSetActiveProject).toHaveBeenCalledWith('project-99');
@@ -219,6 +219,40 @@ describe('ChatContainer', () => {
       expect(mockSetProjectPreview).toHaveBeenCalledWith(preview);
       expect(mockAppendProjectActivity).toHaveBeenCalledWith('Updated preview');
     });
+  });
+
+  it('clears loading state when completion happens before any chunk arrives', async () => {
+    mockStreamChat.mockImplementationOnce(async ({ onComplete }) => {
+      onComplete({ promptTokenCount: 2, candidatesTokenCount: 4 }, 'Final response');
+    });
+
+    render(<ChatContainer {...defaultProps} />);
+
+    await sendMessage('Finish without chunk');
+
+    await waitFor(() => {
+      expect(screen.getByText('Final response')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole('button', { name: '正在傳送訊息' })).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: '輸入訊息' })).toBeEnabled();
+    expect(screen.queryByText('🤖 生成回答...')).not.toBeInTheDocument();
+  });
+
+  it('clears loading state and shows the error when rejection happens before any chunk arrives', async () => {
+    mockStreamChat.mockRejectedValueOnce(new Error('Gemini terminal response had no visible text'));
+
+    render(<ChatContainer {...defaultProps} />);
+
+    await sendMessage('Fail before chunk');
+
+    await waitFor(() => {
+      expect(screen.getByText(/Gemini terminal response had no visible text/)).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole('button', { name: '正在傳送訊息' })).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: '輸入訊息' })).toBeEnabled();
+    expect(screen.queryByText('🤖 生成回答...')).not.toBeInTheDocument();
   });
 
   it('starts a new shared conversation from the header button', async () => {
