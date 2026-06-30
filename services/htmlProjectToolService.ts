@@ -1,4 +1,5 @@
 import {
+  HtmlProject,
   HtmlProjectFileKind,
   HtmlProjectToolExecutionResult,
   HtmlProjectWorkspaceUpdate,
@@ -9,6 +10,9 @@ import { htmlProjectStore, type WriteHtmlProjectFileInput } from './htmlProjectS
 
 const HTML_PROJECT_TOOL_NAMES = [
   'createProject',
+  'listProjects',
+  'openProject',
+  'searchFiles',
   'writeFiles',
   'listFiles',
   'readFile',
@@ -114,6 +118,16 @@ interface CreateProjectArgs {
   template?: 'single-page-app' | 'blank';
 }
 
+interface OpenProjectArgs {
+  projectId: string;
+}
+
+interface SearchFilesArgs {
+  projectId?: string;
+  query: string;
+  caseSensitive?: boolean;
+}
+
 interface WriteFilesArgs {
   projectId?: string;
   files:
@@ -167,6 +181,28 @@ const requireProjectId = (
     throw new Error('No active HTML project is available for this tool call.');
   }
   return projectId;
+};
+
+const requireOwnedProject = async (
+  explicitProjectId: string | undefined,
+  context: HtmlProjectToolContext,
+): Promise<HtmlProject> => {
+  const projectId = requireProjectId(explicitProjectId, context.activeProjectId);
+  return htmlProjectStore.assertProjectOwnership(projectId, context.assistantId);
+};
+
+const summarizeSearchResult = (result: {
+  query: string;
+  scannedFiles: number;
+  matches: unknown[];
+  truncated: boolean;
+}): string => {
+  if (result.matches.length === 0) {
+    return `在 ${result.scannedFiles} 個可搜尋檔案中找不到「${result.query}」的結果。`;
+  }
+
+  const suffix = result.truncated ? '結果已截斷。' : '結果完整。';
+  return `在 ${result.scannedFiles} 個可搜尋檔案中找到 ${result.matches.length} 個「${result.query}」結果，${suffix}`;
 };
 
 const getTemplateFiles = (template?: 'single-page-app' | 'blank'): WriteHtmlProjectFileInput[] => {
@@ -282,46 +318,123 @@ const handleCreateProject = async (
   };
 };
 
+const handleListProjects = async (
+  context: HtmlProjectToolContext,
+): Promise<HtmlProjectToolExecutionResult> => {
+  const projects = await htmlProjectStore.listProjectsByAssistant(context.assistantId);
+  const summary =
+    projects.length > 0
+      ? `目前 assistant 共有 ${projects.length} 個 HTML 專案。`
+      : '目前 assistant 尚無 HTML 專案。';
+
+  return {
+    toolName: 'listProjects',
+    summary,
+    result: {
+      projects: projects.map(project => ({
+        projectId: project.id,
+        name: project.name,
+        description: project.description,
+        entryFile: project.entryFile,
+        updatedAt: project.updatedAt,
+        previewVersion: project.previewVersion,
+      })),
+    },
+    workspace: createWorkspaceUpdate(context.activeProjectId ?? null, summary),
+  };
+};
+
+const handleOpenProject = async (
+  args: OpenProjectArgs,
+  context: HtmlProjectToolContext,
+): Promise<HtmlProjectToolExecutionResult> => {
+  const project = await htmlProjectStore.assertProjectOwnership(
+    args.projectId,
+    context.assistantId,
+  );
+  const preview = await htmlPreviewService.resolveProjectForPreview(project.id);
+  const summary = `已開啟既有 HTML 專案「${project.name}」。`;
+
+  return {
+    toolName: 'openProject',
+    summary,
+    result: {
+      projectId: project.id,
+      name: project.name,
+      entryFile: project.entryFile,
+      previewVersion: preview.previewVersion,
+    },
+    workspace: createWorkspaceUpdate(project.id, summary, preview),
+  };
+};
+
+const handleSearchFiles = async (
+  args: SearchFilesArgs,
+  context: HtmlProjectToolContext,
+): Promise<HtmlProjectToolExecutionResult> => {
+  const project = await requireOwnedProject(args.projectId, context);
+  const searchResult = (await htmlProjectStore.searchFiles(project.id, {
+    query: args.query,
+    caseSensitive: args.caseSensitive,
+  })) as unknown as {
+    query: string;
+    scannedFiles: number;
+    matches: unknown[];
+    truncated: boolean;
+  } & Record<string, unknown>;
+  const summary = summarizeSearchResult(searchResult);
+  const result: Record<string, unknown> = {
+    ...searchResult,
+  };
+
+  return {
+    toolName: 'searchFiles',
+    summary,
+    result,
+    workspace: createWorkspaceUpdate(project.id, summary),
+  } as HtmlProjectToolExecutionResult;
+};
+
 const handleWriteFiles = async (
   args: WriteFilesArgs,
   context: HtmlProjectToolContext,
 ): Promise<HtmlProjectToolExecutionResult> => {
-  const projectId = requireProjectId(args.projectId, context.activeProjectId);
+  const project = await requireOwnedProject(args.projectId, context);
   const files = normalizeWriteFilesInput(args.files);
-  const result = await htmlProjectStore.writeFiles(projectId, files);
-  const preview = await htmlPreviewService.resolveProjectForPreview(projectId);
+  const result = await htmlProjectStore.writeFiles(project.id, files);
+  const preview = await htmlPreviewService.resolveProjectForPreview(project.id);
   const summary = `已更新檔案：${summarizeFileList(result.updated)}。`;
 
   return {
     toolName: 'writeFiles',
     summary,
     result: {
-      projectId,
+      projectId: project.id,
       updated: result.updated,
       previewVersion: result.previewVersion,
     },
-    workspace: createWorkspaceUpdate(projectId, summary, preview),
+    workspace: createWorkspaceUpdate(project.id, summary, preview),
   };
 };
 
-const handleListFiles = async (projectId: string): Promise<HtmlProjectToolExecutionResult> => {
-  const project = await htmlProjectStore.getProject(projectId);
-  if (!project) {
-    throw new Error(`HTML project ${projectId} not found.`);
-  }
-  const files = await htmlProjectStore.listFiles(projectId);
+const handleListFiles = async (
+  args: { projectId?: string },
+  context: HtmlProjectToolContext,
+): Promise<HtmlProjectToolExecutionResult> => {
+  const project = await requireOwnedProject(args.projectId, context);
+  const files = await htmlProjectStore.listFiles(project.id);
   const summary = `目前專案共有 ${files.length} 個檔案。`;
 
   return {
     toolName: 'listFiles',
     summary,
     result: {
-      projectId,
+      projectId: project.id,
       files,
       entryFile: project.entryFile,
       previewVersion: project.previewVersion,
     },
-    workspace: createWorkspaceUpdate(projectId, summary),
+    workspace: createWorkspaceUpdate(project.id, summary),
   };
 };
 
@@ -329,8 +442,8 @@ const handleReadFile = async (
   args: ReadFileArgs,
   context: HtmlProjectToolContext,
 ): Promise<HtmlProjectToolExecutionResult> => {
-  const projectId = requireProjectId(args.projectId, context.activeProjectId);
-  const file = await htmlProjectStore.readFile(projectId, args.path);
+  const project = await requireOwnedProject(args.projectId, context);
+  const file = await htmlProjectStore.readFile(project.id, args.path);
   if (!file) {
     throw new Error(`Project file ${args.path} not found.`);
   }
@@ -340,14 +453,14 @@ const handleReadFile = async (
     toolName: 'readFile',
     summary,
     result: {
-      projectId,
+      projectId: project.id,
       path: file.path,
       kind: file.kind,
       content: file.content,
       dependencies: file.dependencies || [],
       updatedAt: file.updatedAt,
     },
-    workspace: createWorkspaceUpdate(projectId, summary),
+    workspace: createWorkspaceUpdate(project.id, summary),
   };
 };
 
@@ -355,21 +468,21 @@ const handleDeleteFile = async (
   args: DeleteFileArgs,
   context: HtmlProjectToolContext,
 ): Promise<HtmlProjectToolExecutionResult> => {
-  const projectId = requireProjectId(args.projectId, context.activeProjectId);
-  const result = await htmlProjectStore.deleteFile(projectId, args.path);
-  const preview = await htmlPreviewService.resolveProjectForPreview(projectId);
+  const project = await requireOwnedProject(args.projectId, context);
+  const result = await htmlProjectStore.deleteFile(project.id, args.path);
+  const preview = await htmlPreviewService.resolveProjectForPreview(project.id);
   const summary = result.deleted ? `已刪除檔案 ${args.path}。` : `找不到檔案 ${args.path}。`;
 
   return {
     toolName: 'deleteFile',
     summary,
     result: {
-      projectId,
+      projectId: project.id,
       deleted: result.deleted,
       path: args.path,
       previewVersion: result.previewVersion,
     },
-    workspace: createWorkspaceUpdate(projectId, summary, preview),
+    workspace: createWorkspaceUpdate(project.id, summary, preview),
   };
 };
 
@@ -377,20 +490,20 @@ const handleSetEntrypoint = async (
   args: SetEntrypointArgs,
   context: HtmlProjectToolContext,
 ): Promise<HtmlProjectToolExecutionResult> => {
-  const projectId = requireProjectId(args.projectId, context.activeProjectId);
-  const project = await htmlProjectStore.setEntrypoint(projectId, args.path);
-  const preview = await htmlPreviewService.resolveProjectForPreview(projectId);
-  const summary = `已將入口檔切換為 ${project.entryFile}。`;
+  const project = await requireOwnedProject(args.projectId, context);
+  const updatedProject = await htmlProjectStore.setEntrypoint(project.id, args.path);
+  const preview = await htmlPreviewService.resolveProjectForPreview(project.id);
+  const summary = `已將入口檔切換為 ${updatedProject.entryFile}。`;
 
   return {
     toolName: 'setEntrypoint',
     summary,
     result: {
-      projectId,
-      entryFile: project.entryFile,
-      previewVersion: project.previewVersion,
+      projectId: project.id,
+      entryFile: updatedProject.entryFile,
+      previewVersion: updatedProject.previewVersion,
     },
-    workspace: createWorkspaceUpdate(projectId, summary, preview),
+    workspace: createWorkspaceUpdate(project.id, summary, preview),
   };
 };
 
@@ -398,8 +511,8 @@ const handleRenderPreview = async (
   args: RenderPreviewArgs,
   context: HtmlProjectToolContext,
 ): Promise<HtmlProjectToolExecutionResult> => {
-  const projectId = requireProjectId(args.projectId, context.activeProjectId);
-  const preview = await htmlPreviewService.resolveProjectForPreview(projectId);
+  const project = await requireOwnedProject(args.projectId, context);
+  const preview = await htmlPreviewService.resolveProjectForPreview(project.id);
   const summary = preview.previewReady
     ? `已重新整理專案預覽（版本 ${preview.previewVersion}）。`
     : `預覽重建失敗：${preview.error}`;
@@ -408,7 +521,7 @@ const handleRenderPreview = async (
     toolName: 'renderPreview',
     summary,
     result: {
-      projectId,
+      projectId: project.id,
       previewVersion: preview.previewVersion,
       entryFile: preview.entryFile,
       previewReady: preview.previewReady,
@@ -416,7 +529,7 @@ const handleRenderPreview = async (
       warnings: preview.warnings,
       error: preview.error,
     },
-    workspace: createWorkspaceUpdate(projectId, summary, preview),
+    workspace: createWorkspaceUpdate(project.id, summary, preview),
   };
 };
 
@@ -432,6 +545,40 @@ export const getHtmlProjectToolDefinitions = (): ToolDefinition[] => [
         template: { type: 'string', enum: ['single-page-app', 'blank'] },
       },
       required: ['name'],
+    },
+  },
+  {
+    name: 'listProjects',
+    description: 'List existing HTML projects owned by the current assistant before reopening one.',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'openProject',
+    description: 'Open an existing HTML project for incremental edits in this chat session.',
+    parameters: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' },
+      },
+      required: ['projectId'],
+    },
+  },
+  {
+    name: 'searchFiles',
+    description:
+      'Search text-based project files for an existing string before making targeted edits.',
+    parameters: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' },
+        query: { type: 'string' },
+        caseSensitive: { type: 'boolean' },
+      },
+      required: ['query'],
     },
   },
   {
@@ -528,12 +675,16 @@ export const executeHtmlProjectToolCall = async (
   switch (call.name) {
     case 'createProject':
       return handleCreateProject(call.args as unknown as CreateProjectArgs, context);
+    case 'listProjects':
+      return handleListProjects(context);
+    case 'openProject':
+      return handleOpenProject(call.args as unknown as OpenProjectArgs, context);
+    case 'searchFiles':
+      return handleSearchFiles(call.args as unknown as SearchFilesArgs, context);
     case 'writeFiles':
       return handleWriteFiles(call.args as unknown as WriteFilesArgs, context);
     case 'listFiles':
-      return handleListFiles(
-        requireProjectId((call.args as { projectId?: string }).projectId, context.activeProjectId),
-      );
+      return handleListFiles(call.args as { projectId?: string }, context);
     case 'readFile':
       return handleReadFile(call.args as unknown as ReadFileArgs, context);
     case 'deleteFile':

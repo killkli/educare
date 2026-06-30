@@ -12,6 +12,18 @@ const HTML_PROJECT_DB_VERSION = 1;
 const PROJECTS_STORE = 'htmlProjects';
 const PROJECT_FILES_STORE = 'htmlProjectFiles';
 const PROJECT_SNAPSHOTS_STORE = 'htmlProjectSnapshots';
+const SEARCHABLE_FILE_KINDS = new Set<HtmlProjectFileKind>([
+  'html',
+  'css',
+  'js',
+  'json',
+  'svg',
+  'md',
+]);
+const DEFAULT_SEARCH_RESULT_LIMIT = 20;
+const MAX_SEARCH_RESULTS_PER_FILE = 5;
+const MAX_SEARCHABLE_FILE_SIZE = 250 * 1024;
+const SEARCH_SNIPPET_RADIUS = 120;
 
 interface HtmlProjectDB extends DBSchema {
   [PROJECTS_STORE]: {
@@ -60,6 +72,37 @@ export interface WriteHtmlProjectFileInput {
 export interface WriteHtmlProjectFilesResult {
   updated: string[];
   previewVersion: number;
+}
+
+export interface HtmlProjectSearchMatch {
+  path: string;
+  kind: HtmlProjectFileKind;
+  line: number;
+  column: number;
+  snippet: string;
+  matchCount: number;
+}
+
+export interface HtmlProjectSkippedFile {
+  path: string;
+  reason: 'unsupported-kind' | 'binary-encoding' | 'file-too-large';
+}
+
+export interface SearchHtmlProjectFilesInput {
+  query: string;
+  caseSensitive?: boolean;
+  maxResults?: number;
+}
+
+export interface SearchHtmlProjectFilesResult {
+  [key: string]: unknown;
+  projectId: string;
+  query: string;
+  caseSensitive: boolean;
+  scannedFiles: number;
+  matches: HtmlProjectSearchMatch[];
+  skippedFiles: HtmlProjectSkippedFile[];
+  truncated: boolean;
 }
 
 let dbPromise: Promise<IDBPDatabase<HtmlProjectDB>> | null = null;
@@ -167,6 +210,23 @@ const buildFileDescriptor = (file: HtmlProjectFile): HtmlProjectFileDescriptor =
   dependencies: file.dependencies,
 });
 
+const buildSearchSnippet = (content: string, matchIndex: number, queryLength: number): string => {
+  const start = Math.max(0, matchIndex - SEARCH_SNIPPET_RADIUS);
+  const end = Math.min(content.length, matchIndex + queryLength + SEARCH_SNIPPET_RADIUS);
+  return content.slice(start, end).replace(/\s+/g, ' ').trim();
+};
+
+const getLineAndColumn = (
+  content: string,
+  matchIndex: number,
+): { line: number; column: number } => {
+  const previousContent = content.slice(0, matchIndex);
+  const line = previousContent.split('\n').length;
+  const lastNewlineIndex = previousContent.lastIndexOf('\n');
+  const column = matchIndex - lastNewlineIndex;
+  return { line, column };
+};
+
 class HtmlProjectStore {
   async createProject(input: CreateHtmlProjectInput): Promise<HtmlProject> {
     const db = await getDb();
@@ -195,6 +255,17 @@ class HtmlProjectStore {
   async getProject(projectId: string): Promise<HtmlProject | undefined> {
     const db = await getDb();
     return db.get(PROJECTS_STORE, projectId);
+  }
+
+  async assertProjectOwnership(projectId: string, assistantId: string): Promise<HtmlProject> {
+    const db = await getDb();
+    const project = await db.get(PROJECTS_STORE, projectId);
+
+    if (!project || project.assistantId !== assistantId) {
+      throw new Error(`HTML project ${projectId} not found.`);
+    }
+
+    return project;
   }
 
   async listProjectsByAssistant(assistantId: string): Promise<HtmlProject[]> {
@@ -277,6 +348,91 @@ class HtmlProjectStore {
     };
   }
 
+  async searchFiles(
+    projectId: string,
+    input: SearchHtmlProjectFilesInput,
+  ): Promise<SearchHtmlProjectFilesResult> {
+    const query = input.query.trim();
+    if (!query) {
+      throw new Error('searchFiles query is required.');
+    }
+
+    const db = await getDb();
+    await requireProject(db, projectId);
+
+    const files = await db.getAllFromIndex(PROJECT_FILES_STORE, 'by-project', projectId);
+    const normalizedQuery = input.caseSensitive ? query : query.toLowerCase();
+    const maxResults = Math.max(1, input.maxResults ?? DEFAULT_SEARCH_RESULT_LIMIT);
+    const matches: HtmlProjectSearchMatch[] = [];
+    const skippedFiles: HtmlProjectSkippedFile[] = [];
+    let truncated = false;
+    let scannedFiles = 0;
+
+    for (const file of files.sort((a, b) => a.path.localeCompare(b.path))) {
+      if (!SEARCHABLE_FILE_KINDS.has(file.kind)) {
+        skippedFiles.push({ path: file.path, reason: 'unsupported-kind' });
+        continue;
+      }
+
+      if (file.encoding === 'base64') {
+        skippedFiles.push({ path: file.path, reason: 'binary-encoding' });
+        continue;
+      }
+
+      if (file.size > MAX_SEARCHABLE_FILE_SIZE) {
+        skippedFiles.push({ path: file.path, reason: 'file-too-large' });
+        continue;
+      }
+
+      scannedFiles += 1;
+      const haystack = input.caseSensitive ? file.content : file.content.toLowerCase();
+      let searchIndex = 0;
+      let fileMatchCount = 0;
+
+      while (searchIndex <= haystack.length - normalizedQuery.length) {
+        const matchIndex = haystack.indexOf(normalizedQuery, searchIndex);
+        if (matchIndex === -1) {
+          break;
+        }
+
+        fileMatchCount += 1;
+
+        if (fileMatchCount <= MAX_SEARCH_RESULTS_PER_FILE && matches.length < maxResults) {
+          const { line, column } = getLineAndColumn(file.content, matchIndex);
+          matches.push({
+            path: file.path,
+            kind: file.kind,
+            line,
+            column,
+            snippet: buildSearchSnippet(file.content, matchIndex, query.length),
+            matchCount: fileMatchCount,
+          });
+        }
+
+        if (matches.length >= maxResults) {
+          truncated = true;
+          break;
+        }
+
+        searchIndex = matchIndex + normalizedQuery.length;
+      }
+
+      if (truncated) {
+        break;
+      }
+    }
+
+    return {
+      projectId,
+      query,
+      caseSensitive: Boolean(input.caseSensitive),
+      scannedFiles,
+      matches,
+      skippedFiles,
+      truncated,
+    };
+  }
+
   async deleteFile(
     projectId: string,
     path: string,
@@ -347,6 +503,27 @@ class HtmlProjectStore {
 
     await db.put(PROJECT_SNAPSHOTS_STORE, snapshot);
     return snapshot;
+  }
+
+  async deleteProjectsByAssistant(assistantId: string): Promise<number> {
+    const db = await getDb();
+    const projects = await this.listProjectsByAssistant(assistantId);
+
+    for (const project of projects) {
+      const files = await db.getAllFromIndex(PROJECT_FILES_STORE, 'by-project', project.id);
+      for (const file of files) {
+        await db.delete(PROJECT_FILES_STORE, [project.id, file.path]);
+      }
+
+      const snapshots = await db.getAllFromIndex(PROJECT_SNAPSHOTS_STORE, 'by-project', project.id);
+      for (const snapshot of snapshots) {
+        await db.delete(PROJECT_SNAPSHOTS_STORE, [project.id, snapshot.version]);
+      }
+
+      await db.delete(PROJECTS_STORE, project.id);
+    }
+
+    return projects.length;
   }
 }
 
