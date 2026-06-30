@@ -250,6 +250,7 @@ function AppContent(): React.JSX.Element {
               ragChunks={state.currentAssistant.ragChunks ?? []}
               onNewMessage={handleNewMessage}
               sharedMode={!!state.isShared}
+              isWorkspaceOpen={Boolean(state.isProjectWorkspaceOpen && state.activeProjectId)}
             />
           </div>
           {state.isProjectWorkspaceOpen && state.activeProjectId && (

@@ -14,6 +14,7 @@ export interface ChatInputProps {
   statusText: string;
   currentSession: ChatSession;
   disabled?: boolean;
+  isWorkspaceOpen?: boolean;
 }
 
 export interface SessionManagerProps {
@@ -36,6 +37,7 @@ export interface ChatContainerProps {
   hideHeader?: boolean;
   sharedMode?: boolean;
   assistantDescription?: string;
+  isWorkspaceOpen?: boolean;
 }
 
 export interface WelcomeMessageProps {

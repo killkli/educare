@@ -19,6 +19,7 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
   hideHeader = false,
   sharedMode = false,
   assistantDescription,
+  isWorkspaceOpen = false,
 }) => {
   const actions = useContext(AppContext)?.actions ?? null;
   const [input, setInput] = useState('');
@@ -214,7 +215,9 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
       )}
 
       <main className='flex-1 overflow-y-auto chat-scroll' role='main' aria-label='聊天對話'>
-        <div className='max-w-4xl mx-auto px-3 md:px-4 py-4 md:py-6'>
+        <div
+          className={`${isWorkspaceOpen ? 'mx-auto max-w-4xl' : 'max-w-none'} px-3 py-4 md:px-4 md:py-6`}
+        >
           {currentSession.messages.length === 0 && !streamingResponse && !isThinking && (
             <WelcomeMessage
               assistantName={assistantName}
@@ -247,6 +250,7 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
         statusText={statusText}
         currentSession={currentSession}
         disabled={false}
+        isWorkspaceOpen={isWorkspaceOpen}
       />
     </div>
   );

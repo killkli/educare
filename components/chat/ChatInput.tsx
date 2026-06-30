@@ -9,6 +9,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
   statusText,
   currentSession,
   disabled = false,
+  isWorkspaceOpen = false,
 }) => {
   const [isComposing, setIsComposing] = React.useState(false);
 
@@ -32,7 +33,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
 
   return (
     <div className='border-t border-gray-700/30 bg-gradient-to-r from-gray-800/90 to-gray-850/90 backdrop-blur-sm p-3 md:p-6'>
-      <div className='max-w-4xl mx-auto'>
+      <div className={isWorkspaceOpen ? 'mx-auto max-w-4xl' : 'max-w-none'}>
         {/* Status Text */}
         {statusText && (
           <div className='mb-4 p-3 bg-gray-700/30 rounded-lg border border-gray-600/30 backdrop-blur-sm'>
