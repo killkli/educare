@@ -48,6 +48,11 @@ type SetupProviderOptions = {
   streamChunks?: MockResponse[];
 };
 
+type ListedModel = {
+  name?: string;
+  supportedGenerationMethods?: string[];
+};
+
 describe('GeminiProvider', () => {
   const originalProcess = globalThis.process;
 
@@ -123,6 +128,107 @@ describe('GeminiProvider', () => {
 
     return { create, sendMessage, sendMessageStream };
   };
+
+  const setupModelListing = async (
+    provider: GeminiProvider,
+    options: {
+      listedModels?: ListedModel[];
+      listError?: Error;
+    } = {},
+  ) => {
+    vi.spyOn(ApiKeyManager, 'getGeminiApiKey').mockImplementation(
+      () => 'AIzaSy123456789012345678901234567890123',
+    );
+    vi.spyOn(ApiKeyManager, 'hasGeminiApiKey').mockReturnValue(true);
+
+    const list = vi.fn();
+
+    if (options.listError) {
+      list.mockRejectedValueOnce(options.listError);
+    } else {
+      const listedModels = options.listedModels ?? [];
+      list.mockResolvedValueOnce(
+        (async function* () {
+          for (const listedModel of listedModels) {
+            yield listedModel;
+          }
+        })(),
+      );
+    }
+
+    vi.spyOn(provider, 'initialize').mockImplementation(async config => {
+      await Promise.resolve();
+      Object.assign(provider as object, {
+        config,
+        initializationAttempted: true,
+        initializationPromise: Promise.resolve(),
+        ai: {
+          models: { list },
+        },
+      });
+    });
+
+    return { list };
+  };
+
+  it('lists available models from the Google GenAI client and normalizes model names', async () => {
+    const provider = new GeminiProvider();
+    const { list } = await setupModelListing(provider, {
+      listedModels: [
+        { name: 'models/gemini-2.5-pro', supportedGenerationMethods: ['generateContent'] },
+        { name: 'models/text-embedding-004', supportedGenerationMethods: ['embedContent'] },
+        {
+          name: 'gemini-2.5-flash',
+          supportedGenerationMethods: ['generateContent', 'countTokens'],
+        },
+        { name: 'models/gemini-2.5-pro', supportedGenerationMethods: ['generateContent'] },
+        { name: 'models/gemini-2.0-flash' },
+        { supportedGenerationMethods: ['generateContent'] },
+      ],
+    });
+
+    const models = await provider.getAvailableModels();
+
+    expect(list).toHaveBeenCalledWith({
+      config: {
+        pageSize: 100,
+      },
+    });
+    expect(models).toEqual(['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-pro']);
+  });
+
+  it('falls back to supportedModels when model listing throws', async () => {
+    const provider = new GeminiProvider();
+    const warningSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { list } = await setupModelListing(provider, {
+      listError: new Error('listing failed'),
+    });
+
+    const models = await provider.getAvailableModels();
+
+    expect(list).toHaveBeenCalledTimes(1);
+    expect(models).toEqual(provider.supportedModels);
+    expect(warningSpy).toHaveBeenCalledWith(
+      'Error fetching Gemini models:',
+      expect.objectContaining({ message: 'listing failed' }),
+    );
+  });
+
+  it('falls back to supportedModels when listing yields no usable models', async () => {
+    const provider = new GeminiProvider();
+    const { list } = await setupModelListing(provider, {
+      listedModels: [
+        { name: 'models/text-embedding-004', supportedGenerationMethods: ['embedContent'] },
+        { name: 'models/code-execution-only', supportedGenerationMethods: ['countTokens'] },
+        {},
+      ],
+    });
+
+    const models = await provider.getAvailableModels();
+
+    expect(list).toHaveBeenCalledTimes(1);
+    expect(models).toEqual(provider.supportedModels);
+  });
 
   it('awaits lazy initialization before creating a chat stream', async () => {
     const provider = new GeminiProvider();

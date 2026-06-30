@@ -79,7 +79,54 @@ export class GeminiProvider implements LLMProvider {
   }
 
   async getAvailableModels(): Promise<string[]> {
-    return this.supportedModels;
+    const ai = await this.getAi();
+
+    if (!ai) {
+      return this.supportedModels;
+    }
+
+    try {
+      const modelPager = await (ai as any).models?.list?.({
+        config: {
+          pageSize: 100,
+        },
+      });
+
+      if (!modelPager) {
+        return this.supportedModels;
+      }
+
+      const models: string[] = [];
+
+      for await (const listedModel of modelPager as AsyncIterable<{
+        name?: string;
+        supportedGenerationMethods?: string[];
+      }>) {
+        const supportedGenerationMethods = Array.isArray(listedModel?.supportedGenerationMethods)
+          ? listedModel.supportedGenerationMethods
+          : [];
+
+        if (
+          supportedGenerationMethods.length > 0 &&
+          !supportedGenerationMethods.includes('generateContent')
+        ) {
+          continue;
+        }
+
+        const normalizedName = listedModel?.name?.replace(/^models\//, '');
+        if (!normalizedName) {
+          continue;
+        }
+
+        models.push(normalizedName);
+      }
+
+      const uniqueModels = Array.from(new Set(models)).sort();
+      return uniqueModels.length > 0 ? uniqueModels : this.supportedModels;
+    } catch (error) {
+      console.warn('Error fetching Gemini models:', error);
+      return this.supportedModels;
+    }
   }
 
   private async getAi(): Promise<GoogleGenAI | null> {
