@@ -3,6 +3,7 @@ import { HtmlProjectFileDescriptor } from '../../types';
 import { useAppContext } from '../core/useAppContext';
 import { htmlProjectStore } from '../../services/htmlProjectStore';
 import { htmlPreviewService } from '../../services/htmlPreviewService';
+import { htmlProjectZipService } from '../../services/htmlProjectZipService';
 import { PreviewToolbar } from './PreviewToolbar';
 import { PreviewFrame } from './PreviewFrame';
 import { FileTree } from './FileTree';
@@ -19,6 +20,7 @@ export function HtmlProjectWorkspace({ projectId }: HtmlProjectWorkspaceProps): 
   const [entryFile, setEntryFile] = useState('/index.html');
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('preview');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isDownloadingZip, setIsDownloadingZip] = useState(false);
 
   const preview = state.projectPreview;
 
@@ -59,6 +61,29 @@ export function HtmlProjectWorkspace({ projectId }: HtmlProjectWorkspaceProps): 
     }
   };
 
+  const handleDownloadZip = async () => {
+    if (!state.currentAssistant) {
+      actions.appendProjectActivity('無法下載 ZIP：找不到目前 assistant。');
+      return;
+    }
+
+    setIsDownloadingZip(true);
+    try {
+      const result = await htmlProjectZipService.downloadProjectZip(
+        projectId,
+        state.currentAssistant.id,
+      );
+      actions.appendProjectActivity(
+        `已下載 ZIP：${result.fileName}（${result.fileCount} 個檔案）。`,
+      );
+    } catch (error) {
+      console.error('Failed to download HTML project zip:', error);
+      actions.appendProjectActivity(`無法下載 ZIP：${(error as Error).message}`);
+    } finally {
+      setIsDownloadingZip(false);
+    }
+  };
+
   const tabs = useMemo(
     () => [
       { id: 'preview' as const, label: 'Preview' },
@@ -78,7 +103,9 @@ export function HtmlProjectWorkspace({ projectId }: HtmlProjectWorkspaceProps): 
         previewVersion={preview?.previewVersion || 0}
         previewUrl={preview?.url}
         isRefreshing={isRefreshing}
+        isDownloadingZip={isDownloadingZip}
         onRefresh={handleRefresh}
+        onDownloadZip={handleDownloadZip}
         onClose={() => actions.setProjectWorkspaceOpen(false)}
       />
 

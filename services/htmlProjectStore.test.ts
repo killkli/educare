@@ -150,6 +150,7 @@ describe('htmlProjectStore', () => {
 
     const updatedProject = await htmlProjectStore.getProject(project.id);
     const files = await htmlProjectStore.listFiles(project.id);
+    const projectFiles = await htmlProjectStore.listProjectFiles(project.id);
     const htmlFile = await htmlProjectStore.readFile(project.id, 'index.html');
 
     expect(writeResult).toEqual({
@@ -158,6 +159,12 @@ describe('htmlProjectStore', () => {
     });
     expect(updatedProject?.previewVersion).toBe(1);
     expect(files.map(file => file.path)).toEqual(['/index.html', '/styles/app.css']);
+    expect(projectFiles.map(file => file.path)).toEqual(['/index.html', '/styles/app.css']);
+    expect(projectFiles[0]).toMatchObject({
+      path: '/index.html',
+      content: '<link rel="stylesheet" href="styles/app.css">',
+      encoding: 'utf-8',
+    });
     expect(htmlFile).toMatchObject({
       path: '/index.html',
       dependencies: ['/styles/app.css'],
@@ -357,6 +364,99 @@ describe('htmlProjectStore', () => {
     expect(missingFile).toBeUndefined();
     expect(entrypointProject.entryFile).toBe('/src/app.html');
     expect(entrypointProject.previewVersion).toBe(3);
+  });
+
+  it('deletes a single project record, files, and snapshots without touching other assistants', async () => {
+    const mockDb = createMockDb();
+    mockOpenDB.mockResolvedValue(mockDb);
+    vi.spyOn(Date, 'now')
+      .mockReturnValueOnce(1700000000000)
+      .mockReturnValueOnce(1700000001000)
+      .mockReturnValueOnce(1700000002000)
+      .mockReturnValueOnce(1700000003000)
+      .mockReturnValueOnce(1700000004000)
+      .mockReturnValueOnce(1700000005000);
+
+    const { htmlProjectStore } = await import('./htmlProjectStore');
+
+    const targetProject = await htmlProjectStore.createProject({
+      assistantId: 'assistant-1',
+      name: 'Delete Me',
+    });
+    const otherAssistantProject = await htmlProjectStore.createProject({
+      assistantId: 'assistant-2',
+      name: 'Keep Me',
+    });
+
+    await htmlProjectStore.writeFiles(targetProject.id, [
+      {
+        path: 'index.html',
+        kind: 'html',
+        content: '<main>delete me</main>',
+      },
+    ]);
+    await htmlProjectStore.writeFiles(otherAssistantProject.id, [
+      {
+        path: 'index.html',
+        kind: 'html',
+        content: '<main>keep me</main>',
+      },
+    ]);
+    const snapshot = await htmlProjectStore.createSnapshot(targetProject.id, 'delete snapshot');
+
+    const deletedProject = await htmlProjectStore.deleteProject(targetProject.id, 'assistant-1');
+
+    expect(deletedProject).toMatchObject({
+      id: targetProject.id,
+      assistantId: 'assistant-1',
+      name: 'Delete Me',
+    });
+    await expect(
+      htmlProjectStore.assertProjectOwnership(targetProject.id, 'assistant-1'),
+    ).rejects.toThrow(`HTML project ${targetProject.id} not found.`);
+    expect(await htmlProjectStore.listFiles(targetProject.id)).toEqual([]);
+    expect(mockDb.delete).toHaveBeenCalledWith('htmlProjectFiles', [
+      targetProject.id,
+      '/index.html',
+    ]);
+    expect(mockDb.delete).toHaveBeenCalledWith('htmlProjectSnapshots', [
+      targetProject.id,
+      snapshot.version,
+    ]);
+    expect(mockDb.delete).toHaveBeenCalledWith('htmlProjects', targetProject.id);
+    await expect(
+      htmlProjectStore.assertProjectOwnership(otherAssistantProject.id, 'assistant-2'),
+    ).resolves.toMatchObject({
+      id: otherAssistantProject.id,
+      name: 'Keep Me',
+    });
+    expect(
+      (await htmlProjectStore.listFiles(otherAssistantProject.id)).map(file => file.path),
+    ).toEqual(['/index.html']);
+  });
+
+  it('rejects single-project deletion when the assistant does not own the project', async () => {
+    const mockDb = createMockDb();
+    mockOpenDB.mockResolvedValue(mockDb);
+    vi.spyOn(Date, 'now').mockReturnValue(1700000000000);
+
+    const { htmlProjectStore } = await import('./htmlProjectStore');
+
+    const project = await htmlProjectStore.createProject({
+      assistantId: 'assistant-1',
+      name: 'Protected Project',
+    });
+
+    await expect(htmlProjectStore.deleteProject(project.id, 'assistant-2')).rejects.toThrow(
+      `HTML project ${project.id} not found.`,
+    );
+
+    await expect(
+      htmlProjectStore.assertProjectOwnership(project.id, 'assistant-1'),
+    ).resolves.toMatchObject({
+      id: project.id,
+      assistantId: 'assistant-1',
+    });
   });
 
   it('deletes every project, file, and snapshot for the assistant only', async () => {

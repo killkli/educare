@@ -110,11 +110,21 @@ let dbPromise: Promise<IDBPDatabase<HtmlProjectDB>> | null = null;
 const now = (): number => Date.now();
 
 const normalizePath = (path: string): string => {
-  if (!path.trim()) {
+  const trimmedPath = path.trim();
+  if (!trimmedPath) {
     throw new Error('Project file path is required.');
   }
 
-  return path.startsWith('/') ? path : `/${path}`;
+  const normalizedPath = (trimmedPath.startsWith('/') ? trimmedPath : `/${trimmedPath}`)
+    .replace(/\\/g, '/')
+    .replace(/\/+/g, '/');
+  const segments = normalizedPath.split('/').filter(Boolean);
+
+  if (segments.some(segment => segment === '.' || segment === '..')) {
+    throw new Error(`Unsafe project file path: ${path}`);
+  }
+
+  return `/${segments.join('/')}`;
 };
 
 const inferDependencies = (kind: HtmlProjectFileKind, content: string): string[] => {
@@ -280,6 +290,12 @@ class HtmlProjectStore {
     return files
       .sort((a, b) => a.path.localeCompare(b.path))
       .map(file => buildFileDescriptor(file));
+  }
+
+  async listProjectFiles(projectId: string): Promise<HtmlProjectFile[]> {
+    const db = await getDb();
+    const files = await db.getAllFromIndex(PROJECT_FILES_STORE, 'by-project', projectId);
+    return files.sort((a, b) => a.path.localeCompare(b.path));
   }
 
   async readFile(projectId: string, path: string): Promise<HtmlProjectFile | undefined> {
@@ -505,22 +521,32 @@ class HtmlProjectStore {
     return snapshot;
   }
 
-  async deleteProjectsByAssistant(assistantId: string): Promise<number> {
+  private async deleteProjectRecords(projectId: string): Promise<void> {
     const db = await getDb();
+    const files = await db.getAllFromIndex(PROJECT_FILES_STORE, 'by-project', projectId);
+    for (const file of files) {
+      await db.delete(PROJECT_FILES_STORE, [projectId, file.path]);
+    }
+
+    const snapshots = await db.getAllFromIndex(PROJECT_SNAPSHOTS_STORE, 'by-project', projectId);
+    for (const snapshot of snapshots) {
+      await db.delete(PROJECT_SNAPSHOTS_STORE, [projectId, snapshot.version]);
+    }
+
+    await db.delete(PROJECTS_STORE, projectId);
+  }
+
+  async deleteProject(projectId: string, assistantId: string): Promise<HtmlProject> {
+    const project = await this.assertProjectOwnership(projectId, assistantId);
+    await this.deleteProjectRecords(project.id);
+    return project;
+  }
+
+  async deleteProjectsByAssistant(assistantId: string): Promise<number> {
     const projects = await this.listProjectsByAssistant(assistantId);
 
     for (const project of projects) {
-      const files = await db.getAllFromIndex(PROJECT_FILES_STORE, 'by-project', project.id);
-      for (const file of files) {
-        await db.delete(PROJECT_FILES_STORE, [project.id, file.path]);
-      }
-
-      const snapshots = await db.getAllFromIndex(PROJECT_SNAPSHOTS_STORE, 'by-project', project.id);
-      for (const snapshot of snapshots) {
-        await db.delete(PROJECT_SNAPSHOTS_STORE, [project.id, snapshot.version]);
-      }
-
-      await db.delete(PROJECTS_STORE, project.id);
+      await this.deleteProjectRecords(project.id);
     }
 
     return projects.length;

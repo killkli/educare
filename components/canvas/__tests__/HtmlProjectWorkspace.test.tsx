@@ -6,6 +6,7 @@ import { HtmlProjectWorkspace } from '../HtmlProjectWorkspace';
 import { useAppContext } from '../../core/useAppContext';
 import { htmlProjectStore } from '../../../services/htmlProjectStore';
 import { htmlPreviewService } from '../../../services/htmlPreviewService';
+import { htmlProjectZipService } from '../../../services/htmlProjectZipService';
 
 vi.mock('../../core/useAppContext', () => ({
   useAppContext: vi.fn(),
@@ -24,28 +25,52 @@ vi.mock('../../../services/htmlPreviewService', () => ({
   },
 }));
 
+vi.mock('../../../services/htmlProjectZipService', () => ({
+  htmlProjectZipService: {
+    downloadProjectZip: vi.fn(),
+  },
+}));
+
 vi.mock('../PreviewToolbar', () => ({
   PreviewToolbar: ({
     projectId,
     previewVersion,
     isRefreshing,
+    isDownloadingZip,
     onRefresh,
+    onDownloadZip,
   }: {
     projectId: string;
     previewVersion: number;
     isRefreshing: boolean;
+    isDownloadingZip?: boolean;
     onRefresh: () => void;
+    onDownloadZip?: () => void;
   }) =>
-    React.createElement(
-      'button',
-      {
-        'data-testid': 'refresh-preview',
-        disabled: isRefreshing,
-        onClick: onRefresh,
-        type: 'button',
-      },
-      `Refresh ${projectId} v${previewVersion}`,
-    ),
+    React.createElement(React.Fragment, null, [
+      React.createElement(
+        'button',
+        {
+          key: 'refresh',
+          'data-testid': 'refresh-preview',
+          disabled: isRefreshing,
+          onClick: onRefresh,
+          type: 'button',
+        },
+        `Refresh ${projectId} v${previewVersion}`,
+      ),
+      React.createElement(
+        'button',
+        {
+          key: 'download',
+          'data-testid': 'download-zip',
+          disabled: isDownloadingZip,
+          onClick: onDownloadZip,
+          type: 'button',
+        },
+        isDownloadingZip ? 'Downloading…' : 'Download ZIP',
+      ),
+    ]),
 }));
 
 vi.mock('../PreviewFrame', () => ({
@@ -71,6 +96,9 @@ describe('HtmlProjectWorkspace', () => {
 
     vi.mocked(useAppContext).mockReturnValue({
       state: {
+        currentAssistant: {
+          id: 'assistant-1',
+        },
         projectPreview: {
           projectId: 'project-1',
           url: 'blob:preview-1',
@@ -142,6 +170,45 @@ describe('HtmlProjectWorkspace', () => {
         previewVersion: 2,
       });
       expect(mockAppendProjectActivity).toHaveBeenCalledWith('重新整理預覽：version 2');
+    });
+  });
+
+  it('downloads the project zip and logs the exported file details', async () => {
+    vi.mocked(htmlProjectZipService.downloadProjectZip).mockResolvedValue({
+      fileCount: 3,
+      fileName: 'existing-landing-page.zip',
+      projectId: 'project-1',
+      projectName: 'Existing Landing Page',
+    });
+
+    render(<HtmlProjectWorkspace projectId='project-1' />);
+
+    fireEvent.click(screen.getByTestId('download-zip'));
+
+    await waitFor(() => {
+      expect(htmlProjectZipService.downloadProjectZip).toHaveBeenCalledWith(
+        'project-1',
+        'assistant-1',
+      );
+      expect(mockAppendProjectActivity).toHaveBeenCalledWith(
+        '已下載 ZIP：existing-landing-page.zip（3 個檔案）。',
+      );
+    });
+  });
+
+  it('logs a helpful activity item when zip export fails', async () => {
+    vi.mocked(htmlProjectZipService.downloadProjectZip).mockRejectedValue(
+      new Error('HTML project has no files to export.'),
+    );
+
+    render(<HtmlProjectWorkspace projectId='project-1' />);
+
+    fireEvent.click(screen.getByTestId('download-zip'));
+
+    await waitFor(() => {
+      expect(mockAppendProjectActivity).toHaveBeenCalledWith(
+        '無法下載 ZIP：HTML project has no files to export.',
+      );
     });
   });
 });

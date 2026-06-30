@@ -51,6 +51,7 @@
     "@google/genai": "^1.18.0",
     "@huggingface/transformers": "4.2.0",
     "@libsql/client": "^0.15.15",
+    "fflate": "^0.8.3",
     "highlight.js": "^11.11.1",
     "idb": "^8.0.3",
     "mammoth": "^1.10.0",

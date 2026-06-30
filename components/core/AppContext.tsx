@@ -13,6 +13,7 @@ import {
 import { resolveShortUrl, recordShortUrlClick } from '../../services/shortUrlService';
 import { htmlPreviewService } from '../../services/htmlPreviewService';
 import { htmlProjectStore } from '../../services/htmlProjectStore';
+import { getTemplateFiles } from '../../services/htmlProjectTemplates';
 import { AppContext } from './useAppContext';
 import type { ViewMode, AppState, AppAction, AppContextValue } from './AppContext.types';
 
@@ -679,22 +680,85 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
     dispatch({ type: 'RESET_PROJECT_WORKSPACE' });
   }, [state.activeProjectId]);
 
+  const attachProjectToCurrentSession = useCallback(
+    async (
+      session: ChatSession,
+      projectId: string,
+      projectName: string,
+      activityPrefix: string,
+    ) => {
+      const preview = await htmlPreviewService.resolveProjectForPreview(projectId);
+      const nextSession: ChatSession = {
+        ...session,
+        activeProjectId: projectId,
+        updatedAt: Date.now(),
+      };
+
+      await db.saveSession(nextSession);
+      dispatch({ type: 'UPDATE_SESSION', payload: nextSession });
+      dispatch({ type: 'SET_ACTIVE_PROJECT', payload: projectId });
+      dispatch({ type: 'SET_PROJECT_WORKSPACE_OPEN', payload: true });
+      dispatch({ type: 'SET_PROJECT_PREVIEW', payload: preview });
+      dispatch({
+        type: 'APPEND_PROJECT_ACTIVITY',
+        payload: `${activityPrefix}「${projectName}」。`,
+      });
+    },
+    [dispatch],
+  );
+
+  const clearCurrentSessionProject = useCallback(
+    async (session: ChatSession, activityMessage?: string) => {
+      const nextSession: ChatSession = {
+        ...session,
+        activeProjectId: null,
+        updatedAt: Date.now(),
+      };
+
+      await db.saveSession(nextSession);
+      dispatch({ type: 'UPDATE_SESSION', payload: nextSession });
+      clearProjectWorkspace();
+
+      if (activityMessage) {
+        dispatch({
+          type: 'APPEND_PROJECT_ACTIVITY',
+          payload: activityMessage,
+        });
+      }
+    },
+    [clearProjectWorkspace, dispatch],
+  );
+
   const clearProjectForCurrentSession = useCallback(async () => {
     if (!state.currentSession) {
       clearProjectWorkspace();
       return;
     }
 
-    const nextSession: ChatSession = {
-      ...state.currentSession,
-      activeProjectId: null,
-      updatedAt: Date.now(),
-    };
+    await clearCurrentSessionProject(state.currentSession);
+  }, [clearCurrentSessionProject, clearProjectWorkspace, state.currentSession]);
 
-    await db.saveSession(nextSession);
-    dispatch({ type: 'UPDATE_SESSION', payload: nextSession });
-    clearProjectWorkspace();
-  }, [clearProjectWorkspace, state.currentSession]);
+  const createProjectForCurrentSession = useCallback(async () => {
+    if (!state.currentSession) {
+      return;
+    }
+
+    const createdAt = Date.now();
+    const project = await htmlProjectStore.createProject({
+      assistantId: state.currentSession.assistantId,
+      sessionId: state.currentSession.id,
+      name: `HTML Project ${new Date(createdAt).toLocaleString('zh-TW')}`,
+    });
+
+    const templateFiles = getTemplateFiles();
+    await htmlProjectStore.writeFiles(project.id, templateFiles);
+    await attachProjectToCurrentSession(
+      state.currentSession,
+      project.id,
+      project.name,
+      '已建立新的 HTML 專案',
+    );
+  }, [state.currentSession]);
 
   const openProjectForCurrentSession = useCallback(
     async (projectId: string) => {
@@ -706,24 +770,41 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
         projectId,
         state.currentSession.assistantId,
       );
-      const preview = await htmlPreviewService.resolveProjectForPreview(project.id);
-      const nextSession: ChatSession = {
-        ...state.currentSession,
-        activeProjectId: project.id,
-        updatedAt: Date.now(),
-      };
-
-      await db.saveSession(nextSession);
-      dispatch({ type: 'UPDATE_SESSION', payload: nextSession });
-      dispatch({ type: 'SET_ACTIVE_PROJECT', payload: project.id });
-      dispatch({ type: 'SET_PROJECT_WORKSPACE_OPEN', payload: true });
-      dispatch({ type: 'SET_PROJECT_PREVIEW', payload: preview });
-      dispatch({
-        type: 'APPEND_PROJECT_ACTIVITY',
-        payload: `已開啟既有 HTML 專案「${project.name}」。`,
-      });
+      await attachProjectToCurrentSession(
+        state.currentSession,
+        project.id,
+        project.name,
+        '已開啟既有 HTML 專案',
+      );
     },
     [state.currentSession],
+  );
+
+  const deleteProjectForCurrentSession = useCallback(
+    async (projectId: string) => {
+      if (!state.currentSession) {
+        return;
+      }
+
+      const project = await htmlProjectStore.deleteProject(
+        projectId,
+        state.currentSession.assistantId,
+      );
+
+      if (state.currentSession.activeProjectId === project.id) {
+        await clearCurrentSessionProject(
+          state.currentSession,
+          `已刪除 HTML 專案「${project.name}」。`,
+        );
+        return;
+      }
+
+      dispatch({
+        type: 'APPEND_PROJECT_ACTIVITY',
+        payload: `已刪除 HTML 專案「${project.name}」。`,
+      });
+    },
+    [clearProjectWorkspace, state.currentSession],
   );
 
   const syncProjectWorkspaceForSession = useCallback(
@@ -748,19 +829,10 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       } catch (error) {
         console.error('Failed to sync HTML project workspace:', error);
 
-        const clearedSession: ChatSession = {
-          ...session,
-          activeProjectId: null,
-          updatedAt: Date.now(),
-        };
-
-        await db.saveSession(clearedSession);
-        dispatch({ type: 'UPDATE_SESSION', payload: clearedSession });
-        clearProjectWorkspace();
-        dispatch({
-          type: 'APPEND_PROJECT_ACTIVITY',
-          payload: `無法載入 HTML project 預覽：${(error as Error).message}`,
-        });
+        await clearCurrentSessionProject(
+          session,
+          `無法載入 HTML project 預覽：${(error as Error).message}`,
+        );
       }
     },
     [clearProjectWorkspace],
@@ -796,7 +868,9 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       setProjectWorkspaceOpen,
       setProjectPreview,
       appendProjectActivity,
+      createProjectForCurrentSession,
       openProjectForCurrentSession,
+      deleteProjectForCurrentSession,
       clearProjectForCurrentSession,
       clearProjectWorkspace,
       syncProjectWorkspaceForSession,
