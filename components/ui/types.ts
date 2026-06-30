@@ -18,6 +18,7 @@ export interface ModalProps {
   title?: string;
   children: React.ReactNode;
   className?: string;
+  size?: 'default' | 'fullscreen';
 }
 
 export interface SidebarProps {

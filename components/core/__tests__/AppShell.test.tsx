@@ -113,6 +113,17 @@ vi.mock('../../../services/htmlProjectStore', () => ({
         createdAt: 1700000000000,
         updatedAt: 1700000000000,
       })),
+    deleteProject: vi.fn().mockImplementation(async (projectId: string, _assistantId: string) => ({
+      id: projectId,
+      name: `Project ${projectId}`,
+      assistantId: 'test-assistant-1',
+      entryFile: '/index.html',
+      status: 'ready',
+      previewVersion: 1,
+      assetPaths: [],
+      createdAt: 1700000000000,
+      updatedAt: 1700000000000,
+    })),
     deleteProjectsByAssistant: vi.fn().mockResolvedValue(0),
   },
 }));
@@ -326,6 +337,19 @@ beforeEach(() => {
       updatedAt: 1700000000000,
     }),
   );
+  vi.mocked(htmlProjectStoreMock.htmlProjectStore.deleteProject).mockImplementation(
+    async (projectId: string, _assistantId: string) => ({
+      id: projectId,
+      name: `Project ${projectId}`,
+      assistantId: 'test-assistant-1',
+      entryFile: '/index.html',
+      status: 'ready',
+      previewVersion: 1,
+      assetPaths: [],
+      createdAt: 1700000000000,
+      updatedAt: 1700000000000,
+    }),
+  );
   vi.mocked(htmlProjectStoreMock.htmlProjectStore.deleteProjectsByAssistant).mockResolvedValue(0);
 
   vi.mocked(embeddingMock.preloadEmbeddingModel).mockResolvedValue(undefined);
@@ -512,9 +536,19 @@ describe('AppShell', () => {
 
       render(<AppShell />);
 
+      const openPickerButton = await screen.findByRole('button', {
+        name: 'HTML Projects',
+      });
+
+      expect(screen.getByTestId('html-project-picker')).toBeInTheDocument();
+      expect(screen.queryByText('Existing Landing Page')).not.toBeInTheDocument();
+
+      await act(async () => {
+        fireEvent.click(openPickerButton);
+      });
+
       await waitFor(() => {
-        expect(screen.getByTestId('html-project-picker')).toBeInTheDocument();
-        expect(screen.getByText('Open existing HTML project')).toBeInTheDocument();
+        expect(screen.getByText('HTML Canvas projects')).toBeInTheDocument();
         expect(screen.getByText('Existing Landing Page')).toBeInTheDocument();
       });
 
@@ -549,12 +583,22 @@ describe('AppShell', () => {
 
       render(<AppShell />);
 
-      const openProjectButton = await screen.findByRole('button', {
-        name: /Existing Landing Page/i,
+      const openPickerButton = await screen.findByRole('button', {
+        name: 'HTML Projects',
+      });
+
+      expect(screen.getByTestId('html-project-picker')).toBeInTheDocument();
+
+      await act(async () => {
+        fireEvent.click(openPickerButton);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('Existing Landing Page')).toBeInTheDocument();
       });
 
       await act(async () => {
-        fireEvent.click(openProjectButton);
+        fireEvent.click(screen.getByRole('button', { name: 'Open project' }));
       });
 
       await waitFor(() => {
@@ -599,6 +643,54 @@ describe('AppShell', () => {
       ).toHaveBeenCalledWith('project-42');
     });
 
+    it('should keep the HTML project manager reachable when the current session already has an active project', async () => {
+      const projectSession = {
+        ...TEST_SESSIONS.withMessages,
+        activeProjectId: 'project-42',
+      };
+      vi.mocked(dbMock.getSessionsForAssistant).mockResolvedValue([projectSession]);
+      vi.mocked(htmlProjectStoreMock.htmlProjectStore.listProjectsByAssistant).mockResolvedValue([
+        {
+          id: 'project-42',
+          name: 'Current Workspace',
+          assistantId: TEST_ASSISTANTS.basic.id,
+          entryFile: '/index.html',
+          previewVersion: 3,
+          updatedAt: 1700000000000,
+          description: 'Current project',
+        },
+        {
+          id: 'project-99',
+          name: 'Marketing Site',
+          assistantId: TEST_ASSISTANTS.basic.id,
+          entryFile: '/landing.html',
+          previewVersion: 5,
+          updatedAt: 1700000001000,
+          description: 'Second project',
+        },
+      ] as never);
+
+      render(<AppShell />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Workspace: project-42')).toBeInTheDocument();
+      });
+
+      const managerButton = screen.getByRole('button', { name: 'HTML Projects' });
+      expect(managerButton).toBeInTheDocument();
+
+      await act(async () => {
+        fireEvent.click(managerButton);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('HTML Canvas projects')).toBeInTheDocument();
+        expect(screen.getByText('Current Workspace')).toBeInTheDocument();
+        expect(screen.getByText('Marketing Site')).toBeInTheDocument();
+        expect(screen.getByText('目前使用中')).toBeInTheDocument();
+      });
+    });
+
     it('should clear invalid active project pointers safely when the saved project cannot be reopened', async () => {
       const invalidProjectSession = {
         ...TEST_SESSIONS.withMessages,
@@ -641,7 +733,7 @@ describe('AppShell', () => {
       });
 
       const chatContainer = screen.getByTestId('chat-container');
-      const chatPane = chatContainer.parentElement;
+      const chatPane = chatContainer.parentElement?.parentElement;
       expect(chatPane).toHaveClass('lg:w-[55%]');
 
       await act(async () => {
@@ -711,7 +803,6 @@ describe('AppShell', () => {
           }),
         );
         expect(screen.getByTestId('html-project-picker')).toBeInTheDocument();
-        expect(screen.getByText('Reusable Landing Page')).toBeInTheDocument();
       });
 
       expect(
@@ -719,7 +810,15 @@ describe('AppShell', () => {
       ).not.toHaveBeenCalled();
 
       await act(async () => {
-        fireEvent.click(screen.getByRole('button', { name: /Reusable Landing Page/i }));
+        fireEvent.click(screen.getByRole('button', { name: 'HTML Projects' }));
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('Reusable Landing Page')).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Open project' }));
       });
 
       await waitFor(() => {
@@ -734,6 +833,72 @@ describe('AppShell', () => {
 
       confirmSpy.mockRestore();
       nowSpy.mockRestore();
+    });
+
+    it('should delete the active HTML project, close the workspace, and keep the manager entry point available', async () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const projectSession = {
+        ...TEST_SESSIONS.withMessages,
+        activeProjectId: 'project-42',
+      };
+      vi.mocked(dbMock.getSessionsForAssistant).mockResolvedValue([projectSession]);
+      vi.mocked(htmlProjectStoreMock.htmlProjectStore.listProjectsByAssistant).mockResolvedValue([
+        {
+          id: 'project-42',
+          name: 'Current Workspace',
+          assistantId: TEST_ASSISTANTS.basic.id,
+          entryFile: '/index.html',
+          previewVersion: 3,
+          updatedAt: 1700000000000,
+          description: 'Current project',
+        },
+      ] as never);
+      vi.mocked(htmlProjectStoreMock.htmlProjectStore.deleteProject).mockResolvedValue({
+        id: 'project-42',
+        name: 'Current Workspace',
+        assistantId: TEST_ASSISTANTS.basic.id,
+        entryFile: '/index.html',
+        status: 'ready',
+        previewVersion: 3,
+        assetPaths: [],
+        createdAt: 1700000000000,
+        updatedAt: 1700000000000,
+      } as never);
+
+      render(<AppShell />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Workspace: project-42')).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'HTML Projects' }));
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('Current Workspace')).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Delete project' }));
+      });
+
+      await waitFor(() => {
+        expect(htmlProjectStoreMock.htmlProjectStore.deleteProject).toHaveBeenCalledWith(
+          'project-42',
+          projectSession.assistantId,
+        );
+        expect(dbMock.saveSession).toHaveBeenCalledWith(
+          expect.objectContaining({
+            id: projectSession.id,
+            activeProjectId: null,
+          }),
+        );
+        expect(screen.queryByTestId('html-project-workspace')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'HTML Projects' })).toBeInTheDocument();
+      });
+
+      confirmSpy.mockRestore();
     });
 
     it('should sync the workspace to each session active project when switching sessions', async () => {

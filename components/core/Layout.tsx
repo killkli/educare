@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { useAppContext } from './useAppContext';
 import { AssistantList } from '../assistant';
+import { ProjectPicker } from '../canvas';
 import { ChatIcon, TrashIcon, SettingsIcon, PlusIcon } from '../ui/Icons';
 import { ChatSession } from '../../types';
 import { useTursoAssistantStatus } from '../../hooks/useTursoAssistantStatus';
@@ -148,6 +149,23 @@ export function Layout({ children }: LayoutProps): React.JSX.Element {
           canShare={canShare}
           collapsed={collapsed}
         />
+
+        {state.currentAssistant && state.currentSession && (
+          <ProjectPicker
+            assistantId={state.currentAssistant.id}
+            activeProjectId={state.activeProjectId}
+            onCreateProject={async () => {
+              await actions.createProjectForCurrentSession();
+              closeDrawerIfMobile();
+            }}
+            onOpenProject={async projectId => {
+              await actions.openProjectForCurrentSession(projectId);
+              closeDrawerIfMobile();
+            }}
+            onDeleteProject={actions.deleteProjectForCurrentSession}
+            variant={collapsed ? 'sidebar-collapsed' : 'sidebar'}
+          />
+        )}
 
         {/* Session List */}
         {state.currentAssistant &&
