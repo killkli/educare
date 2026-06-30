@@ -20,6 +20,29 @@ const HTML_PROJECT_KEYWORDS = [
   'app',
 ];
 
+const HTML_PROJECT_CONTINUATION_KEYWORDS = [
+  'continue',
+  'continuing',
+  'existing project',
+  'previous project',
+  'reopen',
+  'open project',
+  'resume',
+  'same project',
+  'earlier page',
+  'existing canvas',
+  '之前的頁面',
+  '之前做的',
+  '延續',
+  '延續剛剛',
+  '既有專案',
+  '舊專案',
+  '繼續修改',
+  '重開專案',
+  '開啟專案',
+  '同一個 project',
+];
+
 export const shouldEnableHtmlProjectTools = (
   message: string,
   activeProjectId?: string | null,
@@ -29,19 +52,22 @@ export const shouldEnableHtmlProjectTools = (
   }
 
   const normalized = message.toLowerCase();
-  return HTML_PROJECT_KEYWORDS.some(keyword => normalized.includes(keyword.toLowerCase()));
+  return [...HTML_PROJECT_KEYWORDS, ...HTML_PROJECT_CONTINUATION_KEYWORDS].some(keyword =>
+    normalized.includes(keyword.toLowerCase()),
+  );
 };
 
 export const buildHtmlProjectSystemPrompt = (activeProjectId?: string | null): string => {
   const continuationPrompt = activeProjectId
     ? `Current active HTML project id: ${activeProjectId}. Reuse it for incremental edits unless the user explicitly asks for a fresh project.`
-    : 'No active HTML project exists yet. Create one before writing files when the user asks for a webpage, prototype, or UI implementation.';
+    : 'No active HTML project exists yet. If the user wants to continue or reopen earlier canvas work, call listProjects first, then openProject before editing files. Only createProject when the user wants a brand new webpage or prototype.';
 
   return [
     'You can maintain browser-only HTML projects for the user using dedicated project tools.',
     continuationPrompt,
-    'When building or editing UI, prefer createProject/writeFiles/listFiles/readFile/deleteFile/setEntrypoint/renderPreview over dumping large HTML directly into the chat response.',
-    'Use listFiles/readFile to inspect an existing project before making targeted edits.',
+    'When building or editing UI, prefer createProject, listProjects, openProject, searchFiles, listFiles, readFile, writeFiles, deleteFile, setEntrypoint, and renderPreview over dumping large HTML directly into the chat response.',
+    'For targeted edits, inspect existing work first: use searchFiles to locate relevant code, use listFiles to inspect structure, then use readFile before writeFiles.',
+    'After opening an existing project, continue editing that same project unless the user explicitly asks to fork or replace it.',
     'After file changes, call renderPreview so the UI can refresh the sandboxed preview.',
     'Keep final chat responses concise and summarize the project changes rather than pasting the full source code.',
   ].join(' ');
