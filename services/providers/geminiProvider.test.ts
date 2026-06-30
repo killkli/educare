@@ -498,7 +498,7 @@ describe('GeminiProvider', () => {
   it('throws when Gemini exceeds the maximum number of tool rounds', async () => {
     const provider = new GeminiProvider();
     await setupProvider(provider, {
-      sendMessageResponses: Array.from({ length: 6 }, (_, index) => ({
+      sendMessageResponses: Array.from({ length: 21 }, (_, index) => ({
         functionCalls: [
           {
             id: `call-${index + 1}`,

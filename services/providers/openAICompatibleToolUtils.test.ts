@@ -341,9 +341,9 @@ describe('streamOpenAICompatibleChat', () => {
       })) {
         void chunk;
       }
-    }).rejects.toThrow('OpenAI-compatible providers exceeded maximum tool rounds (5).');
+    }).rejects.toThrow('OpenAI-compatible providers exceeded maximum tool rounds (20).');
 
-    expect(executeTool).toHaveBeenCalledTimes(5);
-    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(executeTool).toHaveBeenCalledTimes(20);
+    expect(fetchMock).toHaveBeenCalledTimes(21);
   });
 });

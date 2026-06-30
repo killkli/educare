@@ -129,4 +129,109 @@ describe('AnthropicProvider', () => {
       name: 'render_preview',
     });
   });
+
+  it('supports multiple tool rounds before yielding final text', async () => {
+    const provider = new AnthropicProvider();
+    await provider.initialize({
+      apiKey: 'anthropic-test-key',
+      model: 'claude-opus-4-8',
+      maxToolRounds: 20,
+    });
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          content: [
+            {
+              type: 'tool_use',
+              id: 'call-1',
+              name: 'render_preview',
+              input: { projectId: 'project-1' },
+            },
+          ],
+          usage: { input_tokens: 2, output_tokens: 1 },
+        }),
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          content: [
+            {
+              type: 'tool_use',
+              id: 'call-2',
+              name: 'render_preview',
+              input: { projectId: 'project-2' },
+            },
+          ],
+          usage: { input_tokens: 3, output_tokens: 1 },
+        }),
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          content: [{ type: 'text', text: 'done' }],
+          usage: { input_tokens: 4, output_tokens: 2 },
+        }),
+      );
+
+    const executeTool = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: 'first' })
+      .mockResolvedValueOnce({ ok: 'second' });
+
+    const chunks = [];
+    for await (const chunk of provider.streamChat({
+      systemPrompt: 'You are helpful.',
+      history: [],
+      message: 'hello',
+      tools: [...TOOL_DEFINITIONS],
+      executeTool,
+    })) {
+      chunks.push(chunk);
+    }
+
+    expect(executeTool).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(chunks[0]?.text).toBe('done');
+  });
+
+  it('throws when Anthropic exceeds the maximum number of tool rounds', async () => {
+    const provider = new AnthropicProvider();
+    await provider.initialize({
+      apiKey: 'anthropic-test-key',
+      model: 'claude-opus-4-8',
+      maxToolRounds: 2,
+    });
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
+      Promise.resolve(
+        createJsonResponse({
+          content: [
+            {
+              type: 'tool_use',
+              id: 'loop-call',
+              name: 'render_preview',
+              input: { projectId: 'project-loop' },
+            },
+          ],
+          usage: { input_tokens: 1, output_tokens: 1 },
+        }),
+      ),
+    );
+    const executeTool = vi.fn().mockResolvedValue({ ok: true });
+
+    await expect(async () => {
+      for await (const chunk of provider.streamChat({
+        systemPrompt: 'You are helpful.',
+        history: [],
+        message: 'hello',
+        tools: [...TOOL_DEFINITIONS],
+        executeTool,
+      })) {
+        void chunk;
+      }
+    }).rejects.toThrow('Anthropic exceeded maximum tool rounds (2).');
+
+    expect(executeTool).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
 });

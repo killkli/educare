@@ -36,6 +36,7 @@ interface StreamOptions {
   params: ChatParams;
   defaultTemperature?: number;
   defaultMaxTokens?: number;
+  defaultMaxToolRounds?: number;
 }
 
 const buildFinalSystemPrompt = (params: ChatParams): string => {
@@ -205,6 +206,7 @@ export async function* streamOpenAICompatibleChat(
     params,
     defaultTemperature = 0.7,
     defaultMaxTokens = 4096,
+    defaultMaxToolRounds = 20,
   } = options;
 
   const systemPrompt = buildFinalSystemPrompt(params);
@@ -212,7 +214,7 @@ export async function* streamOpenAICompatibleChat(
   let promptTokenCount = 0;
   let candidatesTokenCount = 0;
   const { visibleTools } = resolveToolPolicy(params);
-  const MAX_OPENAI_COMPATIBLE_TOOL_ROUNDS = 5;
+  const MAX_OPENAI_COMPATIBLE_TOOL_ROUNDS = Math.max(1, Math.round(defaultMaxToolRounds));
 
   if (visibleTools?.length && params.executeTool) {
     let toolRoundCount = 0;

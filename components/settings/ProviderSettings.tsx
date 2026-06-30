@@ -113,6 +113,16 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
   };
 
   const handleConfigUpdate = (providerType: ProviderType, key: string, value: string | number) => {
+    if (key === 'maxToolRounds') {
+      const numericValue = Number(value);
+      const sanitizedValue = Number.isFinite(numericValue)
+        ? Math.min(50, Math.max(1, Math.round(numericValue)))
+        : 20;
+      providerManager.updateProviderConfig(providerType, { [key]: sanitizedValue });
+      setSettings(providerManager.getSettings());
+      return;
+    }
+
     providerManager.updateProviderConfig(providerType, { [key]: value });
     setSettings(providerManager.getSettings());
   };
@@ -607,6 +617,32 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
                         }
                         className='w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500'
                       />
+                    </div>
+
+                    {/* Tool Rounds */}
+                    <div>
+                      <label className='block text-sm font-medium text-gray-300 mb-2'>
+                        Function Tool Call 次數上限
+                      </label>
+                      <input
+                        type='number'
+                        min='1'
+                        max='50'
+                        step='1'
+                        value={typeof config.maxToolRounds === 'number' ? config.maxToolRounds : 20}
+                        onChange={e =>
+                          handleConfigUpdate(
+                            providerType,
+                            'maxToolRounds',
+                            parseInt(e.target.value || '20', 10),
+                          )
+                        }
+                        className='w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500'
+                      />
+                      <p className='mt-1 text-xs text-gray-400'>
+                        控制模型在同一輪對話中最多可進行幾次 function / tool call 往返。預設
+                        20，避免複雜工具工作流太早中斷。
+                      </p>
                     </div>
 
                     {/* Test Button */}

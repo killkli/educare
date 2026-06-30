@@ -158,13 +158,27 @@ export class AnthropicProvider implements LLMProvider {
     }
 
     try {
-      const initialResponse = await this.createMessage(requestBody);
-      const toolUseBlocks =
-        initialResponse.content?.filter(
-          (block): block is AnthropicToolUseBlock => block.type === 'tool_use',
-        ) || [];
+      let response = await this.createMessage(requestBody);
+      let promptTokenCount = response.usage?.input_tokens || 0;
+      let candidatesTokenCount = response.usage?.output_tokens || 0;
+      const maxToolRounds = Math.max(1, Math.round(Number(this.config.maxToolRounds ?? 20)));
+      let toolRoundCount = 0;
+      let conversationMessages = [...messages];
 
-      if (visibleTools?.length && params.executeTool && toolUseBlocks.length > 0) {
+      while (visibleTools?.length && params.executeTool) {
+        const toolUseBlocks =
+          response.content?.filter(
+            (block): block is AnthropicToolUseBlock => block.type === 'tool_use',
+          ) || [];
+
+        if (toolUseBlocks.length === 0) {
+          break;
+        }
+
+        if (toolRoundCount >= maxToolRounds) {
+          throw new Error(`Anthropic exceeded maximum tool rounds (${maxToolRounds}).`);
+        }
+
         const toolResults = [] as Array<{
           type: 'tool_result';
           tool_use_id: string;
@@ -184,61 +198,49 @@ export class AnthropicProvider implements LLMProvider {
           });
         }
 
-        const finalResponse = await this.createMessage({
+        conversationMessages = [
+          ...conversationMessages,
+          {
+            role: 'assistant',
+            content: response.content?.map(block =>
+              block.type === 'text'
+                ? { type: 'text', text: block.text }
+                : {
+                    type: 'tool_use',
+                    id: block.id,
+                    name: block.name,
+                    input: block.input || {},
+                  },
+            ),
+          },
+          {
+            role: 'user',
+            content: toolResults,
+          },
+        ];
+
+        response = await this.createMessage({
           model,
           system: finalSystemPrompt,
-          messages: [
-            ...messages,
-            {
-              role: 'assistant',
-              content: initialResponse.content?.map(block =>
-                block.type === 'text'
-                  ? { type: 'text', text: block.text }
-                  : {
-                      type: 'tool_use',
-                      id: block.id,
-                      name: block.name,
-                      input: block.input || {},
-                    },
-              ),
-            },
-            {
-              role: 'user',
-              content: toolResults,
-            },
-          ],
+          messages: conversationMessages,
           max_tokens: params.maxTokens || this.config.maxTokens || 4096,
+          tools: visibleTools.map(tool => ({
+            name: tool.name,
+            description: tool.prompt ? `${tool.description} ${tool.prompt}` : tool.description,
+            input_schema: tool.parameters,
+          })),
+          tool_choice: this.buildToolChoice(toolChoice),
         });
 
-        const finalText = this.extractText(finalResponse);
-        if (finalText) {
-          yield {
-            text: finalText,
-            isComplete: false,
-            metadata: {
-              model,
-              provider: this.name,
-            },
-          };
-        }
-
-        yield {
-          text: '',
-          isComplete: true,
-          metadata: {
-            promptTokenCount: finalResponse.usage?.input_tokens || 0,
-            candidatesTokenCount: finalResponse.usage?.output_tokens || 0,
-            model,
-            provider: this.name,
-          },
-        };
-        return;
+        promptTokenCount += response.usage?.input_tokens || 0;
+        candidatesTokenCount += response.usage?.output_tokens || 0;
+        toolRoundCount += 1;
       }
 
-      const initialText = this.extractText(initialResponse);
-      if (initialText) {
+      const finalText = this.extractText(response);
+      if (finalText) {
         yield {
-          text: initialText,
+          text: finalText,
           isComplete: false,
           metadata: {
             model,
@@ -251,8 +253,8 @@ export class AnthropicProvider implements LLMProvider {
         text: '',
         isComplete: true,
         metadata: {
-          promptTokenCount: initialResponse.usage?.input_tokens || 0,
-          candidatesTokenCount: initialResponse.usage?.output_tokens || 0,
+          promptTokenCount,
+          candidatesTokenCount,
           model,
           provider: this.name,
         },

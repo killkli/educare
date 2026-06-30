@@ -34,6 +34,7 @@ export interface ProviderConfig {
   model?: string;
   temperature?: number;
   maxTokens?: number;
+  maxToolRounds?: number;
   [key: string]: string | number | boolean | undefined;
 }
 
@@ -93,6 +94,7 @@ export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
         model: 'gemini-2.5-flash',
         temperature: 0.7,
         maxTokens: 4096,
+        maxToolRounds: 20,
       },
     },
     openai: {
@@ -101,6 +103,7 @@ export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
         model: 'gpt-4o',
         temperature: 0.7,
         maxTokens: 4096,
+        maxToolRounds: 20,
       },
     },
     anthropic: {
@@ -109,6 +112,7 @@ export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
         model: 'claude-opus-4-8',
         temperature: 0.7,
         maxTokens: 4096,
+        maxToolRounds: 20,
       },
     },
     ollama: {
@@ -118,6 +122,7 @@ export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
         model: 'llama3.2:latest',
         temperature: 0.7,
         maxTokens: 4096,
+        maxToolRounds: 20,
       },
     },
     groq: {
@@ -126,6 +131,7 @@ export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
         model: 'llama-3.1-70b-versatile',
         temperature: 0.7,
         maxTokens: 4096,
+        maxToolRounds: 20,
       },
     },
     openrouter: {
@@ -134,6 +140,7 @@ export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
         model: 'openai/gpt-4o',
         temperature: 0.7,
         maxTokens: 4096,
+        maxToolRounds: 20,
       },
     },
     lmstudio: {
@@ -143,10 +150,47 @@ export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
         model: 'local-model',
         temperature: 0.7,
         maxTokens: 4096,
+        maxToolRounds: 20,
       },
     },
   },
 };
+
+const sanitizeNumber = (
+  value: unknown,
+  fallback: number,
+  options?: { min?: number; max?: number },
+): number => {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) {
+    return fallback;
+  }
+
+  const roundedValue = Number.isInteger(fallback) ? Math.round(numericValue) : numericValue;
+  const min = options?.min ?? roundedValue;
+  const max = options?.max ?? roundedValue;
+  return Math.min(max, Math.max(min, roundedValue));
+};
+
+const sanitizeProviderConfig = (
+  defaultConfig: ProviderConfig,
+  savedConfig?: Partial<ProviderConfig>,
+): ProviderConfig => ({
+  ...defaultConfig,
+  ...savedConfig,
+  temperature: sanitizeNumber(savedConfig?.temperature, defaultConfig.temperature ?? 0.7, {
+    min: 0,
+    max: 2,
+  }),
+  maxTokens: sanitizeNumber(savedConfig?.maxTokens, defaultConfig.maxTokens ?? 4096, {
+    min: 100,
+    max: 32000,
+  }),
+  maxToolRounds: sanitizeNumber(savedConfig?.maxToolRounds, defaultConfig.maxToolRounds ?? 20, {
+    min: 1,
+    max: 50,
+  }),
+});
 
 export class ProviderManager {
   private static instance: ProviderManager;
@@ -168,14 +212,29 @@ export class ProviderManager {
     const saved = localStorage.getItem('providerSettings');
     if (saved) {
       try {
-        const parsed = JSON.parse(saved);
+        const parsed = JSON.parse(saved) as Partial<ProviderSettings>;
+        const mergedProviders = (
+          Object.keys(DEFAULT_PROVIDER_SETTINGS.providers) as ProviderType[]
+        ).reduce(
+          (acc, providerType) => {
+            const defaultProvider = DEFAULT_PROVIDER_SETTINGS.providers[providerType];
+            const savedProvider = parsed.providers?.[providerType];
+
+            acc[providerType] = {
+              ...defaultProvider,
+              ...savedProvider,
+              config: sanitizeProviderConfig(defaultProvider.config, savedProvider?.config),
+            };
+
+            return acc;
+          },
+          {} as ProviderSettings['providers'],
+        );
+
         return {
           ...DEFAULT_PROVIDER_SETTINGS,
           ...parsed,
-          providers: {
-            ...DEFAULT_PROVIDER_SETTINGS.providers,
-            ...parsed.providers,
-          },
+          providers: mergedProviders,
         };
       } catch (error) {
         console.warn('Failed to parse provider settings, using defaults:', error);
@@ -214,10 +273,14 @@ export class ProviderManager {
 
   updateProviderConfig(type: ProviderType, config: Partial<ProviderConfig>): void {
     if (this.settings.providers[type]) {
-      this.settings.providers[type].config = {
+      const mergedConfig = {
         ...this.settings.providers[type].config,
         ...config,
       };
+      this.settings.providers[type].config = sanitizeProviderConfig(
+        DEFAULT_PROVIDER_SETTINGS.providers[type].config,
+        mergedConfig,
+      );
       this.saveSettings();
 
       // Reinitialize the provider if it exists with the updated config
