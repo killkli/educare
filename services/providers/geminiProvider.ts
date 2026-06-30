@@ -12,6 +12,19 @@ import { LLMProvider, ProviderConfig, ChatParams, StreamingResponse } from '../l
 import { ApiKeyManager } from '../apiKeyManager';
 import { resolveToolPolicy } from './toolPolicyUtils';
 
+interface GeminiListedModel {
+  name?: string;
+  supportedGenerationMethods?: string[];
+}
+
+interface GeminiModelListingClient {
+  models?: {
+    list?: (options: {
+      config: { pageSize: number };
+    }) => AsyncIterable<GeminiListedModel> | Promise<AsyncIterable<GeminiListedModel>>;
+  };
+}
+
 export class GeminiProvider implements LLMProvider {
   readonly name = 'gemini';
   readonly displayName = 'Google Gemini';
@@ -86,7 +99,7 @@ export class GeminiProvider implements LLMProvider {
     }
 
     try {
-      const modelPager = await (ai as any).models?.list?.({
+      const modelPager = await (ai as GeminiModelListingClient).models?.list?.({
         config: {
           pageSize: 100,
         },
