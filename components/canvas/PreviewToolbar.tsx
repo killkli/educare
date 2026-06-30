@@ -6,6 +6,7 @@ interface PreviewToolbarProps {
   previewUrl?: string;
   isRefreshing: boolean;
   onRefresh: () => Promise<void> | void;
+  onClose?: () => void;
 }
 
 export function PreviewToolbar({
@@ -14,6 +15,7 @@ export function PreviewToolbar({
   previewUrl,
   isRefreshing,
   onRefresh,
+  onClose,
 }: PreviewToolbarProps): React.JSX.Element {
   return (
     <div className='flex items-center justify-between gap-3 border-b border-gray-700/60 px-4 py-3'>
@@ -41,6 +43,15 @@ export function PreviewToolbar({
           >
             Open tab
           </a>
+        )}
+        {onClose && (
+          <button
+            type='button'
+            onClick={onClose}
+            className='rounded-lg border border-gray-600 px-3 py-1.5 text-xs font-medium text-gray-200 transition hover:border-gray-500 hover:text-white'
+          >
+            Hide
+          </button>
         )}
       </div>
     </div>

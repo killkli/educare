@@ -79,6 +79,7 @@ export function HtmlProjectWorkspace({ projectId }: HtmlProjectWorkspaceProps): 
         previewUrl={preview?.url}
         isRefreshing={isRefreshing}
         onRefresh={handleRefresh}
+        onClose={() => actions.setProjectWorkspaceOpen(false)}
       />
 
       <div className='flex items-center gap-2 border-b border-gray-800 px-4 py-3'>
@@ -101,11 +102,19 @@ export function HtmlProjectWorkspace({ projectId }: HtmlProjectWorkspaceProps): 
         })}
       </div>
 
-      <div className='min-h-0 flex-1 overflow-y-auto p-4'>
-        {activeTab === 'preview' && <PreviewFrame preview={preview} />}
-        {activeTab === 'files' && <FileTree files={files} entryFile={entryFile} />}
+      <div className='min-h-0 flex-1 p-4'>
+        {activeTab === 'preview' && (
+          <div className='h-full min-h-0 overflow-hidden'>
+            <PreviewFrame preview={preview} />
+          </div>
+        )}
+        {activeTab === 'files' && (
+          <div className='h-full overflow-y-auto pr-1'>
+            <FileTree files={files} entryFile={entryFile} />
+          </div>
+        )}
         {activeTab === 'activity' && (
-          <div className='space-y-2'>
+          <div className='h-full space-y-2 overflow-y-auto pr-1'>
             {state.projectToolActivity.length === 0 ? (
               <p className='text-sm text-gray-400'>尚未收到 project tool activity。</p>
             ) : (

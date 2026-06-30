@@ -31,7 +31,7 @@ export function PreviewFrame({ preview }: PreviewFrameProps): React.JSX.Element 
   }
 
   return (
-    <div className='flex h-full flex-col gap-3'>
+    <div className='flex h-full min-h-0 flex-col gap-3 overflow-hidden'>
       {preview.warnings.length > 0 && (
         <div className='rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100'>
           {preview.warnings.join(' · ')}
@@ -41,7 +41,7 @@ export function PreviewFrame({ preview }: PreviewFrameProps): React.JSX.Element 
         title='HTML project preview'
         src={preview.url}
         sandbox='allow-scripts allow-forms allow-modals'
-        className='min-h-[420px] flex-1 rounded-2xl border border-gray-700 bg-white'
+        className='h-full min-h-[320px] w-full flex-1 rounded-2xl border border-gray-700 bg-white'
       />
     </div>
   );

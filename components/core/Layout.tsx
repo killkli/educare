@@ -67,7 +67,7 @@ export function Layout({ children }: LayoutProps): React.JSX.Element {
               : '專業助理';
 
   return (
-    <div className='flex h-screen font-sans bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 relative'>
+    <div className='relative flex h-screen overflow-hidden bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 font-sans'>
       {/* Sidebar Overlay for Mobile and Tablet */}
       {(state.isMobile || state.isTablet) && state.isSidebarOpen && (
         <div className='fixed inset-0 bg-black/50 z-40 lg:hidden' onClick={actions.toggleSidebar} />
@@ -77,7 +77,7 @@ export function Layout({ children }: LayoutProps): React.JSX.Element {
       <div
         className={`${state.isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed left-0 top-0 h-full z-50 ${
           state.isMobile || state.isTablet ? 'w-80' : collapsed ? 'w-20' : 'w-72'
-        } bg-gray-900/95 backdrop-blur-sm flex flex-col ${
+        } bg-gray-900/95 backdrop-blur-sm flex flex-col overflow-hidden ${
           collapsed ? 'p-2' : 'p-6'
         } border-r border-gray-700/50 shadow-2xl transition-all duration-300 ease-in-out`}
         role='navigation'
@@ -301,7 +301,7 @@ export function Layout({ children }: LayoutProps): React.JSX.Element {
 
       {/* Main Content */}
       <main
-        className={`flex-1 bg-gradient-to-br from-gray-800 to-gray-900 backdrop-blur-sm flex flex-col min-w-0 relative transition-all duration-300 ease-in-out ${mainMargin}`}
+        className={`relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-gradient-to-br from-gray-800 to-gray-900 backdrop-blur-sm transition-all duration-300 ease-in-out ${mainMargin}`}
       >
         {/* Top Bar with Hamburger Menu */}
         {(state.isMobile || state.isTablet) && !state.isSidebarOpen && (
@@ -327,7 +327,7 @@ export function Layout({ children }: LayoutProps): React.JSX.Element {
         )}
 
         {/* Content Area */}
-        <div className='flex-1'>{children}</div>
+        <div className='flex min-h-0 flex-1 overflow-hidden'>{children}</div>
       </main>
     </div>
   );

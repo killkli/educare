@@ -221,10 +221,27 @@ function AppContent(): React.JSX.Element {
       )}
 
       {state.viewMode === 'chat' && state.currentAssistant && state.currentSession && (
-        <div className='flex h-full min-h-0 flex-col lg:flex-row'>
+        <div className='flex h-full min-h-0 flex-col overflow-hidden lg:flex-row'>
           <div
-            className={`${state.isProjectWorkspaceOpen && state.activeProjectId ? 'lg:w-[55%]' : 'w-full'} min-h-0 flex-1`}
+            className={`relative min-h-0 min-w-0 flex-1 ${state.isProjectWorkspaceOpen && state.activeProjectId ? 'lg:w-[55%]' : 'w-full'}`}
           >
+            {!state.isProjectWorkspaceOpen && state.activeProjectId && (
+              <button
+                type='button'
+                onClick={() => actions.setProjectWorkspaceOpen(true)}
+                className='absolute right-4 top-4 z-20 inline-flex items-center gap-2 rounded-full border border-cyan-500/40 bg-gray-950/85 px-3 py-2 text-xs font-medium text-cyan-100 shadow-lg shadow-cyan-950/40 backdrop-blur transition hover:border-cyan-400 hover:text-white'
+              >
+                <svg className='h-3.5 w-3.5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                  <path
+                    strokeLinecap='round'
+                    strokeLinejoin='round'
+                    strokeWidth={2}
+                    d='M13 5l7 7-7 7M5 5v14'
+                  />
+                </svg>
+                顯示 HTML Canvas
+              </button>
+            )}
             <ChatContainer
               session={state.currentSession}
               assistantName={state.currentAssistant.name}
@@ -236,7 +253,7 @@ function AppContent(): React.JSX.Element {
             />
           </div>
           {state.isProjectWorkspaceOpen && state.activeProjectId && (
-            <div className='min-h-[320px] border-t border-gray-800 lg:min-h-0 lg:w-[45%] lg:border-l lg:border-t-0'>
+            <div className='min-h-0 overflow-hidden border-t border-gray-800 lg:h-full lg:w-[45%] lg:min-w-[360px] lg:max-w-[48%] lg:border-l lg:border-t-0'>
               <HtmlProjectWorkspace projectId={state.activeProjectId} />
             </div>
           )}
