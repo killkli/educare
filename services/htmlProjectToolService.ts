@@ -116,11 +116,17 @@ interface CreateProjectArgs {
 
 interface WriteFilesArgs {
   projectId?: string;
-  files: Array<{
-    path: string;
-    content: string;
-    kind: HtmlProjectFileKind;
-  }>;
+  files:
+    | Array<{
+        path: string;
+        content: string;
+        kind?: HtmlProjectFileKind;
+      }>
+    | {
+        path: string;
+        content: string;
+        kind?: HtmlProjectFileKind;
+      };
 }
 
 interface ReadFileArgs {
@@ -184,6 +190,68 @@ const getTemplateFiles = (template?: 'single-page-app' | 'blank'): WriteHtmlProj
 
 const summarizeFileList = (paths: string[]): string => paths.join(', ');
 
+const inferHtmlProjectFileKind = (path: string): HtmlProjectFileKind => {
+  const normalizedPath = path.toLowerCase();
+
+  if (normalizedPath.endsWith('.html') || normalizedPath.endsWith('.htm')) {
+    return 'html';
+  }
+
+  if (normalizedPath.endsWith('.css') || normalizedPath.endsWith('.scss')) {
+    return 'css';
+  }
+
+  if (
+    normalizedPath.endsWith('.js') ||
+    normalizedPath.endsWith('.mjs') ||
+    normalizedPath.endsWith('.cjs') ||
+    normalizedPath.endsWith('.ts') ||
+    normalizedPath.endsWith('.tsx') ||
+    normalizedPath.endsWith('.jsx')
+  ) {
+    return 'js';
+  }
+
+  if (normalizedPath.endsWith('.json')) {
+    return 'json';
+  }
+
+  if (normalizedPath.endsWith('.svg')) {
+    return 'svg';
+  }
+
+  if (normalizedPath.endsWith('.md') || normalizedPath.endsWith('.markdown')) {
+    return 'md';
+  }
+
+  return 'asset';
+};
+
+const normalizeWriteFilesInput = (files: WriteFilesArgs['files']): WriteHtmlProjectFileInput[] => {
+  const fileList = Array.isArray(files) ? files : files && typeof files === 'object' ? [files] : [];
+
+  if (fileList.length === 0) {
+    throw new Error('writeFiles requires a non-empty files array.');
+  }
+
+  return fileList.map((file, index) => {
+    const path = typeof file.path === 'string' ? file.path.trim() : '';
+    if (!path) {
+      throw new Error(`writeFiles.files[${index}] is missing a valid path.`);
+    }
+
+    if (typeof file.content !== 'string') {
+      throw new Error(`writeFiles.files[${index}] is missing string content.`);
+    }
+
+    return {
+      path,
+      content: file.content,
+      kind: file.kind ?? inferHtmlProjectFileKind(path),
+    };
+  });
+};
+
 const handleCreateProject = async (
   args: CreateProjectArgs,
   context: HtmlProjectToolContext,
@@ -219,7 +287,8 @@ const handleWriteFiles = async (
   context: HtmlProjectToolContext,
 ): Promise<HtmlProjectToolExecutionResult> => {
   const projectId = requireProjectId(args.projectId, context.activeProjectId);
-  const result = await htmlProjectStore.writeFiles(projectId, args.files);
+  const files = normalizeWriteFilesInput(args.files);
+  const result = await htmlProjectStore.writeFiles(projectId, files);
   const preview = await htmlPreviewService.resolveProjectForPreview(projectId);
   const summary = `已更新檔案：${summarizeFileList(result.updated)}。`;
 
@@ -381,7 +450,7 @@ export const getHtmlProjectToolDefinitions = (): ToolDefinition[] => [
               content: { type: 'string' },
               kind: { type: 'string', enum: ['html', 'css', 'js', 'json', 'svg', 'asset', 'md'] },
             },
-            required: ['path', 'content', 'kind'],
+            required: ['path', 'content'],
           },
         },
       },

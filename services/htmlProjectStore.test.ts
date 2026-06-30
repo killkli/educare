@@ -153,6 +153,23 @@ describe('htmlProjectStore', () => {
     });
   });
 
+  it('throws a clear error when writeFiles receives an empty files array', async () => {
+    const mockDb = createMockDb();
+    mockOpenDB.mockResolvedValue(mockDb);
+    vi.spyOn(Date, 'now').mockReturnValue(1700000000000);
+
+    const { htmlProjectStore } = await import('./htmlProjectStore');
+
+    const project = await htmlProjectStore.createProject({
+      assistantId: 'assistant-1',
+      name: 'Canvas MVP',
+    });
+
+    await expect(htmlProjectStore.writeFiles(project.id, [])).rejects.toThrow(
+      'writeFiles requires a non-empty files array.',
+    );
+  });
+
   it('lists projects by assistant newest first', async () => {
     const mockDb = createMockDb();
     mockOpenDB.mockResolvedValue(mockDb);

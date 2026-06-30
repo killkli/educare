@@ -227,6 +227,10 @@ class HtmlProjectStore {
     projectId: string,
     files: WriteHtmlProjectFileInput[],
   ): Promise<WriteHtmlProjectFilesResult> {
+    if (!Array.isArray(files) || files.length === 0) {
+      throw new Error('writeFiles requires a non-empty files array.');
+    }
+
     const db = await getDb();
     const project = await requireProject(db, projectId);
     const timestamp = now();
