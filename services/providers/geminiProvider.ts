@@ -2,9 +2,11 @@ import {
   Chat,
   createPartFromFunctionResponse,
   FunctionCallingConfigMode,
+  type FunctionCall,
   type FunctionDeclaration,
   GenerateContentResponse,
   GoogleGenAI,
+  type Part,
 } from '@google/genai';
 import { LLMProvider, ProviderConfig, ChatParams, StreamingResponse } from '../llmAdapter';
 import { ApiKeyManager } from '../apiKeyManager';
@@ -167,6 +169,63 @@ export class GeminiProvider implements LLMProvider {
     });
   }
 
+  private getResponseParts(response: GenerateContentResponse): Part[] {
+    return response.candidates?.[0]?.content?.parts ?? [];
+  }
+
+  private extractVisibleText(response: GenerateContentResponse): string {
+    const parts = this.getResponseParts(response);
+
+    if (parts.length > 0) {
+      return parts
+        .filter(part => typeof part.text === 'string' && !part.thought)
+        .map(part => part.text ?? '')
+        .join('');
+    }
+
+    return response.text ?? '';
+  }
+
+  private getFunctionCalls(response: GenerateContentResponse): FunctionCall[] {
+    const parts = this.getResponseParts(response);
+
+    if (parts.length > 0) {
+      return parts.flatMap(part => (part.functionCall?.name ? [part.functionCall] : []));
+    }
+
+    return (response.functionCalls ?? []).filter((functionCall): functionCall is FunctionCall =>
+      Boolean(functionCall.name),
+    );
+  }
+
+  private normalizeToolResult(result: unknown): unknown {
+    if (typeof result === 'undefined') {
+      return null;
+    }
+
+    try {
+      return JSON.parse(JSON.stringify(result)) as unknown;
+    } catch {
+      throw new Error('Gemini tool result could not be serialized.');
+    }
+  }
+
+  private buildCompletionChunk(
+    response: GenerateContentResponse,
+    model: string,
+  ): StreamingResponse {
+    return {
+      text: '',
+      isComplete: true,
+      metadata: {
+        promptTokenCount: response.usageMetadata?.promptTokenCount ?? 0,
+        candidatesTokenCount: response.usageMetadata?.candidatesTokenCount ?? 0,
+        model,
+        provider: this.name,
+      },
+    };
+  }
+
   async *streamChat(params: ChatParams): AsyncIterable<StreamingResponse> {
     const genAI = await this.getAi();
 
@@ -180,23 +239,53 @@ export class GeminiProvider implements LLMProvider {
 
     const model = params.model || this.config.model || 'gemini-2.5-flash';
     const finalSystemPrompt = this.buildFinalSystemPrompt(params);
+    const MAX_GEMINI_TOOL_ROUNDS = 5;
 
     try {
-      if (params.tools?.length && params.executeTool) {
-        const chat = await this.createChat(params, finalSystemPrompt, model);
-        const initialResponse = await chat.sendMessage({ message: params.message });
-        const functionCalls = initialResponse.functionCalls || [];
+      const chat = await this.createChat(params, finalSystemPrompt, model);
 
-        if (functionCalls.length > 0) {
+      if (params.tools?.length && params.executeTool) {
+        let response = await chat.sendMessage({ message: params.message });
+        let toolRoundCount = 0;
+
+        while (true) {
+          const functionCalls = this.getFunctionCalls(response);
+
+          if (functionCalls.length === 0) {
+            const visibleText = this.extractVisibleText(response);
+            if (!visibleText) {
+              throw new Error(
+                'Gemini terminal response had no visible text or actionable tool calls.',
+              );
+            }
+
+            yield {
+              text: visibleText,
+              isComplete: false,
+              metadata: {
+                model,
+                provider: this.name,
+              },
+            };
+
+            yield this.buildCompletionChunk(response, model);
+            return;
+          }
+
+          if (toolRoundCount >= MAX_GEMINI_TOOL_ROUNDS) {
+            throw new Error(`Gemini exceeded maximum tool rounds (${MAX_GEMINI_TOOL_ROUNDS}).`);
+          }
+
           const toolResponses = [];
 
           for (const functionCall of functionCalls) {
-            if (!functionCall.name) {
+            const functionName = functionCall.name;
+            if (!functionName) {
               continue;
             }
 
             const result = await params.executeTool({
-              name: functionCall.name,
+              name: functionName,
               args:
                 functionCall.args && typeof functionCall.args === 'object'
                   ? (functionCall.args as Record<string, unknown>)
@@ -204,75 +293,22 @@ export class GeminiProvider implements LLMProvider {
             });
 
             toolResponses.push(
-              createPartFromFunctionResponse(functionCall.id ?? '', functionCall.name, {
-                output: result,
+              createPartFromFunctionResponse(functionCall.id ?? '', functionName, {
+                output: this.normalizeToolResult(result),
               }),
             );
           }
 
-          const finalStream = await chat.sendMessageStream({ message: toolResponses });
-          let aggregatedResponse: GenerateContentResponse | null = null;
-
-          for await (const chunk of finalStream) {
-            const chunkText = chunk.text;
-            if (chunkText) {
-              yield {
-                text: chunkText,
-                isComplete: false,
-                metadata: {
-                  model,
-                  provider: this.name,
-                },
-              };
-            }
-            aggregatedResponse = chunk;
-          }
-
-          yield {
-            text: '',
-            isComplete: true,
-            metadata: {
-              promptTokenCount: aggregatedResponse?.usageMetadata?.promptTokenCount ?? 0,
-              candidatesTokenCount: aggregatedResponse?.usageMetadata?.candidatesTokenCount ?? 0,
-              model,
-              provider: this.name,
-            },
-          };
-          return;
+          toolRoundCount += 1;
+          response = await chat.sendMessage({ message: toolResponses });
         }
-
-        const initialText = initialResponse.text;
-        if (initialText) {
-          yield {
-            text: initialText,
-            isComplete: false,
-            metadata: {
-              model,
-              provider: this.name,
-            },
-          };
-        }
-
-        yield {
-          text: '',
-          isComplete: true,
-          metadata: {
-            promptTokenCount: initialResponse.usageMetadata?.promptTokenCount ?? 0,
-            candidatesTokenCount: initialResponse.usageMetadata?.candidatesTokenCount ?? 0,
-            model,
-            provider: this.name,
-          },
-        };
-        return;
       }
 
-      const chat = await this.createChat(params, finalSystemPrompt, model);
       const stream = await chat.sendMessageStream({ message: params.message });
-
       let aggregatedResponse: GenerateContentResponse | null = null;
 
       for await (const chunk of stream) {
-        const chunkText = chunk.text;
+        const chunkText = this.extractVisibleText(chunk);
         if (chunkText) {
           yield {
             text: chunkText,
@@ -286,16 +322,7 @@ export class GeminiProvider implements LLMProvider {
         aggregatedResponse = chunk;
       }
 
-      yield {
-        text: '',
-        isComplete: true,
-        metadata: {
-          promptTokenCount: aggregatedResponse?.usageMetadata?.promptTokenCount ?? 0,
-          candidatesTokenCount: aggregatedResponse?.usageMetadata?.candidatesTokenCount ?? 0,
-          model,
-          provider: this.name,
-        },
-      };
+      yield this.buildCompletionChunk(aggregatedResponse ?? new GenerateContentResponse(), model);
     } catch (error) {
       console.error('Gemini streaming error:', error);
       throw error;
