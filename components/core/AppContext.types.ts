@@ -95,6 +95,8 @@ export interface AppContextValue {
     setProjectWorkspaceOpen: (open: boolean) => void;
     setProjectPreview: (preview: HtmlProjectPreviewArtifact | null) => void;
     appendProjectActivity: (message: string) => void;
+    openProjectForCurrentSession: (projectId: string) => Promise<void>;
+    clearProjectForCurrentSession: () => Promise<void>;
     clearProjectWorkspace: () => void;
     syncProjectWorkspaceForSession: (session: ChatSession | null) => Promise<void>;
   };

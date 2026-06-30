@@ -11,6 +11,7 @@ import * as embeddingMock from '../../../services/embeddingService';
 import * as providerMock from '../../../services/providerRegistry';
 import * as tursoMock from '../../../services/tursoService';
 import * as htmlPreviewMock from '../../../services/htmlPreviewService';
+import * as htmlProjectStoreMock from '../../../services/htmlProjectStore';
 
 // Mock ErrorBoundary separately to test error handling
 vi.mock('../ErrorBoundary', () => {
@@ -96,6 +97,26 @@ vi.mock('../../../services/htmlPreviewService', () => ({
   },
 }));
 
+vi.mock('../../../services/htmlProjectStore', () => ({
+  htmlProjectStore: {
+    listProjectsByAssistant: vi.fn().mockResolvedValue([]),
+    assertProjectOwnership: vi
+      .fn()
+      .mockImplementation(async (projectId: string, _assistantId: string) => ({
+        id: projectId,
+        name: `Project ${projectId}`,
+        assistantId: 'test-assistant-1',
+        entryFile: '/index.html',
+        status: 'ready',
+        previewVersion: 1,
+        assetPaths: [],
+        createdAt: 1700000000000,
+        updatedAt: 1700000000000,
+      })),
+    deleteProjectsByAssistant: vi.fn().mockResolvedValue(0),
+  },
+}));
+
 vi.mock('../../assistant', () => ({
   AssistantEditor: ({
     assistant,
@@ -125,7 +146,53 @@ vi.mock('../../assistant', () => ({
     ]),
   ShareModal: ({ isOpen }: { isOpen: boolean }) =>
     isOpen ? React.createElement('div', { 'data-testid': 'share-modal' }) : null,
-  AssistantList: () => React.createElement('div', { 'data-testid': 'assistant-list' }),
+  AssistantList: ({
+    assistants,
+    selectedAssistant,
+    onEdit,
+    onDelete,
+    onShare,
+  }: {
+    assistants: Array<{ id: string; name: string }>;
+    selectedAssistant?: { id: string; name: string } | null;
+    onEdit: (assistant: { id: string; name: string }) => void;
+    onDelete: (assistantId: string) => void;
+    onShare: (assistant: { id: string; name: string }) => void;
+  }) =>
+    React.createElement('div', { 'data-testid': 'assistant-list' }, [
+      ...assistants.map(assistant =>
+        React.createElement('span', { key: `assistant-${assistant.id}` }, assistant.name),
+      ),
+      selectedAssistant &&
+        React.createElement(
+          React.Fragment,
+          { key: 'selected-actions' },
+          React.createElement(
+            'button',
+            {
+              'data-testid': `edit-${selectedAssistant.id.replace(/^edit-/, '')}`,
+              onClick: () => onEdit(selectedAssistant),
+            },
+            'Edit',
+          ),
+          React.createElement(
+            'button',
+            {
+              'data-testid': `delete-${selectedAssistant.id.replace(/^edit-/, '')}`,
+              onClick: () => onDelete(selectedAssistant.id),
+            },
+            'Delete',
+          ),
+          React.createElement(
+            'button',
+            {
+              'data-testid': `share-${selectedAssistant.id.replace(/^edit-/, '')}`,
+              onClick: () => onShare(selectedAssistant),
+            },
+            'Share',
+          ),
+        ),
+    ]),
 }));
 
 vi.mock('../../chat', () => ({
@@ -163,9 +230,11 @@ vi.mock('../../chat', () => ({
 }));
 
 vi.mock('../../canvas', async () => {
+  const actual = await vi.importActual<typeof import('../../canvas')>('../../canvas');
   const { useAppContext } = await import('../useAppContext');
 
   return {
+    ...actual,
     HtmlProjectWorkspace: ({ projectId }: { projectId: string }) => {
       const { actions } = useAppContext();
 
@@ -242,6 +311,22 @@ beforeEach(() => {
   vi.mocked(dbMock.getSessionsForAssistant).mockResolvedValue([]);
   vi.mocked(dbMock.saveSession).mockResolvedValue(undefined);
   vi.mocked(dbMock.deleteSession).mockResolvedValue(undefined);
+
+  vi.mocked(htmlProjectStoreMock.htmlProjectStore.listProjectsByAssistant).mockResolvedValue([]);
+  vi.mocked(htmlProjectStoreMock.htmlProjectStore.assertProjectOwnership).mockImplementation(
+    async (projectId: string, _assistantId: string) => ({
+      id: projectId,
+      name: `Project ${projectId}`,
+      assistantId: 'test-assistant-1',
+      entryFile: '/index.html',
+      status: 'ready',
+      previewVersion: 1,
+      assetPaths: [],
+      createdAt: 1700000000000,
+      updatedAt: 1700000000000,
+    }),
+  );
+  vi.mocked(htmlProjectStoreMock.htmlProjectStore.deleteProjectsByAssistant).mockResolvedValue(0);
 
   vi.mocked(embeddingMock.preloadEmbeddingModel).mockResolvedValue(undefined);
   vi.mocked(embeddingMock.isEmbeddingModelLoaded).mockReturnValue(true);
@@ -412,6 +497,85 @@ describe('AppShell', () => {
       });
     });
 
+    it('should show the existing HTML project picker when the session has no active project and the assistant has saved HTML projects', async () => {
+      vi.mocked(htmlProjectStoreMock.htmlProjectStore.listProjectsByAssistant).mockResolvedValue([
+        {
+          id: 'project-99',
+          name: 'Existing Landing Page',
+          assistantId: TEST_ASSISTANTS.basic.id,
+          entryFile: '/index.html',
+          previewVersion: 3,
+          updatedAt: 1700000000000,
+          description: 'Reopenable project',
+        },
+      ] as never);
+
+      render(<AppShell />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('html-project-picker')).toBeInTheDocument();
+        expect(screen.getByText('Open existing HTML project')).toBeInTheDocument();
+        expect(screen.getByText('Existing Landing Page')).toBeInTheDocument();
+      });
+
+      expect(
+        vi.mocked(htmlProjectStoreMock.htmlProjectStore.listProjectsByAssistant),
+      ).toHaveBeenCalledWith(TEST_ASSISTANTS.basic.id);
+    });
+
+    it('should open an existing HTML project from the picker and render the workspace', async () => {
+      vi.mocked(htmlProjectStoreMock.htmlProjectStore.listProjectsByAssistant).mockResolvedValue([
+        {
+          id: 'project-99',
+          name: 'Existing Landing Page',
+          assistantId: TEST_ASSISTANTS.basic.id,
+          entryFile: '/index.html',
+          previewVersion: 3,
+          updatedAt: 1700000000000,
+          description: 'Reopenable project',
+        },
+      ] as never);
+      vi.mocked(htmlProjectStoreMock.htmlProjectStore.assertProjectOwnership).mockResolvedValue({
+        id: 'project-99',
+        name: 'Existing Landing Page',
+        assistantId: TEST_SESSIONS.withMessages.assistantId,
+        entryFile: '/index.html',
+        status: 'ready',
+        previewVersion: 3,
+        assetPaths: [],
+        createdAt: 1700000000000,
+        updatedAt: 1700000000000,
+      } as never);
+
+      render(<AppShell />);
+
+      const openProjectButton = await screen.findByRole('button', {
+        name: /Existing Landing Page/i,
+      });
+
+      await act(async () => {
+        fireEvent.click(openProjectButton);
+      });
+
+      await waitFor(() => {
+        expect(dbMock.saveSession).toHaveBeenCalledWith(
+          expect.objectContaining({
+            id: TEST_SESSIONS.withMessages.id,
+            activeProjectId: 'project-99',
+          }),
+        );
+        expect(screen.getByTestId('html-project-workspace')).toBeInTheDocument();
+        expect(screen.getByText('Workspace: project-99')).toBeInTheDocument();
+      });
+
+      expect(
+        vi.mocked(htmlProjectStoreMock.htmlProjectStore.assertProjectOwnership),
+      ).toHaveBeenCalledWith('project-99', TEST_SESSIONS.withMessages.assistantId);
+      expect(
+        vi.mocked(htmlPreviewMock.htmlPreviewService.resolveProjectForPreview),
+      ).toHaveBeenCalledWith('project-99');
+    });
+
     it('should render HTML project workspace when the active session has a project', async () => {
       const projectSession = {
         ...TEST_SESSIONS.withMessages,
@@ -433,6 +597,34 @@ describe('AppShell', () => {
       expect(
         vi.mocked(htmlPreviewMock.htmlPreviewService.resolveProjectForPreview),
       ).toHaveBeenCalledWith('project-42');
+    });
+
+    it('should clear invalid active project pointers safely when the saved project cannot be reopened', async () => {
+      const invalidProjectSession = {
+        ...TEST_SESSIONS.withMessages,
+        activeProjectId: 'missing-project',
+      };
+      vi.mocked(dbMock.getSessionsForAssistant).mockResolvedValue([invalidProjectSession]);
+      vi.mocked(htmlProjectStoreMock.htmlProjectStore.assertProjectOwnership).mockRejectedValue(
+        new Error('Project not found'),
+      );
+
+      render(<AppShell />);
+
+      await waitFor(() => {
+        expect(dbMock.saveSession).toHaveBeenCalledWith(
+          expect.objectContaining({
+            id: invalidProjectSession.id,
+            activeProjectId: null,
+          }),
+        );
+        expect(screen.getByTestId('chat-container')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByTestId('html-project-workspace')).not.toBeInTheDocument();
+      expect(
+        vi.mocked(htmlPreviewMock.htmlPreviewService.resolveProjectForPreview),
+      ).not.toHaveBeenCalledWith('missing-project');
     });
 
     it('should switch between split and full-width chat layout when the workspace is hidden', async () => {
@@ -463,6 +655,158 @@ describe('AppShell', () => {
 
       expect(chatPane).toHaveClass('w-full');
       expect(chatPane).not.toHaveClass('lg:w-[55%]');
+    });
+
+    it('should keep assistant-owned HTML projects reopenable after deleting the active chat session', async () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1700000001234);
+      const projectSession = {
+        ...TEST_SESSIONS.withMessages,
+        activeProjectId: 'project-42',
+      };
+
+      vi.mocked(dbMock.getSessionsForAssistant)
+        .mockResolvedValueOnce([projectSession])
+        .mockResolvedValueOnce([]);
+      vi.mocked(htmlProjectStoreMock.htmlProjectStore.listProjectsByAssistant).mockResolvedValue([
+        {
+          id: 'project-42',
+          name: 'Reusable Landing Page',
+          assistantId: TEST_ASSISTANTS.basic.id,
+          entryFile: '/index.html',
+          previewVersion: 3,
+          updatedAt: 1700000000000,
+          description: 'Assistant-owned project',
+        },
+      ] as never);
+      vi.mocked(htmlProjectStoreMock.htmlProjectStore.assertProjectOwnership).mockResolvedValue({
+        id: 'project-42',
+        name: 'Reusable Landing Page',
+        assistantId: TEST_ASSISTANTS.basic.id,
+        entryFile: '/index.html',
+        status: 'ready',
+        previewVersion: 3,
+        assetPaths: [],
+        createdAt: 1700000000000,
+        updatedAt: 1700000000000,
+      } as never);
+
+      render(<AppShell />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Workspace: project-42')).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByTitle('刪除聊天'));
+      });
+
+      await waitFor(() => {
+        expect(dbMock.deleteSession).toHaveBeenCalledWith(projectSession.id);
+        expect(dbMock.saveSession).toHaveBeenCalledWith(
+          expect.objectContaining({
+            id: 'session-1700000001234',
+            title: 'New Chat',
+            assistantId: TEST_ASSISTANTS.basic.id,
+          }),
+        );
+        expect(screen.getByTestId('html-project-picker')).toBeInTheDocument();
+        expect(screen.getByText('Reusable Landing Page')).toBeInTheDocument();
+      });
+
+      expect(
+        htmlProjectStoreMock.htmlProjectStore.deleteProjectsByAssistant,
+      ).not.toHaveBeenCalled();
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /Reusable Landing Page/i }));
+      });
+
+      await waitFor(() => {
+        expect(dbMock.saveSession).toHaveBeenCalledWith(
+          expect.objectContaining({
+            id: 'session-1700000001234',
+            activeProjectId: 'project-42',
+          }),
+        );
+        expect(screen.getByText('Workspace: project-42')).toBeInTheDocument();
+      });
+
+      confirmSpy.mockRestore();
+      nowSpy.mockRestore();
+    });
+
+    it('should sync the workspace to each session active project when switching sessions', async () => {
+      const primarySession = {
+        ...TEST_SESSIONS.withMessages,
+        activeProjectId: 'project-42',
+        createdAt: 1700000002000,
+      };
+      const secondarySession = {
+        ...TEST_SESSIONS.old,
+        id: 'test-session-2',
+        assistantId: TEST_ASSISTANTS.basic.id,
+        title: 'Project Two Chat',
+        activeProjectId: 'project-99',
+        createdAt: 1700000001000,
+      };
+      vi.mocked(dbMock.getSessionsForAssistant).mockResolvedValue([
+        secondarySession,
+        primarySession,
+      ]);
+
+      render(<AppShell />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Workspace: project-42')).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByText('Project Two Chat'));
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('Workspace: project-99')).toBeInTheDocument();
+      });
+
+      expect(
+        vi.mocked(htmlProjectStoreMock.htmlProjectStore.assertProjectOwnership),
+      ).toHaveBeenCalledWith('project-99', TEST_ASSISTANTS.basic.id);
+      expect(
+        vi.mocked(htmlPreviewMock.htmlPreviewService.resolveProjectForPreview),
+      ).toHaveBeenCalledWith('project-99');
+    });
+
+    it('should delete an assistant and clear its HTML projects', async () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      vi.mocked(dbMock.getAssistant).mockImplementation(async assistantId => {
+        if (assistantId === TEST_ASSISTANTS.basic.id) {
+          return TEST_ASSISTANTS.basic;
+        }
+
+        if (assistantId === TEST_ASSISTANTS.withRag.id) {
+          return TEST_ASSISTANTS.withRag;
+        }
+
+        return undefined;
+      });
+
+      render(<AppShell />);
+
+      const deleteButton = await screen.findByTestId('delete-test-assistant-1');
+
+      await act(async () => {
+        fireEvent.click(deleteButton);
+      });
+
+      await waitFor(() => {
+        expect(dbMock.deleteAssistant).toHaveBeenCalledWith(TEST_ASSISTANTS.basic.id);
+        expect(
+          htmlProjectStoreMock.htmlProjectStore.deleteProjectsByAssistant,
+        ).toHaveBeenCalledWith(TEST_ASSISTANTS.basic.id);
+      });
+
+      confirmSpy.mockRestore();
     });
 
     it('should render settings view with service status', async () => {

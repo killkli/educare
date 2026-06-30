@@ -12,6 +12,7 @@ import {
 } from '../../services/tursoService';
 import { resolveShortUrl, recordShortUrlClick } from '../../services/shortUrlService';
 import { htmlPreviewService } from '../../services/htmlPreviewService';
+import { htmlProjectStore } from '../../services/htmlProjectStore';
 import { AppContext } from './useAppContext';
 import type { ViewMode, AppState, AppAction, AppContextValue } from './AppContext.types';
 
@@ -457,7 +458,15 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
     async (assistantId: string) => {
       if (window.confirm('確定要刪除此助理和所有聊天記錄嗎？')) {
         await db.deleteAssistant(assistantId);
+        await htmlProjectStore.deleteProjectsByAssistant(assistantId);
         dispatch({ type: 'DELETE_ASSISTANT', payload: assistantId });
+
+        if (state.currentAssistant?.id === assistantId) {
+          if (state.activeProjectId) {
+            htmlPreviewService.revokePreviewUrl(state.activeProjectId);
+          }
+          dispatch({ type: 'RESET_PROJECT_WORKSPACE' });
+        }
 
         const remainingAssistants = state.assistants.filter(a => a.id !== assistantId);
         if (remainingAssistants.length > 0) {
@@ -467,7 +476,7 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
         }
       }
     },
-    [state.assistants, selectAssistant],
+    [selectAssistant, state.activeProjectId, state.assistants, state.currentAssistant?.id],
   );
 
   // Delete session
@@ -670,24 +679,84 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
     dispatch({ type: 'RESET_PROJECT_WORKSPACE' });
   }, [state.activeProjectId]);
 
+  const clearProjectForCurrentSession = useCallback(async () => {
+    if (!state.currentSession) {
+      clearProjectWorkspace();
+      return;
+    }
+
+    const nextSession: ChatSession = {
+      ...state.currentSession,
+      activeProjectId: null,
+      updatedAt: Date.now(),
+    };
+
+    await db.saveSession(nextSession);
+    dispatch({ type: 'UPDATE_SESSION', payload: nextSession });
+    clearProjectWorkspace();
+  }, [clearProjectWorkspace, state.currentSession]);
+
+  const openProjectForCurrentSession = useCallback(
+    async (projectId: string) => {
+      if (!state.currentSession) {
+        return;
+      }
+
+      const project = await htmlProjectStore.assertProjectOwnership(
+        projectId,
+        state.currentSession.assistantId,
+      );
+      const preview = await htmlPreviewService.resolveProjectForPreview(project.id);
+      const nextSession: ChatSession = {
+        ...state.currentSession,
+        activeProjectId: project.id,
+        updatedAt: Date.now(),
+      };
+
+      await db.saveSession(nextSession);
+      dispatch({ type: 'UPDATE_SESSION', payload: nextSession });
+      dispatch({ type: 'SET_ACTIVE_PROJECT', payload: project.id });
+      dispatch({ type: 'SET_PROJECT_WORKSPACE_OPEN', payload: true });
+      dispatch({ type: 'SET_PROJECT_PREVIEW', payload: preview });
+      dispatch({
+        type: 'APPEND_PROJECT_ACTIVITY',
+        payload: `已開啟既有 HTML 專案「${project.name}」。`,
+      });
+    },
+    [state.currentSession],
+  );
+
   const syncProjectWorkspaceForSession = useCallback(
     async (session: ChatSession | null) => {
       const projectId = session?.activeProjectId ?? null;
 
-      if (!projectId) {
+      if (!projectId || !session) {
         clearProjectWorkspace();
         return;
       }
 
-      dispatch({ type: 'SET_ACTIVE_PROJECT', payload: projectId });
-      dispatch({ type: 'SET_PROJECT_WORKSPACE_OPEN', payload: true });
-
       try {
-        const preview = await htmlPreviewService.resolveProjectForPreview(projectId);
+        const project = await htmlProjectStore.assertProjectOwnership(
+          projectId,
+          session.assistantId,
+        );
+        dispatch({ type: 'SET_ACTIVE_PROJECT', payload: project.id });
+        dispatch({ type: 'SET_PROJECT_WORKSPACE_OPEN', payload: true });
+
+        const preview = await htmlPreviewService.resolveProjectForPreview(project.id);
         dispatch({ type: 'SET_PROJECT_PREVIEW', payload: preview });
       } catch (error) {
         console.error('Failed to sync HTML project workspace:', error);
-        dispatch({ type: 'SET_PROJECT_PREVIEW', payload: null });
+
+        const clearedSession: ChatSession = {
+          ...session,
+          activeProjectId: null,
+          updatedAt: Date.now(),
+        };
+
+        await db.saveSession(clearedSession);
+        dispatch({ type: 'UPDATE_SESSION', payload: clearedSession });
+        clearProjectWorkspace();
         dispatch({
           type: 'APPEND_PROJECT_ACTIVITY',
           payload: `無法載入 HTML project 預覽：${(error as Error).message}`,
@@ -727,6 +796,8 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       setProjectWorkspaceOpen,
       setProjectPreview,
       appendProjectActivity,
+      openProjectForCurrentSession,
+      clearProjectForCurrentSession,
       clearProjectWorkspace,
       syncProjectWorkspaceForSession,
     },

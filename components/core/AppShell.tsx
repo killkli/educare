@@ -2,7 +2,7 @@ import React from 'react';
 import { AppProvider, useAppContext, ErrorBoundary, Layout, ModelLoadingOverlay } from './index';
 import { AssistantEditor, ShareModal } from '../assistant';
 import { ChatContainer } from '../chat';
-import { HtmlProjectWorkspace } from '../canvas';
+import { HtmlProjectWorkspace, ProjectPicker } from '../canvas';
 import { ChatSession } from '../../types';
 import SharedAssistant from '../features/SharedAssistant';
 import MigrationPanel from '../settings/MigrationPanel';
@@ -241,6 +241,12 @@ function AppContent(): React.JSX.Element {
                 </svg>
                 顯示 HTML Canvas
               </button>
+            )}
+            {!state.activeProjectId && (
+              <ProjectPicker
+                assistantId={state.currentAssistant.id}
+                onOpenProject={actions.openProjectForCurrentSession}
+              />
             )}
             <ChatContainer
               session={state.currentSession}
