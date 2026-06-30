@@ -51,7 +51,7 @@ export function Layout({ children }: LayoutProps): React.JSX.Element {
     );
   }
 
-  const mainMargin = isDesktop && state.isSidebarOpen ? (collapsed ? 'ml-20' : 'ml-72') : '';
+  const mainOffset = isDesktop && state.isSidebarOpen ? (collapsed ? 'pl-20' : 'pl-72') : '';
 
   const title =
     state.viewMode === 'chat' && state.currentAssistant
@@ -301,7 +301,7 @@ export function Layout({ children }: LayoutProps): React.JSX.Element {
 
       {/* Main Content */}
       <main
-        className={`relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-gradient-to-br from-gray-800 to-gray-900 backdrop-blur-sm transition-all duration-300 ease-in-out ${mainMargin}`}
+        className={`relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-gradient-to-br from-gray-800 to-gray-900 backdrop-blur-sm transition-all duration-300 ease-in-out ${mainOffset}`}
       >
         {/* Top Bar with Hamburger Menu */}
         {(state.isMobile || state.isTablet) && !state.isSidebarOpen && (

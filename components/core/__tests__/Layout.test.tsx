@@ -687,7 +687,7 @@ describe('Layout', () => {
 
       await waitFor(() => {
         const main = screen.getByRole('main');
-        expect(main).toHaveClass('ml-72'); // Desktop margin when sidebar is open
+        expect(main).toHaveClass('pl-72'); // Desktop margin when sidebar is open
       });
     });
 
@@ -709,7 +709,7 @@ describe('Layout', () => {
 
       await waitFor(() => {
         const main = screen.getByRole('main');
-        expect(main).not.toHaveClass('ml-72');
+        expect(main).not.toHaveClass('pl-72');
       });
     });
 
@@ -785,7 +785,7 @@ describe('Layout', () => {
       expect(toggle).toHaveAccessibleName('收折側邊欄');
     });
 
-    it('should collapse to icon rail (w-20 / ml-20) when toggle is clicked', async () => {
+    it('should collapse to icon rail (w-20 / pl-20) when toggle is clicked', async () => {
       Object.defineProperty(window, 'innerWidth', {
         value: RESPONSIVE_BREAKPOINTS.desktop + 100,
         writable: true,
@@ -808,7 +808,7 @@ describe('Layout', () => {
 
       await waitFor(() => {
         expect(getSidebarDiv()).toHaveClass('w-20');
-        expect(screen.getByRole('main')).toHaveClass('ml-20');
+        expect(screen.getByRole('main')).toHaveClass('pl-20');
         expect(toggle).toHaveAttribute('aria-expanded', 'false');
       });
     });
@@ -843,7 +843,7 @@ describe('Layout', () => {
       });
       await waitFor(() => {
         expect(getSidebarDiv()).toHaveClass('w-72');
-        expect(screen.getByRole('main')).toHaveClass('ml-72');
+        expect(screen.getByRole('main')).toHaveClass('pl-72');
         expect(toggle).toHaveAttribute('aria-expanded', 'true');
       });
     });

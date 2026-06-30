@@ -162,14 +162,28 @@ vi.mock('../../chat', () => ({
     ]),
 }));
 
-vi.mock('../../canvas', () => ({
-  HtmlProjectWorkspace: ({ projectId }: { projectId: string }) =>
-    React.createElement(
-      'div',
-      { 'data-testid': 'html-project-workspace' },
-      `Workspace: ${projectId}`,
-    ),
-}));
+vi.mock('../../canvas', async () => {
+  const { useAppContext } = await import('../useAppContext');
+
+  return {
+    HtmlProjectWorkspace: ({ projectId }: { projectId: string }) => {
+      const { actions } = useAppContext();
+
+      return React.createElement('div', { 'data-testid': 'html-project-workspace' }, [
+        React.createElement('span', { key: 'label' }, `Workspace: ${projectId}`),
+        React.createElement(
+          'button',
+          {
+            key: 'hide-workspace',
+            'data-testid': 'hide-workspace',
+            onClick: () => actions.setProjectWorkspaceOpen(false),
+          },
+          'Hide Workspace',
+        ),
+      ]);
+    },
+  };
+});
 
 vi.mock('../../features/SharedAssistant', () => ({
   default: ({ assistantId }: { assistantId: string }) =>
@@ -386,6 +400,18 @@ describe('AppShell', () => {
       );
     });
 
+    it('should stretch the chat layout wrapper to fill the available width', async () => {
+      render(<AppShell />);
+
+      await waitFor(() => {
+        const chatContainer = screen.getByTestId('chat-container');
+        const layoutRow = chatContainer.parentElement?.parentElement;
+
+        expect(layoutRow).toHaveClass('w-full');
+        expect(layoutRow).toHaveClass('flex-1');
+      });
+    });
+
     it('should render HTML project workspace when the active session has a project', async () => {
       const projectSession = {
         ...TEST_SESSIONS.withMessages,
@@ -407,6 +433,36 @@ describe('AppShell', () => {
       expect(
         vi.mocked(htmlPreviewMock.htmlPreviewService.resolveProjectForPreview),
       ).toHaveBeenCalledWith('project-42');
+    });
+
+    it('should switch between split and full-width chat layout when the workspace is hidden', async () => {
+      const projectSession = {
+        ...TEST_SESSIONS.withMessages,
+        activeProjectId: 'project-42',
+      };
+      vi.mocked(dbMock.getSessionsForAssistant).mockResolvedValue([projectSession]);
+
+      render(<AppShell />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('html-project-workspace')).toBeInTheDocument();
+      });
+
+      const chatContainer = screen.getByTestId('chat-container');
+      const chatPane = chatContainer.parentElement;
+      expect(chatPane).toHaveClass('lg:w-[55%]');
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('hide-workspace'));
+      });
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('html-project-workspace')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: '顯示 HTML Canvas' })).toBeInTheDocument();
+      });
+
+      expect(chatPane).toHaveClass('w-full');
+      expect(chatPane).not.toHaveClass('lg:w-[55%]');
     });
 
     it('should render settings view with service status', async () => {

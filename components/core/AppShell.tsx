@@ -221,7 +221,7 @@ function AppContent(): React.JSX.Element {
       )}
 
       {state.viewMode === 'chat' && state.currentAssistant && state.currentSession && (
-        <div className='flex h-full min-h-0 flex-col overflow-hidden lg:flex-row'>
+        <div className='flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden lg:flex-row'>
           <div
             className={`relative min-h-0 min-w-0 flex-1 ${state.isProjectWorkspaceOpen && state.activeProjectId ? 'lg:w-[55%]' : 'w-full'}`}
           >
