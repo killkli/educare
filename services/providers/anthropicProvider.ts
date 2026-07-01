@@ -202,7 +202,7 @@ export class AnthropicProvider implements LLMProvider {
           ...conversationMessages,
           {
             role: 'assistant',
-            content: response.content?.map(block =>
+            content: (response.content ?? []).map(block =>
               block.type === 'text'
                 ? { type: 'text', text: block.text }
                 : {
