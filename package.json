@@ -2,6 +2,7 @@
   "name": "educare-educational-ai-assistant",
   "private": true,
   "version": "0.0.0",
+  "packageManager": "pnpm@11.9.0",
   "type": "module",
   "scripts": {
     "test:e2e": "playwright test --reporter=json",
@@ -35,7 +36,7 @@
     "validate-model-comparison": "tsx scripts/validateModelComparison.ts",
     "add-description-field": "tsx scripts/addDescriptionField.ts",
     "prepare": "husky",
-    "deploy": "pnpm run build && gh-pages -d dist -r https://github.com/killkli/chatbot-test.git",
+    "deploy": "pnpm run build && gh-pages -d dist -r https://github.com/boyofoundation/educare.git",
     "lint-staged": "lint-staged"
   },
   "lint-staged": {

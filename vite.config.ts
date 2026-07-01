@@ -32,7 +32,7 @@ export default defineConfig(() => {
         // 移除寫入權限的 API KEY - 現在由用戶提供
         'process.env.TURSOAPI_KEY': JSON.stringify('')
       },
-      base: '/chatbot-test/',
+      base: '/educare/',
       resolve: {
         alias: {
           '@': path.resolve(__dirname, '.'),
