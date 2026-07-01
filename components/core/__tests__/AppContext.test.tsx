@@ -57,6 +57,39 @@ vi.mock('../../../services/tursoService', () => ({
   initializeDatabase: vi.fn().mockResolvedValue(undefined),
   getAssistantFromTurso: vi.fn().mockResolvedValue(null),
 }));
+vi.mock('../../../services/htmlProjectStore', () => ({
+  htmlProjectStore: {
+    listProjectsByAssistant: vi.fn().mockResolvedValue([]),
+    createProject: vi.fn().mockResolvedValue({
+      id: 'test-project',
+      name: 'Test Project',
+      assistantId: 'test-assistant',
+      entryFile: '/index.html',
+      status: 'ready',
+      previewVersion: 0,
+      assetPaths: [],
+      createdAt: 0,
+      updatedAt: 0,
+    }),
+    writeFiles: vi.fn().mockResolvedValue(undefined),
+    assertProjectOwnership: vi.fn().mockResolvedValue({
+      id: 'test-project',
+      name: 'Test Project',
+      assistantId: 'test-assistant',
+      entryFile: '/index.html',
+      status: 'ready',
+      previewVersion: 0,
+      assetPaths: [],
+      createdAt: 0,
+      updatedAt: 0,
+    }),
+    deleteProject: vi.fn().mockResolvedValue({
+      id: 'test-project',
+      name: 'Test Project',
+    }),
+    deleteProjectsByAssistant: vi.fn().mockResolvedValue(0),
+  },
+}));
 
 // Test component to access context
 function TestConsumer() {
