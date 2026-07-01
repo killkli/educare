@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { ChatMessage, ChatSession, RagChunk } from '../../types';
 
 export interface MessageBubbleProps {
@@ -38,6 +39,7 @@ export interface ChatContainerProps {
   sharedMode?: boolean;
   assistantDescription?: string;
   isWorkspaceOpen?: boolean;
+  headerActions?: ReactNode;
 }
 
 export interface WelcomeMessageProps {

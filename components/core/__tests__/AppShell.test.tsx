@@ -211,6 +211,7 @@ vi.mock('../../chat', () => ({
     assistantName,
     session,
     onNewMessage,
+    headerActions,
   }: {
     assistantName: string;
     session: ChatSession | null;
@@ -220,9 +221,13 @@ vi.mock('../../chat', () => ({
       response?: string,
       tokenInfo?: { promptTokenCount: number; candidatesTokenCount: number },
     ) => void;
+    headerActions?: React.ReactNode;
   }) =>
     React.createElement('div', { 'data-testid': 'chat-container' }, [
       React.createElement('span', { key: 'name' }, `Chatting with ${assistantName}`),
+      ...(headerActions
+        ? [React.createElement('div', { key: 'header-actions' }, headerActions)]
+        : []),
       React.createElement(
         'button',
         {

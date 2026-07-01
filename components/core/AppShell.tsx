@@ -225,30 +225,6 @@ function AppContent(): React.JSX.Element {
           <div
             className={`relative flex min-h-0 min-w-0 flex-1 flex-col ${state.isProjectWorkspaceOpen && state.activeProjectId ? 'lg:w-[55%]' : 'w-full'}`}
           >
-            {!state.isProjectWorkspaceOpen && state.activeProjectId && (
-              <div className='flex-shrink-0 px-4 pt-4'>
-                <button
-                  type='button'
-                  onClick={() => actions.setProjectWorkspaceOpen(true)}
-                  className='inline-flex items-center gap-2 rounded-full border border-cyan-500/40 bg-gray-950/85 px-3 py-2 text-xs font-medium text-cyan-100 shadow-lg shadow-cyan-950/40 backdrop-blur transition hover:border-cyan-400 hover:text-white'
-                >
-                  <svg
-                    className='h-3.5 w-3.5'
-                    fill='none'
-                    stroke='currentColor'
-                    viewBox='0 0 24 24'
-                  >
-                    <path
-                      strokeLinecap='round'
-                      strokeLinejoin='round'
-                      strokeWidth={2}
-                      d='M13 5l7 7-7 7M5 5v14'
-                    />
-                  </svg>
-                  顯示 HTML Canvas
-                </button>
-              </div>
-            )}
             <div className='min-h-0 flex-1'>
               <ChatContainer
                 session={state.currentSession}
@@ -259,6 +235,33 @@ function AppContent(): React.JSX.Element {
                 onNewMessage={handleNewMessage}
                 sharedMode={!!state.isShared}
                 isWorkspaceOpen={Boolean(state.isProjectWorkspaceOpen && state.activeProjectId)}
+                headerActions={
+                  !state.isProjectWorkspaceOpen && state.activeProjectId ? (
+                    <button
+                      type='button'
+                      onClick={() => actions.setProjectWorkspaceOpen(true)}
+                      aria-label='顯示 HTML Canvas'
+                      title='顯示 HTML Canvas'
+                      className='inline-flex items-center gap-1.5 rounded-md border border-cyan-500/40 bg-cyan-500/10 px-2 py-1.5 text-xs font-medium text-cyan-100 transition hover:border-cyan-400 hover:bg-cyan-500/20 hover:text-white md:px-3 md:text-sm'
+                    >
+                      <svg
+                        className='h-3.5 w-3.5 md:h-4 md:w-4'
+                        fill='none'
+                        stroke='currentColor'
+                        viewBox='0 0 24 24'
+                        aria-hidden='true'
+                      >
+                        <path
+                          strokeLinecap='round'
+                          strokeLinejoin='round'
+                          strokeWidth={2}
+                          d='M13 5l7 7-7 7M5 5v14'
+                        />
+                      </svg>
+                      <span className='hidden sm:inline'>顯示 HTML Canvas</span>
+                    </button>
+                  ) : undefined
+                }
               />
             </div>
           </div>

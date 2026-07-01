@@ -20,6 +20,7 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
   sharedMode = false,
   assistantDescription,
   isWorkspaceOpen = false,
+  headerActions,
 }) => {
   const actions = useContext(AppContext)?.actions ?? null;
   const [input, setInput] = useState('');
@@ -172,6 +173,7 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
               {assistantName}
             </h2>
             <div className='flex items-center space-x-3'>
+              {headerActions}
               {sharedMode && (
                 <button
                   onClick={async () => {
