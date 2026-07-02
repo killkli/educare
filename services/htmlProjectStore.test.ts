@@ -224,6 +224,57 @@ describe('htmlProjectStore', () => {
     expect(projects.every(project => project.assistantId === 'assistant-1')).toBe(true);
   });
 
+  it('renames projects by trimming whitespace and updating updatedAt', async () => {
+    const mockDb = createMockDb();
+    mockOpenDB.mockResolvedValue(mockDb);
+    vi.spyOn(Date, 'now').mockReturnValueOnce(1700000000000).mockReturnValueOnce(1700000001000);
+
+    const { htmlProjectStore } = await import('./htmlProjectStore');
+
+    const project = await htmlProjectStore.createProject({
+      assistantId: 'assistant-1',
+      sessionId: 'session-1',
+      name: 'Original Name',
+    });
+
+    const renamedProject = await htmlProjectStore.renameProject(
+      project.id,
+      'assistant-1',
+      '  Renamed Canvas  ',
+    );
+
+    expect(renamedProject).toMatchObject({
+      id: project.id,
+      assistantId: 'assistant-1',
+      sessionId: 'session-1',
+      name: 'Renamed Canvas',
+    });
+    expect(renamedProject.updatedAt).toBe(1700000001000);
+    await expect(
+      htmlProjectStore.assertProjectOwnership(project.id, 'assistant-1'),
+    ).resolves.toMatchObject({
+      name: 'Renamed Canvas',
+      updatedAt: 1700000001000,
+    });
+  });
+
+  it('rejects renames with a blank name after trimming whitespace', async () => {
+    const mockDb = createMockDb();
+    mockOpenDB.mockResolvedValue(mockDb);
+    vi.spyOn(Date, 'now').mockReturnValue(1700000000000);
+
+    const { htmlProjectStore } = await import('./htmlProjectStore');
+
+    const project = await htmlProjectStore.createProject({
+      assistantId: 'assistant-1',
+      name: 'Original Name',
+    });
+
+    await expect(htmlProjectStore.renameProject(project.id, 'assistant-1', '   ')).rejects.toThrow(
+      'Project name is required.',
+    );
+  });
+
   it('returns search hits and reports skipped or truncated files', async () => {
     const mockDb = createMockDb();
     mockOpenDB.mockResolvedValue(mockDb);

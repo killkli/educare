@@ -10,6 +10,7 @@ import {
 import { resolveShortUrl, recordShortUrlClick } from '../../services/shortUrlService';
 import { htmlPreviewService } from '../../services/htmlPreviewService';
 import { htmlProjectStore } from '../../services/htmlProjectStore';
+import { htmlProjectImportService } from '../../services/htmlProjectImportService';
 import { getTemplateFiles } from '../../services/htmlProjectTemplates';
 import { AppContext } from './useAppContext';
 import type { ViewMode, AppState, AppAction, AppContextValue } from './AppContext.types';
@@ -673,6 +674,83 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
     [attachProjectToCurrentSession, state.currentSession],
   );
 
+  const renameProjectForCurrentSession = useCallback(
+    async (projectId: string, name: string) => {
+      if (!state.currentSession) {
+        return;
+      }
+
+      const project = await htmlProjectStore.renameProject(
+        projectId,
+        state.currentSession.assistantId,
+        name,
+      );
+
+      dispatch({
+        type: 'APPEND_PROJECT_ACTIVITY',
+        payload: `已重新命名 HTML 專案為「${project.name}」。`,
+      });
+    },
+    [state.currentSession],
+  );
+
+  const uploadFilesToProjectForCurrentSession = useCallback(
+    async (projectId: string, files: File[]) => {
+      if (!state.currentSession) {
+        return;
+      }
+
+      const project = await htmlProjectStore.assertProjectOwnership(
+        projectId,
+        state.currentSession.assistantId,
+      );
+      const importedFiles = await htmlProjectImportService.prepareFilesForProjectUpload(files);
+      const writeResult = await htmlProjectStore.writeFiles(project.id, importedFiles);
+      const activityMessage = `已上傳 ${importedFiles.length} 個檔案到 HTML 專案「${project.name}」。`;
+
+      if (state.currentSession.activeProjectId === project.id) {
+        const preview = await htmlPreviewService.resolveProjectForPreview(project.id);
+        dispatch({ type: 'SET_PROJECT_PREVIEW', payload: preview });
+        dispatch({
+          type: 'APPEND_PROJECT_ACTIVITY',
+          payload: `${activityMessage} version ${writeResult.previewVersion}`,
+        });
+        return;
+      }
+
+      dispatch({
+        type: 'APPEND_PROJECT_ACTIVITY',
+        payload: activityMessage,
+      });
+    },
+    [state.currentSession],
+  );
+
+  const importProjectZipForCurrentSession = useCallback(
+    async (file: File) => {
+      if (!state.currentSession) {
+        return;
+      }
+
+      const importedProject = await htmlProjectImportService.importZipProject(file);
+      const project = await htmlProjectStore.createProject({
+        assistantId: state.currentSession.assistantId,
+        sessionId: state.currentSession.id,
+        name: importedProject.projectName,
+        entryFile: importedProject.entryFile,
+      });
+
+      await htmlProjectStore.writeFiles(project.id, importedProject.files);
+      await attachProjectToCurrentSession(
+        state.currentSession,
+        project.id,
+        project.name,
+        '已匯入 ZIP HTML 專案',
+      );
+    },
+    [attachProjectToCurrentSession, state.currentSession],
+  );
+
   const deleteProjectForCurrentSession = useCallback(
     async (projectId: string) => {
       if (!state.currentSession) {
@@ -763,6 +841,9 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       appendProjectActivity,
       createProjectForCurrentSession,
       openProjectForCurrentSession,
+      renameProjectForCurrentSession,
+      uploadFilesToProjectForCurrentSession,
+      importProjectZipForCurrentSession,
       deleteProjectForCurrentSession,
       clearProjectForCurrentSession,
       clearProjectWorkspace,

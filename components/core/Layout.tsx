@@ -162,6 +162,12 @@ export function Layout({ children }: LayoutProps): React.JSX.Element {
               await actions.openProjectForCurrentSession(projectId);
               closeDrawerIfMobile();
             }}
+            onRenameProject={actions.renameProjectForCurrentSession}
+            onUploadProjectFiles={actions.uploadFilesToProjectForCurrentSession}
+            onImportProjectZip={async file => {
+              await actions.importProjectZipForCurrentSession(file);
+              closeDrawerIfMobile();
+            }}
             onDeleteProject={actions.deleteProjectForCurrentSession}
             variant={collapsed ? 'sidebar-collapsed' : 'sidebar'}
           />

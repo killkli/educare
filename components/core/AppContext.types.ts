@@ -97,6 +97,9 @@ export interface AppContextValue {
     appendProjectActivity: (message: string) => void;
     createProjectForCurrentSession: () => Promise<void>;
     openProjectForCurrentSession: (projectId: string) => Promise<void>;
+    renameProjectForCurrentSession: (projectId: string, name: string) => Promise<void>;
+    uploadFilesToProjectForCurrentSession: (projectId: string, files: File[]) => Promise<void>;
+    importProjectZipForCurrentSession: (file: File) => Promise<void>;
     deleteProjectForCurrentSession: (projectId: string) => Promise<void>;
     clearProjectForCurrentSession: () => Promise<void>;
     clearProjectWorkspace: () => void;

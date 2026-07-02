@@ -109,7 +109,7 @@ let dbPromise: Promise<IDBPDatabase<HtmlProjectDB>> | null = null;
 
 const now = (): number => Date.now();
 
-const normalizePath = (path: string): string => {
+export const normalizePath = (path: string): string => {
   const trimmedPath = path.trim();
   if (!trimmedPath) {
     throw new Error('Project file path is required.');
@@ -276,6 +276,25 @@ class HtmlProjectStore {
     }
 
     return project;
+  }
+
+  async renameProject(projectId: string, assistantId: string, name: string): Promise<HtmlProject> {
+    const db = await getDb();
+    const project = await this.assertProjectOwnership(projectId, assistantId);
+    const trimmedName = name.trim();
+
+    if (!trimmedName) {
+      throw new Error('Project name is required.');
+    }
+
+    const nextProject: HtmlProject = {
+      ...project,
+      name: trimmedName,
+      updatedAt: now(),
+    };
+
+    await updateProjectRecord(db, nextProject);
+    return nextProject;
   }
 
   async listProjectsByAssistant(assistantId: string): Promise<HtmlProject[]> {

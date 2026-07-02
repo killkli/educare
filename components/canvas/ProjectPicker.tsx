@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { HtmlProject } from '../../types';
 import { htmlProjectStore } from '../../services/htmlProjectStore';
 import { htmlProjectZipService } from '../../services/htmlProjectZipService';
@@ -10,6 +10,9 @@ interface ProjectPickerProps {
   activeProjectId?: string | null;
   onCreateProject: () => Promise<void> | void;
   onOpenProject: (projectId: string) => Promise<void> | void;
+  onRenameProject: (projectId: string, name: string) => Promise<void> | void;
+  onUploadProjectFiles: (projectId: string, files: File[]) => Promise<void> | void;
+  onImportProjectZip: (file: File) => Promise<void> | void;
   onDeleteProject: (projectId: string) => Promise<void> | void;
   variant?: 'sidebar' | 'sidebar-collapsed';
 }
@@ -19,6 +22,9 @@ export function ProjectPicker({
   activeProjectId = null,
   onCreateProject,
   onOpenProject,
+  onRenameProject,
+  onUploadProjectFiles,
+  onImportProjectZip,
   onDeleteProject,
   variant = 'sidebar',
 }: ProjectPickerProps): React.JSX.Element {
@@ -29,40 +35,35 @@ export function ProjectPicker({
   const [openingProjectId, setOpeningProjectId] = useState<string | null>(null);
   const [downloadingProjectId, setDownloadingProjectId] = useState<string | null>(null);
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
+  const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null);
+  const [uploadingProjectId, setUploadingProjectId] = useState<string | null>(null);
+  const [isImportingZip, setIsImportingZip] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const uploadFilesInputRef = useRef<HTMLInputElement | null>(null);
+  const uploadFolderInputRef = useRef<HTMLInputElement | null>(null);
+  const importZipInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingUploadProjectIdRef = useRef<string | null>(null);
+
+  const loadProjects = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const nextProjects = await htmlProjectStore.listProjectsByAssistant(assistantId);
+      setProjects(nextProjects);
+    } catch (loadError) {
+      console.error('Failed to load assistant HTML projects:', loadError);
+      setError('無法載入既有 HTML 專案。');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [assistantId]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    const loadProjects = async () => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        const nextProjects = await htmlProjectStore.listProjectsByAssistant(assistantId);
-        if (!cancelled) {
-          setProjects(nextProjects);
-        }
-      } catch (loadError) {
-        console.error('Failed to load assistant HTML projects:', loadError);
-        if (!cancelled) {
-          setError('無法載入既有 HTML 專案。');
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
-    };
-
     loadProjects().catch(loadError => {
       console.error('Failed to initialize assistant HTML project picker:', loadError);
     });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [assistantId, isModalOpen]);
+  }, [isModalOpen, loadProjects]);
 
   const handleCreateProject = async () => {
     setIsCreatingProject(true);
@@ -89,6 +90,81 @@ export function ProjectPicker({
       setError('無法開啟所選的 HTML 專案。');
     } finally {
       setOpeningProjectId(null);
+    }
+  };
+
+  const handleRenameProject = async (project: HtmlProject) => {
+    const nextName = window.prompt('請輸入新的專案名稱', project.name);
+    if (nextName === null) {
+      return;
+    }
+
+    setRenamingProjectId(project.id);
+    setError(null);
+    try {
+      await onRenameProject(project.id, nextName);
+      await loadProjects();
+    } catch (renameError) {
+      console.error('Failed to rename HTML project:', renameError);
+      setError(renameError instanceof Error ? renameError.message : '無法重新命名 HTML 專案。');
+    } finally {
+      setRenamingProjectId(null);
+    }
+  };
+
+  const handleUploadProjectFiles = async (files: File[]) => {
+    const projectId = pendingUploadProjectIdRef.current;
+    pendingUploadProjectIdRef.current = null;
+
+    if (!projectId || files.length === 0) {
+      return;
+    }
+
+    setUploadingProjectId(projectId);
+    setError(null);
+    try {
+      await onUploadProjectFiles(projectId, files);
+      await loadProjects();
+    } catch (uploadError) {
+      console.error('Failed to upload files into HTML project:', uploadError);
+      setError(uploadError instanceof Error ? uploadError.message : '無法上傳檔案到 HTML 專案。');
+    } finally {
+      setUploadingProjectId(null);
+    }
+  };
+
+  const handleProjectFileInputChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files ? Array.from(event.target.files) : [];
+    await handleUploadProjectFiles(files);
+    event.target.value = '';
+  };
+
+  const triggerProjectFileUpload = (projectId: string, mode: 'files' | 'folder') => {
+    pendingUploadProjectIdRef.current = projectId;
+    if (mode === 'files') {
+      uploadFilesInputRef.current?.click();
+      return;
+    }
+    uploadFolderInputRef.current?.click();
+  };
+
+  const handleImportZip = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const zipFile = event.target.files?.[0];
+    if (!zipFile) {
+      return;
+    }
+
+    setIsImportingZip(true);
+    setError(null);
+    try {
+      await onImportProjectZip(zipFile);
+      setIsModalOpen(false);
+    } catch (importError) {
+      console.error('Failed to import HTML project ZIP:', importError);
+      setError(importError instanceof Error ? importError.message : '無法匯入 HTML 專案 ZIP。');
+    } finally {
+      setIsImportingZip(false);
+      event.target.value = '';
     }
   };
 
@@ -129,6 +205,14 @@ export function ProjectPicker({
   };
 
   const isCollapsed = variant === 'sidebar-collapsed';
+  const isModalBusy =
+    isCreatingProject ||
+    isImportingZip ||
+    openingProjectId !== null ||
+    downloadingProjectId !== null ||
+    deletingProjectId !== null ||
+    renamingProjectId !== null ||
+    uploadingProjectId !== null;
 
   return (
     <>
@@ -172,10 +256,33 @@ export function ProjectPicker({
         </Button>
       </section>
 
+      <input
+        ref={uploadFilesInputRef}
+        type='file'
+        multiple
+        className='hidden'
+        onChange={handleProjectFileInputChange}
+      />
+      <input
+        ref={uploadFolderInputRef}
+        type='file'
+        multiple
+        className='hidden'
+        onChange={handleProjectFileInputChange}
+        {...({ directory: '', webkitdirectory: '' } as Record<string, string>)}
+      />
+      <input
+        ref={importZipInputRef}
+        type='file'
+        accept='.zip,application/zip'
+        className='hidden'
+        onChange={handleImportZip}
+      />
+
       <Modal
         isOpen={isModalOpen}
         onClose={() => {
-          if (isCreatingProject || openingProjectId || downloadingProjectId || deletingProjectId) {
+          if (isModalBusy) {
             return;
           }
           setIsModalOpen(false);
@@ -190,18 +297,30 @@ export function ProjectPicker({
               <div>
                 <p className='text-sm font-semibold text-white'>Start new HTML project</p>
                 <p className='mt-1 text-sm text-gray-300'>
-                  立即建立新的 HTML Canvas workspace，載入預設 starter files 並綁定到目前對話。
+                  立即建立新的 HTML Canvas workspace，載入預設 starter files，或從 ZIP
+                  匯入既有專案。
                 </p>
               </div>
-              <Button
-                type='button'
-                onClick={handleCreateProject}
-                loading={isCreatingProject}
-                size='sm'
-                className='self-start whitespace-nowrap px-5 py-2.5 text-sm'
-              >
-                Start new project
-              </Button>
+              <div className='flex flex-wrap gap-2'>
+                <Button
+                  type='button'
+                  onClick={() => importZipInputRef.current?.click()}
+                  loading={isImportingZip}
+                  size='sm'
+                  className='self-start whitespace-nowrap px-5 py-2.5 text-sm'
+                >
+                  Import ZIP
+                </Button>
+                <Button
+                  type='button'
+                  onClick={handleCreateProject}
+                  loading={isCreatingProject}
+                  size='sm'
+                  className='self-start whitespace-nowrap px-5 py-2.5 text-sm'
+                >
+                  Start new project
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -210,7 +329,7 @@ export function ProjectPicker({
               <div>
                 <p className='text-sm font-semibold text-white'>Open existing HTML project</p>
                 <p className='mt-1 text-sm text-gray-400'>
-                  這些專案都屬於目前 assistant，可直接續編、下載 ZIP 備份，或手動刪除。
+                  這些專案都屬於目前 assistant，可直接續編、上傳檔案、下載 ZIP 備份，或手動刪除。
                 </p>
               </div>
             </div>
@@ -236,7 +355,16 @@ export function ProjectPicker({
                   const isOpening = openingProjectId === project.id;
                   const isDownloading = downloadingProjectId === project.id;
                   const isDeleting = deletingProjectId === project.id;
-                  const isBusy = isOpening || isDownloading || isDeleting || isCreatingProject;
+                  const isRenaming = renamingProjectId === project.id;
+                  const isUploading = uploadingProjectId === project.id;
+                  const isBusy =
+                    isOpening ||
+                    isDownloading ||
+                    isDeleting ||
+                    isRenaming ||
+                    isUploading ||
+                    isCreatingProject ||
+                    isImportingZip;
 
                   return (
                     <div
@@ -273,6 +401,30 @@ export function ProjectPicker({
                       <div className='mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-gray-500'>
                         <span>{new Date(project.updatedAt).toLocaleString('zh-TW')}</span>
                         <div className='flex flex-wrap items-center gap-2'>
+                          <button
+                            type='button'
+                            onClick={() => handleRenameProject(project)}
+                            disabled={isBusy}
+                            className='rounded-lg border border-amber-500/30 px-3 py-1.5 font-medium text-amber-200 transition hover:border-amber-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-60'
+                          >
+                            {isRenaming ? '重新命名中…' : 'Rename'}
+                          </button>
+                          <button
+                            type='button'
+                            onClick={() => triggerProjectFileUpload(project.id, 'files')}
+                            disabled={isBusy}
+                            className='rounded-lg border border-blue-500/30 px-3 py-1.5 font-medium text-blue-200 transition hover:border-blue-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-60'
+                          >
+                            {isUploading ? '上傳中…' : 'Upload files'}
+                          </button>
+                          <button
+                            type='button'
+                            onClick={() => triggerProjectFileUpload(project.id, 'folder')}
+                            disabled={isBusy}
+                            className='rounded-lg border border-violet-500/30 px-3 py-1.5 font-medium text-violet-200 transition hover:border-violet-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-60'
+                          >
+                            {isUploading ? '上傳中…' : 'Upload folder'}
+                          </button>
                           <button
                             type='button'
                             onClick={() => handleDeleteProject(project)}

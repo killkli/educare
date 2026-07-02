@@ -3,12 +3,54 @@ import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vite
 import React from 'react';
 import { AppProvider } from '../AppContext';
 import { useAppContext } from '../useAppContext';
+import { htmlProjectStore } from '../../../services/htmlProjectStore';
+import { htmlPreviewService } from '../../../services/htmlPreviewService';
+import { htmlProjectImportService } from '../../../services/htmlProjectImportService';
 import {
   createMockModelLoadingProgress,
   TEST_ASSISTANTS,
   TEST_SESSIONS,
   RESPONSIVE_BREAKPOINTS,
 } from './test-utils';
+
+const { TEST_HTML_PROJECT, TEST_PROJECT_PREVIEW, TEST_IMPORTED_PROJECT } = vi.hoisted(() => ({
+  TEST_HTML_PROJECT: {
+    id: 'test-project-1',
+    name: 'Test Project',
+    assistantId: 'test-assistant-1',
+    sessionId: 'test-session-1',
+    entryFile: '/index.html',
+    status: 'ready' as const,
+    previewVersion: 0,
+    assetPaths: [],
+    createdAt: 0,
+    updatedAt: 0,
+  },
+  TEST_PROJECT_PREVIEW: {
+    projectId: 'test-project-1',
+    url: 'blob:test-project-1',
+    previewVersion: 1,
+    entryFile: '/index.html',
+    previewReady: true,
+    previewUrlType: 'blob' as const,
+    html: '<!doctype html><html><body>Preview</body></html>',
+    warnings: [],
+    generatedAt: 0,
+    error: null,
+  },
+  TEST_IMPORTED_PROJECT: {
+    projectName: 'Imported Demo',
+    entryFile: '/demo/index.html',
+    files: [
+      {
+        path: '/demo/index.html',
+        kind: 'html' as const,
+        content: '<main>Imported</main>',
+        encoding: 'utf-8' as const,
+      },
+    ],
+  },
+}));
 
 const mockDb = vi.hoisted(() => ({
   getAssistant: vi.fn().mockResolvedValue(null),
@@ -60,34 +102,42 @@ vi.mock('../../../services/tursoService', () => ({
 vi.mock('../../../services/htmlProjectStore', () => ({
   htmlProjectStore: {
     listProjectsByAssistant: vi.fn().mockResolvedValue([]),
-    createProject: vi.fn().mockResolvedValue({
-      id: 'test-project',
-      name: 'Test Project',
-      assistantId: 'test-assistant',
-      entryFile: '/index.html',
-      status: 'ready',
-      previewVersion: 0,
-      assetPaths: [],
-      createdAt: 0,
-      updatedAt: 0,
-    }),
-    writeFiles: vi.fn().mockResolvedValue(undefined),
-    assertProjectOwnership: vi.fn().mockResolvedValue({
-      id: 'test-project',
-      name: 'Test Project',
-      assistantId: 'test-assistant',
-      entryFile: '/index.html',
-      status: 'ready',
-      previewVersion: 0,
-      assetPaths: [],
-      createdAt: 0,
-      updatedAt: 0,
-    }),
+    createProject: vi.fn().mockResolvedValue({ ...TEST_HTML_PROJECT }),
+    renameProject: vi
+      .fn()
+      .mockImplementation(async (_projectId: string, _assistantId: string, name: string) => ({
+        ...TEST_HTML_PROJECT,
+        name: name.trim(),
+        updatedAt: Date.now(),
+      })),
+    writeFiles: vi.fn().mockResolvedValue({ updated: [], previewVersion: 1 }),
+    assertProjectOwnership: vi.fn().mockResolvedValue({ ...TEST_HTML_PROJECT }),
     deleteProject: vi.fn().mockResolvedValue({
-      id: 'test-project',
-      name: 'Test Project',
+      id: TEST_HTML_PROJECT.id,
+      name: TEST_HTML_PROJECT.name,
     }),
     deleteProjectsByAssistant: vi.fn().mockResolvedValue(0),
+  },
+}));
+
+vi.mock('../../../services/htmlPreviewService', () => ({
+  htmlPreviewService: {
+    resolveProjectForPreview: vi.fn().mockResolvedValue({ ...TEST_PROJECT_PREVIEW }),
+    revokePreviewUrl: vi.fn(),
+  },
+}));
+
+vi.mock('../../../services/htmlProjectImportService', () => ({
+  htmlProjectImportService: {
+    prepareFilesForProjectUpload: vi.fn().mockResolvedValue([
+      {
+        path: '/index.html',
+        kind: 'html',
+        content: '<main>Upload</main>',
+        encoding: 'utf-8',
+      },
+    ]),
+    importZipProject: vi.fn().mockResolvedValue({ ...TEST_IMPORTED_PROJECT }),
   },
 }));
 
@@ -109,6 +159,14 @@ function TestConsumer() {
       <div data-testid='is-tablet'>{String(state.isTablet)}</div>
       <div data-testid='is-model-loading'>{String(state.isModelLoading)}</div>
       <div data-testid='is-share-modal-open'>{String(state.isShareModalOpen)}</div>
+      <div data-testid='active-project-id'>{state.activeProjectId || 'none'}</div>
+      <div data-testid='project-preview-id'>{state.projectPreview?.projectId || 'none'}</div>
+      <div data-testid='project-preview-version'>
+        {state.projectPreview ? String(state.projectPreview.previewVersion) : 'none'}
+      </div>
+      <div data-testid='project-activity-last'>
+        {state.projectToolActivity[state.projectToolActivity.length - 1] || 'none'}
+      </div>
 
       {/* Action buttons for testing */}
       <button data-testid='load-data' onClick={() => actions.loadData()}>
@@ -164,6 +222,34 @@ function TestConsumer() {
       </button>
       <button data-testid='check-screen-size' onClick={actions.checkScreenSize}>
         Check Screen Size
+      </button>
+      <button
+        data-testid='rename-project'
+        onClick={() =>
+          actions.renameProjectForCurrentSession('test-project-1', '  Renamed Canvas  ')
+        }
+      >
+        Rename Project
+      </button>
+      <button
+        data-testid='upload-project-files'
+        onClick={() =>
+          actions.uploadFilesToProjectForCurrentSession('test-project-1', [
+            new File(['<main>Upload</main>'], 'index.html', { type: 'text/html' }),
+          ])
+        }
+      >
+        Upload Project Files
+      </button>
+      <button
+        data-testid='import-project-zip'
+        onClick={() =>
+          actions.importProjectZipForCurrentSession(
+            new File(['zip-content'], 'imported-demo.zip', { type: 'application/zip' }),
+          )
+        }
+      >
+        Import Project Zip
       </button>
 
       {/* Dispatch test button */}
@@ -245,6 +331,36 @@ describe('AppContext', () => {
     // Re-establish provider registry defaults
     mockProviderRegistry.initializeProviders.mockResolvedValue(undefined);
     mockProviderRegistry.providerManager.getAvailableProviders.mockReturnValue(['gemini']);
+
+    // Re-establish HTML project service defaults
+    vi.mocked(htmlProjectStore.listProjectsByAssistant).mockResolvedValue([]);
+    vi.mocked(htmlProjectStore.createProject).mockResolvedValue({ ...TEST_HTML_PROJECT });
+    vi.mocked(htmlProjectStore.renameProject).mockImplementation(
+      async (_projectId: string, _assistantId: string, name: string) => ({
+        ...TEST_HTML_PROJECT,
+        name: name.trim(),
+        updatedAt: Date.now(),
+      }),
+    );
+    vi.mocked(htmlProjectStore.writeFiles).mockResolvedValue({ updated: [], previewVersion: 1 });
+    vi.mocked(htmlProjectStore.assertProjectOwnership).mockResolvedValue({ ...TEST_HTML_PROJECT });
+    vi.mocked(htmlProjectStore.deleteProject).mockResolvedValue({ ...TEST_HTML_PROJECT });
+    vi.mocked(htmlProjectStore.deleteProjectsByAssistant).mockResolvedValue(0);
+    vi.mocked(htmlPreviewService.resolveProjectForPreview).mockResolvedValue({
+      ...TEST_PROJECT_PREVIEW,
+    });
+    vi.mocked(htmlPreviewService.revokePreviewUrl).mockImplementation(() => {});
+    vi.mocked(htmlProjectImportService.prepareFilesForProjectUpload).mockResolvedValue([
+      {
+        path: '/index.html',
+        kind: 'html',
+        content: '<main>Upload</main>',
+        encoding: 'utf-8',
+      },
+    ]);
+    vi.mocked(htmlProjectImportService.importZipProject).mockResolvedValue({
+      ...TEST_IMPORTED_PROJECT,
+    });
 
     testEnvironment = {
       confirmSpy,
@@ -730,6 +846,194 @@ describe('AppContext', () => {
 
       await waitFor(() => {
         expect(mockDb.saveSession).toHaveBeenCalledWith(TEST_SESSIONS.withMessages);
+      });
+    });
+  });
+
+  describe('Action Handlers - HTML Project Management', () => {
+    it('should rename the current session project and log the new project name', async () => {
+      mockDb.getAssistant.mockResolvedValue(TEST_ASSISTANTS.basic);
+      mockDb.getSessionsForAssistant.mockResolvedValue([TEST_SESSIONS.withMessages]);
+      vi.mocked(htmlProjectStore.renameProject).mockResolvedValue({
+        ...TEST_HTML_PROJECT,
+        name: 'Renamed Canvas',
+        updatedAt: 1700000001000,
+      });
+
+      render(
+        <AppProvider>
+          <TestConsumer />
+        </AppProvider>,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('is-loading')).toHaveTextContent('false');
+      });
+
+      await act(async () => {
+        screen.getByTestId('select-assistant').click();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('current-assistant')).toHaveTextContent('Basic Assistant');
+      });
+
+      await act(async () => {
+        screen.getByTestId('rename-project').click();
+      });
+
+      await waitFor(() => {
+        expect(htmlProjectStore.renameProject).toHaveBeenCalledWith(
+          'test-project-1',
+          'test-assistant-1',
+          '  Renamed Canvas  ',
+        );
+        expect(screen.getByTestId('project-activity-last')).toHaveTextContent(
+          '已重新命名 HTML 專案為「Renamed Canvas」。',
+        );
+      });
+    });
+
+    it('should upload files into the active current session project and refresh the preview', async () => {
+      mockDb.getAssistant.mockResolvedValue(TEST_ASSISTANTS.basic);
+      mockDb.getSessionsForAssistant.mockResolvedValue([
+        {
+          ...TEST_SESSIONS.withMessages,
+          activeProjectId: 'test-project-1',
+        },
+      ]);
+      vi.mocked(htmlProjectStore.writeFiles).mockResolvedValue({
+        updated: ['/index.html'],
+        previewVersion: 3,
+      });
+      vi.mocked(htmlPreviewService.resolveProjectForPreview).mockResolvedValue({
+        ...TEST_PROJECT_PREVIEW,
+        previewVersion: 3,
+      });
+
+      render(
+        <AppProvider>
+          <TestConsumer />
+        </AppProvider>,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('is-loading')).toHaveTextContent('false');
+      });
+
+      await act(async () => {
+        screen.getByTestId('select-assistant').click();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('active-project-id')).toHaveTextContent('test-project-1');
+      });
+
+      vi.mocked(htmlProjectStore.assertProjectOwnership).mockClear();
+      vi.mocked(htmlProjectStore.writeFiles).mockClear();
+      vi.mocked(htmlPreviewService.resolveProjectForPreview).mockClear();
+      vi.mocked(htmlProjectImportService.prepareFilesForProjectUpload).mockClear();
+
+      await act(async () => {
+        screen.getByTestId('upload-project-files').click();
+      });
+
+      await waitFor(() => {
+        expect(htmlProjectStore.assertProjectOwnership).toHaveBeenCalledWith(
+          'test-project-1',
+          'test-assistant-1',
+        );
+        expect(htmlProjectImportService.prepareFilesForProjectUpload).toHaveBeenCalledTimes(1);
+        expect(htmlProjectStore.writeFiles).toHaveBeenCalledWith('test-project-1', [
+          {
+            path: '/index.html',
+            kind: 'html',
+            content: '<main>Upload</main>',
+            encoding: 'utf-8',
+          },
+        ]);
+        expect(htmlPreviewService.resolveProjectForPreview).toHaveBeenCalledWith('test-project-1');
+        expect(screen.getByTestId('project-preview-version')).toHaveTextContent('3');
+        expect(screen.getByTestId('project-activity-last')).toHaveTextContent(
+          '已上傳 1 個檔案到 HTML 專案「Test Project」。 version 3',
+        );
+      });
+    });
+
+    it('should import a zip project and attach it to the current session workspace', async () => {
+      mockDb.getAssistant.mockResolvedValue(TEST_ASSISTANTS.basic);
+      mockDb.getSessionsForAssistant.mockResolvedValue([TEST_SESSIONS.withMessages]);
+      vi.mocked(htmlProjectImportService.importZipProject).mockResolvedValue({
+        ...TEST_IMPORTED_PROJECT,
+      });
+      vi.mocked(htmlProjectStore.createProject).mockResolvedValue({
+        ...TEST_HTML_PROJECT,
+        id: 'imported-project-1',
+        name: 'Imported Demo',
+        entryFile: '/demo/index.html',
+      });
+      vi.mocked(htmlProjectStore.writeFiles).mockResolvedValue({
+        updated: ['/demo/index.html'],
+        previewVersion: 1,
+      });
+      vi.mocked(htmlProjectStore.assertProjectOwnership).mockResolvedValue({
+        ...TEST_HTML_PROJECT,
+        id: 'imported-project-1',
+        name: 'Imported Demo',
+        entryFile: '/demo/index.html',
+      });
+      vi.mocked(htmlPreviewService.resolveProjectForPreview).mockResolvedValue({
+        ...TEST_PROJECT_PREVIEW,
+        projectId: 'imported-project-1',
+        entryFile: '/demo/index.html',
+      });
+
+      render(
+        <AppProvider>
+          <TestConsumer />
+        </AppProvider>,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('is-loading')).toHaveTextContent('false');
+      });
+
+      await act(async () => {
+        screen.getByTestId('select-assistant').click();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('current-assistant')).toHaveTextContent('Basic Assistant');
+      });
+
+      await act(async () => {
+        screen.getByTestId('import-project-zip').click();
+      });
+
+      await waitFor(() => {
+        expect(htmlProjectImportService.importZipProject).toHaveBeenCalledWith(expect.any(File));
+        expect(htmlProjectStore.createProject).toHaveBeenCalledWith({
+          assistantId: 'test-assistant-1',
+          sessionId: 'test-session-1',
+          name: 'Imported Demo',
+          entryFile: '/demo/index.html',
+        });
+        expect(htmlProjectStore.writeFiles).toHaveBeenCalledWith(
+          'imported-project-1',
+          TEST_IMPORTED_PROJECT.files,
+        );
+        expect(mockDb.saveSession).toHaveBeenCalledWith(
+          expect.objectContaining({
+            id: 'test-session-1',
+            assistantId: 'test-assistant-1',
+            activeProjectId: 'imported-project-1',
+          }),
+        );
+        expect(screen.getByTestId('active-project-id')).toHaveTextContent('imported-project-1');
+        expect(screen.getByTestId('project-preview-id')).toHaveTextContent('imported-project-1');
+        expect(screen.getByTestId('project-activity-last')).toHaveTextContent(
+          '已匯入 ZIP HTML 專案「Imported Demo」。',
+        );
       });
     });
   });
