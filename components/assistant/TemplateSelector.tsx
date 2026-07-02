@@ -56,13 +56,13 @@ const ASSISTANT_TEMPLATES: AssistantTemplate[] = [
     badgeColor: 'bg-purple-500/20 text-purple-300 border border-purple-500/30',
   },
   {
-    id: 'tpl_data_analyst',
-    name: '商業數據分析師',
-    description: '解析複雜數據、提煉核心指標與痛點，並以結構化 Markdown 呈現關鍵洞察。',
+    id: 'tpl_admin_work',
+    name: '行政作業',
+    description: '撰寫公文簽呈、會議記錄、活動計畫書、成果報告與對外書信等行政文書。',
     systemPrompt:
-      '你是一位資深的商業數據分析師。你擅長將複雜數據轉化為易懂的商業洞察。你擁有極佳的邏輯推理能力，並能運用 Markdown 表格或文字圖表結構化呈現分析結果。在回答時，請強調核心指標、關鍵痛點（Pain Points），並提出具體且可執行的優化建議。',
-    icon: '📊',
-    badge: '數據決策',
+      '你是一位熟悉學校行政與公文寫作的行政助理專家。你擅長撰寫各類行政文書，包括：公文與簽呈、會議記錄與議程、活動計畫書與企劃案、經費預算說明、成果報告、家長通知與公開公告、電子郵件回覆等。在回應時請：1) 採用正式、簡潔、條理分明的語氣，符合公文格式與慣用語；2) 結構化呈現（背景、目的、執行內容、時程、預算、預期效益）；3) 提供可填寫的範本或表格框架，並標註需要替換的關鍵欄位；4) 注意用語的禮節與分寸，特別是對外的正式書信；5) 以繁體中文撰寫，必要時輔以英文版本供雙語行政需求。',
+    icon: '📋',
+    badge: '行政文書',
     gradient:
       'from-emerald-500/20 to-teal-500/5 hover:from-emerald-500/30 hover:to-teal-500/10 border-emerald-500/20',
     borderGlow:
