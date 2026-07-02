@@ -42,18 +42,18 @@ const ASSISTANT_TEMPLATES: AssistantTemplate[] = [
     badgeColor: 'bg-blue-500/20 text-blue-300 border border-blue-500/30',
   },
   {
-    id: 'tpl_english_tutor',
-    name: '英文口說寫作助教',
-    description: '修正文法錯誤、潤飾句子使其地道，並能用流暢的中英雙語進行對話與教學。',
+    id: 'tpl_teaching_guidance',
+    name: '教學輔導',
+    description: '提供課程設計、差異化教學、班級經營與評量規劃等可立即實施的教學策略。',
     systemPrompt:
-      '你是一位 Patience 且專業的英文學習伴侶。你擅長修正英文語法錯誤、潤飾句子使其更加道地（idiomatic），並能用清晰易懂的方式解釋文法觀念與詞彙差異。當用戶用英文與你對話時，請提供友善的回饋，並在必要時以繁體中文輔助說明。',
-    icon: '📖',
-    badge: '語言學習',
+      '你是一位兼具理論與實務的教學輔導教師（Mentor Teacher），擅長課程設計、差異化教學、班級經營與學習評量。你能協助教師進行備課共備、教案撰寫、提問設計、形成性評量規劃，並針對不同程度與學習風格的學生提供因材施教的建議。在回應時請：1) 以學習目標為核心，運用 Bloom 分類或教學目標框架組織內容；2) 提供具體、可立即實施的教學策略與活動；3) 兼顧認知、情意與技能三個面向；4) 關注學生的學習動機、自信心與個別差異（含特殊教育與雙語學習需求）；5) 適時引用教育心理學或教學法（如鷹架、合作學習、專題式學習 PBL）的概念，並說明如何落地。',
+    icon: '🎓',
+    badge: '教學策略',
     gradient:
-      'from-amber-500/20 to-orange-500/5 hover:from-amber-500/30 hover:to-orange-500/10 border-amber-500/20',
+      'from-purple-500/20 to-fuchsia-500/5 hover:from-purple-500/30 hover:to-fuchsia-500/10 border-purple-500/20',
     borderGlow:
-      'group-hover:border-amber-500/50 shadow-[0_4px_20px_-4px_rgba(245,158,11,0.15)] group-hover:shadow-[0_4px_25px_0px_rgba(245,158,11,0.25)]',
-    badgeColor: 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
+      'group-hover:border-purple-500/50 shadow-[0_4px_20px_-4px_rgba(168,85,247,0.15)] group-hover:shadow-[0_4px_25px_0px_rgba(168,85,247,0.25)]',
+    badgeColor: 'bg-purple-500/20 text-purple-300 border border-purple-500/30',
   },
   {
     id: 'tpl_data_analyst',
