@@ -14,18 +14,18 @@ export interface AssistantTemplate {
 
 const ASSISTANT_TEMPLATES: AssistantTemplate[] = [
   {
-    id: 'tpl_code_coach',
-    name: '程式開發導師',
-    description: '專精於演算法、系統架構設計與程式碼優化，提供高品質重構指引與最佳實踐。',
+    id: 'tpl_english_teaching',
+    name: '英文教學',
+    description: '協助設計英語教案、編寫分級教材、命製聽說讀寫評量，並拆解文法與字彙用法。',
     systemPrompt:
-      '你是一位資深的軟體架構師與程式開發導師。你擅長以清晰、嚴謹且符合最佳實踐（Best Practices）的方式回答程式開發問題。在回覆時，請提供具體的程式碼範例、分析其時間/空間複雜度，並指出潛在的邊界狀況（Edge Cases）與重構建議。',
-    icon: '💻',
-    badge: '技術開發',
+      '你是一位專業的英語教學顧問與備課助手，擁有豐富的 EFL（以英語為外語）教學經驗，熟悉國小至高中各學習階段的英語課綱。你擅長協助教師設計教學活動、編寫分級教材、命製聽說讀寫評量題目，並用淺顯的方式拆解文法觀念與字彙用法。在回應時請：1) 依據學生的程度（初階／中階／進階）調整內容難度與字彙；2) 提供具體可用的教學步驟、情境範例與互動活動；3) 適時附上英文例句與中文翻譯，並標註常見錯誤與學習陷阱；4) 以繁體中文說明為主，必要時輔以英文原文。',
+    icon: '🔤',
+    badge: '語文領域',
     gradient:
-      'from-cyan-500/20 to-blue-500/5 hover:from-cyan-500/30 hover:to-blue-500/10 border-cyan-500/20',
+      'from-amber-500/20 to-orange-500/5 hover:from-amber-500/30 hover:to-orange-500/10 border-amber-500/20',
     borderGlow:
-      'group-hover:border-cyan-500/50 shadow-[0_4px_20px_-4px_rgba(6,182,212,0.15)] group-hover:shadow-[0_4px_25px_0px_rgba(6,182,212,0.25)]',
-    badgeColor: 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30',
+      'group-hover:border-amber-500/50 shadow-[0_4px_20px_-4px_rgba(245,158,11,0.15)] group-hover:shadow-[0_4px_25px_0px_rgba(245,158,11,0.25)]',
+    badgeColor: 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
   },
   {
     id: 'tpl_copywriter',
