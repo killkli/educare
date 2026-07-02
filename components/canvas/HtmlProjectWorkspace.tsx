@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { HtmlProjectFileDescriptor } from '../../types';
 import { useAppContext } from '../core/useAppContext';
 import { htmlProjectStore } from '../../services/htmlProjectStore';
@@ -21,6 +21,8 @@ export function HtmlProjectWorkspace({ projectId }: HtmlProjectWorkspaceProps): 
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('preview');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isDownloadingZip, setIsDownloadingZip] = useState(false);
+  const [isUploadingFiles, setIsUploadingFiles] = useState(false);
+  const uploadFilesInputRef = useRef<HTMLInputElement | null>(null);
 
   const preview = state.projectPreview;
 
@@ -84,6 +86,29 @@ export function HtmlProjectWorkspace({ projectId }: HtmlProjectWorkspaceProps): 
     }
   };
 
+  const handleWorkspaceFileInputChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const nextFiles = event.target.files ? Array.from(event.target.files) : [];
+    event.target.value = '';
+
+    if (nextFiles.length === 0) {
+      return;
+    }
+
+    setIsUploadingFiles(true);
+    try {
+      await actions.uploadFilesToProjectForCurrentSession(projectId, nextFiles);
+    } catch (error) {
+      console.error('Failed to upload files from HTML project workspace:', error);
+      actions.appendProjectActivity(`無法上傳檔案：${(error as Error).message}`);
+    } finally {
+      setIsUploadingFiles(false);
+    }
+  };
+
+  const handleUploadFiles = () => {
+    uploadFilesInputRef.current?.click();
+  };
+
   const tabs = useMemo(
     () => [
       { id: 'preview' as const, label: 'Preview' },
@@ -98,14 +123,23 @@ export function HtmlProjectWorkspace({ projectId }: HtmlProjectWorkspaceProps): 
       className='flex h-full min-h-0 flex-col border-l border-gray-700/60 bg-gray-950/90'
       data-testid='html-project-workspace'
     >
+      <input
+        ref={uploadFilesInputRef}
+        type='file'
+        multiple
+        className='hidden'
+        onChange={handleWorkspaceFileInputChange}
+      />
       <PreviewToolbar
         projectId={projectId}
         previewVersion={preview?.previewVersion || 0}
         previewUrl={preview?.url}
         isRefreshing={isRefreshing}
         isDownloadingZip={isDownloadingZip}
+        isUploadingFiles={isUploadingFiles}
         onRefresh={handleRefresh}
         onDownloadZip={handleDownloadZip}
+        onUploadFiles={handleUploadFiles}
         onClose={() => actions.setProjectWorkspaceOpen(false)}
       />
 

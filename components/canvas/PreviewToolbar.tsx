@@ -6,8 +6,10 @@ interface PreviewToolbarProps {
   previewUrl?: string;
   isRefreshing: boolean;
   isDownloadingZip?: boolean;
+  isUploadingFiles?: boolean;
   onRefresh: () => Promise<void> | void;
   onDownloadZip?: () => Promise<void> | void;
+  onUploadFiles?: () => Promise<void> | void;
   onClose?: () => void;
 }
 
@@ -17,8 +19,10 @@ export function PreviewToolbar({
   previewUrl,
   isRefreshing,
   isDownloadingZip = false,
+  isUploadingFiles = false,
   onRefresh,
   onDownloadZip,
+  onUploadFiles,
   onClose,
 }: PreviewToolbarProps): React.JSX.Element {
   return (
@@ -33,7 +37,7 @@ export function PreviewToolbar({
         <button
           type='button'
           onClick={() => onRefresh()}
-          disabled={isRefreshing || isDownloadingZip}
+          disabled={isRefreshing || isDownloadingZip || isUploadingFiles}
           className='rounded-lg border border-cyan-500/40 px-3 py-1.5 text-xs font-medium text-cyan-200 transition hover:border-cyan-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-60'
         >
           {isRefreshing ? 'Refreshing…' : 'Refresh'}
@@ -44,9 +48,11 @@ export function PreviewToolbar({
             target='_blank'
             rel='noreferrer noopener'
             title='在新分頁開啟完整預覽'
-            aria-disabled={isRefreshing || isDownloadingZip || undefined}
+            aria-disabled={isRefreshing || isDownloadingZip || isUploadingFiles || undefined}
             className={`inline-flex items-center gap-1.5 rounded-lg border border-gray-600 px-3 py-1.5 text-xs font-medium text-gray-200 transition hover:border-gray-500 hover:text-white ${
-              isRefreshing || isDownloadingZip ? 'pointer-events-none opacity-60' : ''
+              isRefreshing || isDownloadingZip || isUploadingFiles
+                ? 'pointer-events-none opacity-60'
+                : ''
             }`}
           >
             <svg
@@ -66,11 +72,21 @@ export function PreviewToolbar({
             Open tab
           </a>
         )}
+        {onUploadFiles && (
+          <button
+            type='button'
+            onClick={() => onUploadFiles()}
+            disabled={isRefreshing || isDownloadingZip || isUploadingFiles}
+            className='rounded-lg border border-blue-500/40 px-3 py-1.5 text-xs font-medium text-blue-200 transition hover:border-blue-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-60'
+          >
+            {isUploadingFiles ? 'Uploading…' : 'Upload files'}
+          </button>
+        )}
         {onDownloadZip && (
           <button
             type='button'
             onClick={() => onDownloadZip()}
-            disabled={isRefreshing || isDownloadingZip}
+            disabled={isRefreshing || isDownloadingZip || isUploadingFiles}
             className='rounded-lg border border-gray-600 px-3 py-1.5 text-xs font-medium text-gray-200 transition hover:border-gray-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-60'
           >
             {isDownloadingZip ? 'Downloading…' : 'Download ZIP'}

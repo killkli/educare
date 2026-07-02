@@ -120,11 +120,11 @@ export const normalizePath = (path: string): string => {
     .replace(/\/+/g, '/');
   const segments = normalizedPath.split('/').filter(Boolean);
 
-  if (segments.some(segment => segment === '.' || segment === '..')) {
+  if (segments.some(segment => segment === '..')) {
     throw new Error(`Unsafe project file path: ${path}`);
   }
 
-  return `/${segments.join('/')}`;
+  return `/${segments.filter(segment => segment !== '.').join('/')}`;
 };
 
 const inferDependencies = (kind: HtmlProjectFileKind, content: string): string[] => {

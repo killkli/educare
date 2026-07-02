@@ -31,48 +31,6 @@ vi.mock('../../../services/htmlProjectZipService', () => ({
   },
 }));
 
-vi.mock('../PreviewToolbar', () => ({
-  PreviewToolbar: ({
-    projectId,
-    previewVersion,
-    isRefreshing,
-    isDownloadingZip,
-    onRefresh,
-    onDownloadZip,
-  }: {
-    projectId: string;
-    previewVersion: number;
-    isRefreshing: boolean;
-    isDownloadingZip?: boolean;
-    onRefresh: () => void;
-    onDownloadZip?: () => void;
-  }) =>
-    React.createElement(React.Fragment, null, [
-      React.createElement(
-        'button',
-        {
-          key: 'refresh',
-          'data-testid': 'refresh-preview',
-          disabled: isRefreshing,
-          onClick: onRefresh,
-          type: 'button',
-        },
-        `Refresh ${projectId} v${previewVersion}`,
-      ),
-      React.createElement(
-        'button',
-        {
-          key: 'download',
-          'data-testid': 'download-zip',
-          disabled: isDownloadingZip,
-          onClick: onDownloadZip,
-          type: 'button',
-        },
-        isDownloadingZip ? 'Downloading…' : 'Download ZIP',
-      ),
-    ]),
-}));
-
 vi.mock('../PreviewFrame', () => ({
   PreviewFrame: ({ preview }: { preview?: { url?: string | null } | null }) =>
     React.createElement('div', { 'data-testid': 'preview-frame' }, preview?.url ?? 'no-preview'),
@@ -90,6 +48,8 @@ vi.mock('../FileTree', () => ({
 describe('HtmlProjectWorkspace', () => {
   const mockSetProjectPreview = vi.fn();
   const mockAppendProjectActivity = vi.fn();
+  const mockUploadFilesToProjectForCurrentSession = vi.fn();
+  const mockSetProjectWorkspaceOpen = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -109,6 +69,8 @@ describe('HtmlProjectWorkspace', () => {
       actions: {
         setProjectPreview: mockSetProjectPreview,
         appendProjectActivity: mockAppendProjectActivity,
+        setProjectWorkspaceOpen: mockSetProjectWorkspaceOpen,
+        uploadFilesToProjectForCurrentSession: mockUploadFilesToProjectForCurrentSession,
       },
     } as never);
 
@@ -160,7 +122,7 @@ describe('HtmlProjectWorkspace', () => {
 
     render(<HtmlProjectWorkspace projectId='project-1' />);
 
-    fireEvent.click(screen.getByTestId('refresh-preview'));
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
 
     await waitFor(() => {
       expect(htmlPreviewService.resolveProjectForPreview).toHaveBeenCalledWith('project-1');
@@ -170,6 +132,77 @@ describe('HtmlProjectWorkspace', () => {
         previewVersion: 2,
       });
       expect(mockAppendProjectActivity).toHaveBeenCalledWith('重新整理預覽：version 2');
+    });
+  });
+
+  it('uploads files from the workspace toolbar and forwards them to the current session action', async () => {
+    render(<HtmlProjectWorkspace projectId='project-1' />);
+
+    const fileInput = document.body.querySelector(
+      'input[type="file"][multiple]',
+    ) as HTMLInputElement;
+    const fileInputClickSpy = vi.spyOn(fileInput, 'click');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Upload files' }));
+
+    expect(fileInputClickSpy).toHaveBeenCalledTimes(1);
+
+    const uploadedFile = new File(['<main>Upload</main>'], 'index.html', { type: 'text/html' });
+    fireEvent.change(fileInput, { target: { files: [uploadedFile] } });
+
+    await waitFor(() => {
+      expect(mockUploadFilesToProjectForCurrentSession).toHaveBeenCalledWith('project-1', [
+        uploadedFile,
+      ]);
+    });
+  });
+
+  it('shows the uploading state while workspace file upload is in progress', async () => {
+    let resolveUpload: (() => void) | undefined;
+    mockUploadFilesToProjectForCurrentSession.mockImplementation(
+      () =>
+        new Promise<void>(resolve => {
+          resolveUpload = resolve;
+        }),
+    );
+
+    render(<HtmlProjectWorkspace projectId='project-1' />);
+
+    const fileInput = document.body.querySelector(
+      'input[type="file"][multiple]',
+    ) as HTMLInputElement;
+    const uploadedFile = new File(['<main>Upload</main>'], 'index.html', { type: 'text/html' });
+
+    fireEvent.change(fileInput, { target: { files: [uploadedFile] } });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Uploading…' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Refresh' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Download ZIP' })).toBeDisabled();
+    });
+
+    resolveUpload?.();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Upload files' })).toBeEnabled();
+    });
+  });
+
+  it('logs a helpful activity item when workspace file upload fails', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockUploadFilesToProjectForCurrentSession.mockRejectedValue(new Error('Upload failed.'));
+
+    render(<HtmlProjectWorkspace projectId='project-1' />);
+
+    const fileInput = document.body.querySelector(
+      'input[type="file"][multiple]',
+    ) as HTMLInputElement;
+    const uploadedFile = new File(['<main>Upload</main>'], 'index.html', { type: 'text/html' });
+
+    fireEvent.change(fileInput, { target: { files: [uploadedFile] } });
+
+    await waitFor(() => {
+      expect(mockAppendProjectActivity).toHaveBeenCalledWith('無法上傳檔案：Upload failed.');
     });
   });
 
@@ -183,7 +216,7 @@ describe('HtmlProjectWorkspace', () => {
 
     render(<HtmlProjectWorkspace projectId='project-1' />);
 
-    fireEvent.click(screen.getByTestId('download-zip'));
+    fireEvent.click(screen.getByRole('button', { name: 'Download ZIP' }));
 
     await waitFor(() => {
       expect(htmlProjectZipService.downloadProjectZip).toHaveBeenCalledWith(
@@ -203,7 +236,7 @@ describe('HtmlProjectWorkspace', () => {
 
     render(<HtmlProjectWorkspace projectId='project-1' />);
 
-    fireEvent.click(screen.getByTestId('download-zip'));
+    fireEvent.click(screen.getByRole('button', { name: 'Download ZIP' }));
 
     await waitFor(() => {
       expect(mockAppendProjectActivity).toHaveBeenCalledWith(
