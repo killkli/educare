@@ -9,7 +9,6 @@ import { TEST_ASSISTANTS, TEST_SESSIONS } from './test-constants';
 import * as dbMock from '../../../services/db';
 import * as embeddingMock from '../../../services/embeddingService';
 import * as providerMock from '../../../services/providerRegistry';
-import * as tursoMock from '../../../services/tursoService';
 import * as htmlPreviewMock from '../../../services/htmlPreviewService';
 import * as htmlProjectStoreMock from '../../../services/htmlProjectStore';
 
@@ -38,16 +37,8 @@ vi.mock('../../../services/tursoService', () => ({
 
 vi.mock('../../../services/cryptoService', () => ({
   CryptoService: {
-    encryptApiKeys: vi.fn().mockResolvedValue('encrypted'),
-    decryptApiKeys: vi.fn().mockResolvedValue({}),
     extractKeysFromUrl: vi.fn().mockReturnValue(null),
-  },
-}));
-
-vi.mock('../../../services/apiKeyManager', () => ({
-  ApiKeyManager: {
-    getUserApiKeys: vi.fn().mockReturnValue({}),
-    saveUserApiKeys: vi.fn(),
+    clearUrlParam: vi.fn(),
   },
 }));
 
@@ -279,29 +270,26 @@ vi.mock('../../features/SharedAssistant', () => ({
     ),
 }));
 
-vi.mock('../../settings/ApiKeySetup', () => ({
-  default: ({ onComplete, onCancel }: { onComplete?: () => void; onCancel?: () => void }) =>
-    React.createElement('div', { 'data-testid': 'api-key-setup' }, [
+vi.mock('../../settings/ProviderSettings', () => ({
+  default: ({ onClose }: { onClose?: () => void }) =>
+    React.createElement('div', { 'data-testid': 'provider-settings' }, [
       React.createElement(
         'button',
-        { key: 'complete', 'data-testid': 'api-complete', onClick: onComplete },
-        'Complete',
-      ),
-      React.createElement(
-        'button',
-        { key: 'cancel', 'data-testid': 'api-cancel', onClick: onCancel },
-        'Cancel',
+        { key: 'close', 'data-testid': 'provider-settings-close', onClick: onClose },
+        'Close Provider Settings',
       ),
     ]),
 }));
 
-vi.mock('../../settings/ProviderSettings', () => ({
-  default: () => React.createElement('div', { 'data-testid': 'provider-settings' }),
-}));
-
-vi.mock('../../settings/MigrationPanel', () => ({
-  default: () =>
-    React.createElement('div', { 'data-testid': 'migration-panel' }, 'Migration Panel'),
+vi.mock('../../settings/ProviderSettingsImportModal', () => ({
+  default: ({ onApplied }: { onApplied?: () => void }) =>
+    React.createElement('div', { 'data-testid': 'provider-settings-import-modal' }, [
+      React.createElement(
+        'button',
+        { key: 'apply', 'data-testid': 'provider-settings-import-apply', onClick: onApplied },
+        'Apply Provider Settings Import',
+      ),
+    ]),
 }));
 
 let mockURLSearchParams: ReturnType<typeof vi.fn>;
@@ -1001,38 +989,8 @@ describe('AppShell', () => {
           expect(screen.getAllByText('設定').length).toBeGreaterThanOrEqual(1);
           expect(screen.getByText('服務狀態')).toBeInTheDocument();
           expect(screen.getByText('AI 服務商')).toBeInTheDocument();
-          expect(screen.getByText('Turso 資料庫')).toBeInTheDocument();
+          expect(screen.queryByText('Turso 資料庫')).not.toBeInTheDocument();
         });
-      }
-    });
-
-    it('should render ApiKeySetup in api_setup mode', async () => {
-      render(<AppShell />);
-
-      // Wait for loading and navigate to settings
-      await waitFor(
-        () => {
-          expect(screen.queryByText('載入助理中...')).not.toBeInTheDocument();
-        },
-        { timeout: 3000 },
-      );
-
-      const settingsButton = screen.queryByText('設定');
-      if (settingsButton) {
-        await act(async () => {
-          fireEvent.click(settingsButton);
-        });
-
-        const dbSetupButton = screen.queryByText('資料庫設定');
-        if (dbSetupButton) {
-          await act(async () => {
-            fireEvent.click(dbSetupButton);
-          });
-
-          await waitFor(() => {
-            expect(screen.getByTestId('api-key-setup')).toBeInTheDocument();
-          });
-        }
       }
     });
 
@@ -1053,7 +1011,7 @@ describe('AppShell', () => {
           fireEvent.click(settingsButton);
         });
 
-        const providerButton = screen.queryByText('AI 服務商設定');
+        const providerButton = screen.queryByText('AI 服務商');
         if (providerButton) {
           await act(async () => {
             fireEvent.click(providerButton);
@@ -1294,11 +1252,34 @@ describe('AppShell', () => {
 
   describe('Service Status Display', () => {
     it('should show available AI providers status', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (providerMock.providerManager.getAvailableProviders as any).mockReturnValue([
-        'gemini',
-        'openai',
-      ]);
+      vi.mocked(providerMock.providerManager.getAvailableProviders).mockReturnValue([
+        {
+          type: 'gemini',
+          provider: {
+            name: 'gemini',
+            displayName: 'Gemini',
+            supportedModels: [],
+            requiresApiKey: true,
+            supportsLocalMode: false,
+            initialize: vi.fn().mockResolvedValue(undefined),
+            isAvailable: vi.fn().mockReturnValue(true),
+            streamChat: vi.fn(),
+          },
+        },
+        {
+          type: 'openai',
+          provider: {
+            name: 'openai',
+            displayName: 'OpenAI',
+            supportedModels: [],
+            requiresApiKey: true,
+            supportsLocalMode: false,
+            initialize: vi.fn().mockResolvedValue(undefined),
+            isAvailable: vi.fn().mockReturnValue(true),
+            streamChat: vi.fn(),
+          },
+        },
+      ] as ReturnType<typeof providerMock.providerManager.getAvailableProviders>);
 
       render(<AppShell />);
 
@@ -1317,14 +1298,15 @@ describe('AppShell', () => {
         });
 
         await waitFor(() => {
-          expect(screen.getAllByText(/個服務商可用/).length).toBeGreaterThanOrEqual(1);
+          expect(screen.getByText('2 個 AI 服務商可用')).toBeInTheDocument();
         });
       }
     });
 
     it('should show no providers available status', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (providerMock.providerManager.getAvailableProviders as any).mockReturnValue([]);
+      vi.mocked(providerMock.providerManager.getAvailableProviders).mockReturnValue(
+        [] as ReturnType<typeof providerMock.providerManager.getAvailableProviders>,
+      );
 
       render(<AppShell />);
 
@@ -1343,32 +1325,7 @@ describe('AppShell', () => {
         });
 
         await waitFor(() => {
-          expect(screen.getByText('需要配置 AI 服務商')).toBeInTheDocument();
-        });
-      }
-    });
-
-    it('should show Turso database status', async () => {
-      vi.mocked(tursoMock.canWriteToTurso).mockReturnValue(true);
-
-      render(<AppShell />);
-
-      // Navigate to settings
-      await waitFor(
-        () => {
-          expect(screen.queryByText('載入助理中...')).not.toBeInTheDocument();
-        },
-        { timeout: 3000 },
-      );
-
-      const settingsButton = screen.queryByText('設定');
-      if (settingsButton) {
-        await act(async () => {
-          fireEvent.click(settingsButton);
-        });
-
-        await waitFor(() => {
-          expect(screen.getAllByText(/可以保存助理/).length).toBeGreaterThanOrEqual(1);
+          expect(screen.getByText('尚未配置 AI 服務商')).toBeInTheDocument();
         });
       }
     });
@@ -1390,7 +1347,7 @@ describe('AppShell', () => {
   });
 
   describe('Navigation and View Transitions', () => {
-    it('should handle navigation between settings and other views', async () => {
+    it('should handle navigation between settings and provider settings views', async () => {
       render(<AppShell />);
 
       await waitFor(
@@ -1400,33 +1357,28 @@ describe('AppShell', () => {
         { timeout: 3000 },
       );
 
-      // Navigate to settings
       const settingsButton = screen.queryByText('設定');
       if (settingsButton) {
         await act(async () => {
           fireEvent.click(settingsButton);
         });
 
-        // Should show settings view
         await waitFor(() => {
           expect(screen.getByText('服務狀態')).toBeInTheDocument();
         });
 
-        // Navigate to API setup
-        const apiSetupButton = screen.queryByText('資料庫設定');
-        if (apiSetupButton) {
+        const providerSettingsButton = screen.queryByText('AI 服務商');
+        if (providerSettingsButton) {
           await act(async () => {
-            fireEvent.click(apiSetupButton);
+            fireEvent.click(providerSettingsButton);
           });
 
           await waitFor(() => {
-            expect(screen.getByTestId('api-key-setup')).toBeInTheDocument();
+            expect(screen.getByTestId('provider-settings')).toBeInTheDocument();
           });
 
-          // Complete API setup (back to settings)
-          const completeButton = screen.getByTestId('api-complete');
           await act(async () => {
-            fireEvent.click(completeButton);
+            fireEvent.click(screen.getByTestId('provider-settings-close'));
           });
 
           await waitFor(() => {
@@ -1436,7 +1388,7 @@ describe('AppShell', () => {
       }
     });
 
-    it('should show migration panel in settings', async () => {
+    it('should keep the provider settings import modal mounted globally', async () => {
       render(<AppShell />);
 
       await waitFor(
@@ -1446,16 +1398,7 @@ describe('AppShell', () => {
         { timeout: 3000 },
       );
 
-      const settingsButton = screen.queryByText('設定');
-      if (settingsButton) {
-        await act(async () => {
-          fireEvent.click(settingsButton);
-        });
-
-        await waitFor(() => {
-          expect(screen.getByTestId('migration-panel')).toBeInTheDocument();
-        });
-      }
+      expect(screen.getByTestId('provider-settings-import-modal')).toBeInTheDocument();
     });
   });
 

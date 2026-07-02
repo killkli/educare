@@ -1,11 +1,7 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { Assistant } from '../../types';
-import { CryptoService } from '../../services/cryptoService';
-import { ApiKeyManager } from '../../services/apiKeyManager';
-import { ProviderSettings } from '../../services/llmAdapter';
 import { saveAssistantToTurso } from '../../services/tursoService';
-import { providerManager } from '../../services/providerRegistry';
 import { generateShortUrl, buildShortUrl } from '../../services/shortUrlService';
 
 interface ShareModalProps {
@@ -17,101 +13,16 @@ interface ShareModalProps {
 export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assistant }) => {
   const [shareUrl, setShareUrl] = useState('');
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
-  const [shareWithApiKeys, setShareWithApiKeys] = useState(false);
-  const [sharePassword, setSharePassword] = useState('');
   const [useShortUrl, setUseShortUrl] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [shareStatus, setShareStatus] = useState<{
     type: 'success' | 'error' | 'info';
     message: string;
   } | null>(null);
-  const [selectedProvider, setSelectedProvider] = useState<string>('');
   const isGeneratingRef = useRef(false);
 
-  // Provider configuration for UI display
-  const providerInfo = useMemo(
-    () => ({
-      gemini: { name: 'Google Gemini', icon: '🧠', key: 'geminiApiKey' },
-      openai: { name: 'OpenAI', icon: '🤖', key: 'openaiApiKey' },
-      groq: { name: 'Groq', icon: '⚡', key: 'groqApiKey' },
-      openrouter: { name: 'OpenRouter', icon: '🚀', key: 'openrouterApiKey' },
-      ollama: { name: 'Ollama', icon: '🏠', key: 'ollamaBaseUrl' },
-      lmstudio: { name: 'LM Studio', icon: '🖥️', key: 'lmstudioBaseUrl' },
-    }),
-    [],
-  );
-
-  // Helper function to get available providers from user's API keys
-  const getAvailableProviders = useCallback((): Array<{
-    providerKey: string;
-    name: string;
-    icon: string;
-    key: string;
-  }> => {
-    const available: Array<{ providerKey: string; name: string; icon: string; key: string }> = [];
-
-    // Check both providerManager (current system) and ApiKeyManager (legacy localStorage)
-    const providerSettings = providerManager.getSettings();
-    const userApiKeys = ApiKeyManager.getUserApiKeys();
-
-    Object.entries(providerInfo).forEach(([providerKey, info]) => {
-      let hasApiKey = false;
-
-      // Check providerManager first (current system - has the actual in-use keys)
-      if (providerSettings?.providers) {
-        const providers = providerSettings.providers as Record<
-          string,
-          { enabled: boolean; config?: { apiKey?: string; baseUrl?: string } }
-        >;
-        const providerConfig = providers[providerKey];
-        if (providerConfig) {
-          const configKey =
-            providerKey === 'ollama' || providerKey === 'lmstudio' ? 'baseUrl' : 'apiKey';
-          if (providerConfig.enabled && providerConfig.config?.[configKey]) {
-            hasApiKey = true;
-          }
-        }
-      }
-      // Then check ApiKeyManager (legacy localStorage) as fallback
-      if (!hasApiKey) {
-        const localStorageKey = userApiKeys[info.key as keyof typeof userApiKeys];
-        if (localStorageKey) {
-          hasApiKey = true;
-        }
-      }
-
-      if (hasApiKey) {
-        available.push({ providerKey, ...info });
-      }
-    });
-
-    return available;
-  }, [providerInfo]);
-
-  // Get available providers - memoize to prevent infinite re-renders
-  const availableProviders = useMemo(() => getAvailableProviders(), [getAvailableProviders]);
-
-  // Auto-select providers when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      // Default to the current provider, or the first available one
-      const settings = providerManager.getSettings() as ProviderSettings & {
-        currentProvider: string;
-      };
-      const currentProvider = settings.currentProvider;
-      if (currentProvider && availableProviders.some(p => p.providerKey === currentProvider)) {
-        setSelectedProvider(currentProvider);
-      } else if (availableProviders.length > 0) {
-        setSelectedProvider(availableProviders[0].providerKey);
-      }
-    }
-  }, [isOpen, availableProviders]);
-
-  // 生成分享連結
   const generateShareLink = useCallback(async () => {
-    // 防止重複生成
     if (isGeneratingRef.current) {
-      console.log('⚠️ [SHARE MODAL] Already generating share link, skipping');
       return;
     }
 
@@ -120,116 +31,20 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
     setShareStatus(null);
 
     try {
-      console.log('🔗 [SHARE MODAL] Starting share link generation for:', assistant.name);
-      // 將助理儲存到 Turso
       await saveAssistantToTurso({
         id: assistant.id,
         name: assistant.name,
-        description: assistant.description || '', // 確保 description 不為 undefined
+        description: assistant.description || '',
         systemPrompt: assistant.systemPrompt,
-        createdAt: assistant.createdAt || Date.now(), // 確保 createdAt 已設定
+        createdAt: assistant.createdAt || Date.now(),
       });
 
-      // 生成分享連結，考慮 base URL
       const baseUrl = window.location.pathname.replace(/\/[^/]*$/, '') || '/';
       let url = `${window.location.origin}${baseUrl}?share=${assistant.id}`;
-      let encryptedKeysString: string | undefined;
 
-      if (shareWithApiKeys) {
-        if (!sharePassword.trim()) {
-          setShareStatus({
-            type: 'error',
-            message: '分享 API 金鑰時需要設定密碼。',
-          });
-          setIsGenerating(false);
-          return;
-        }
-
-        if (!selectedProvider) {
-          setShareStatus({
-            type: 'error',
-            message: '請選擇一個要分享的服務商。',
-          });
-          setIsGenerating(false);
-          return;
-        }
-
-        // Collect selected API keys from both systems
-        const selectedApiKeys: Record<string, string> = {};
-        const providerSettings = providerManager.getSettings();
-        const userApiKeys = ApiKeyManager.getUserApiKeys();
-
-        const info = providerInfo[selectedProvider as keyof typeof providerInfo];
-        if (info) {
-          let foundKey = false;
-
-          // Try providerManager first (current system - has the actual in-use keys)
-          if (providerSettings?.providers) {
-            const providers = providerSettings.providers as Record<
-              string,
-              { enabled: boolean; config?: { apiKey?: string; baseUrl?: string } }
-            >;
-            const providerConfig = providers[selectedProvider];
-            if (providerConfig) {
-              const configKey =
-                selectedProvider === 'ollama' || selectedProvider === 'lmstudio'
-                  ? 'baseUrl'
-                  : 'apiKey';
-              const configValue = providerConfig.config?.[configKey];
-              if (configValue) {
-                selectedApiKeys[info.key] = configValue;
-                foundKey = true;
-              }
-            }
-          }
-
-          // Fall back to ApiKeyManager (legacy localStorage) if not found
-          if (!foundKey) {
-            const localStorageKey = userApiKeys[info.key as keyof typeof userApiKeys];
-            if (localStorageKey) {
-              selectedApiKeys[info.key] = localStorageKey;
-            }
-          }
-        }
-
-        if (Object.keys(selectedApiKeys).length === 0) {
-          setShareStatus({
-            type: 'error',
-            message: '沒有可分享的 API 金鑰。請先在設定中配置您的 API 金鑰。',
-          });
-          setIsGenerating(false);
-          return;
-        }
-
-        // 加密 API 金鑰 (使用原本的格式相容性)
-        const apiKeysToEncrypt = { ...selectedApiKeys };
-
-        // Also include the selected provider and model in the encrypted data
-        if (selectedProvider) {
-          apiKeysToEncrypt.provider = selectedProvider;
-
-          // Include the current model for this provider
-          const settings = providerManager.getSettings();
-          const providerConfig = (
-            settings.providers as Record<
-              string,
-              { enabled: boolean; config?: { apiKey?: string; baseUrl?: string; model?: string } }
-            >
-          )?.[selectedProvider];
-          if (providerConfig?.config?.model) {
-            apiKeysToEncrypt.model = providerConfig.config.model;
-          }
-        }
-
-        const password = sharePassword || CryptoService.generateRandomPassword();
-        encryptedKeysString = await CryptoService.encryptApiKeys(apiKeysToEncrypt, password);
-        url += `&keys=${encryptedKeysString}`;
-      }
-
-      // 如果選擇使用短網址，生成短網址
       if (useShortUrl) {
         try {
-          const shortCode = await generateShortUrl(assistant.id, encryptedKeysString);
+          const shortCode = await generateShortUrl(assistant.id);
           url = buildShortUrl(shortCode);
           setShareStatus({
             type: 'success',
@@ -241,13 +56,11 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
             type: 'error',
             message: `短網址生成失敗：${error instanceof Error ? error.message : String(error)}`,
           });
-          // 繼續使用原始 URL
         }
       }
 
       setShareUrl(url);
 
-      // 生成 QR Code
       const qrDataUrl = await QRCode.toDataURL(url, {
         width: 256,
         margin: 2,
@@ -273,20 +86,14 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
       setIsGenerating(false);
     }
   }, [
-    assistant.id,
-    shareWithApiKeys,
-    sharePassword,
-    assistant.name,
-    assistant.description,
-    assistant.systemPrompt,
     assistant.createdAt,
-    selectedProvider,
-    providerInfo,
+    assistant.description,
+    assistant.id,
+    assistant.name,
+    assistant.systemPrompt,
     useShortUrl,
-    // isGenerating 不應該在依賴中，因為它會導致循環
   ]);
 
-  // 複製到剪貼簿
   const handleCopyLink = async () => {
     try {
       await navigator.clipboard.writeText(shareUrl);
@@ -303,7 +110,6 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
     }
   };
 
-  // 下載 QR Code
   const handleDownloadQR = () => {
     const link = document.createElement('a');
     link.download = `${assistant.name}-share-qr.png`;
@@ -311,36 +117,38 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
     link.click();
   };
 
-  // Modal 打開時自動生成基本分享連結
   useEffect(() => {
     if (isOpen && assistant) {
       generateShareLink();
     }
 
-    // Cleanup function to reset the generating flag when the modal is closed or component unmounts
     return () => {
       isGeneratingRef.current = false;
     };
-  }, [isOpen, assistant, generateShareLink]);
+  }, [assistant, generateShareLink, isOpen]);
 
   if (!isOpen) {
     return null;
   }
 
   return (
-    <div className='fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4'>
-      <div className='bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl p-8 max-w-2xl w-full shadow-2xl border border-gray-700/50 max-h-[90vh] overflow-y-auto'>
-        {/* Header */}
-        <div className='flex items-center justify-between mb-6'>
+    <div
+      data-testid='share-modal'
+      className='fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm'
+    >
+      <div className='max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-gray-700/50 bg-gradient-to-br from-gray-800 to-gray-900 p-8 shadow-2xl'>
+        <div className='mb-6 flex items-center justify-between'>
           <div>
-            <h2 className='text-2xl font-bold text-white mb-1'>分享助理</h2>
+            <h2 className='mb-1 text-2xl font-bold text-white'>分享助理</h2>
             <p className='text-gray-300'>
-              分享 <span className='text-cyan-400 font-medium'>{assistant.name}</span> 給其他人使用
+              分享 <span className='font-medium text-cyan-400'>{assistant.name}</span> 給其他人使用
             </p>
           </div>
           <button
+            data-testid='close-share-modal'
             onClick={onClose}
-            className='p-2 text-gray-400 hover:text-white rounded-lg hover:bg-gray-700/50 transition-colors'
+            className='rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-700/50 hover:text-white'
+            aria-label='關閉'
           >
             <svg className='w-6 h-6' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
               <path
@@ -353,29 +161,27 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
           </button>
         </div>
 
-        {/* QR Code 顯示區域 */}
         {qrCodeDataUrl && (
           <div className='mb-8 text-center'>
-            <div className='inline-block bg-white p-4 rounded-2xl shadow-lg'>
-              <img src={qrCodeDataUrl} alt='分享 QR Code' className='w-64 h-64 mx-auto' />
+            <div className='inline-block rounded-2xl bg-white p-4 shadow-lg'>
+              <img src={qrCodeDataUrl} alt='分享 QR Code' className='mx-auto h-64 w-64' />
             </div>
-            <p className='text-gray-400 text-sm mt-3'>掃描 QR Code 或複製下方連結</p>
+            <p className='mt-3 text-sm text-gray-400'>掃描 QR Code 或複製下方連結</p>
           </div>
         )}
 
-        {/* 分享連結 */}
         <div className='mb-6'>
-          <label className='block text-sm font-medium text-gray-300 mb-2'>分享連結</label>
+          <label className='mb-2 block text-sm font-medium text-gray-300'>分享連結</label>
           <div className='flex gap-2'>
             <input
               type='text'
               value={shareUrl}
               readOnly
-              className='flex-1 bg-gray-700/50 border border-gray-600/50 rounded-xl px-4 py-3 text-white text-sm font-mono'
+              className='flex-1 rounded-xl border border-gray-600/50 bg-gray-700/50 px-4 py-3 font-mono text-sm text-white'
             />
             <button
               onClick={handleCopyLink}
-              className='px-4 py-3 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-xl font-medium transition-all duration-200 flex items-center gap-2'
+              className='flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 px-4 py-3 font-medium text-white transition-all duration-200 hover:from-cyan-500 hover:to-blue-500'
             >
               <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
                 <path
@@ -390,122 +196,45 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
           </div>
         </div>
 
-        {/* 短網址選項 */}
-        <div className='mb-6 bg-gray-700/30 rounded-xl p-6'>
-          <div className='flex items-center space-x-3 mb-4'>
+        <div className='mb-6 rounded-xl bg-gray-700/30 p-6'>
+          <div className='mb-4 flex items-center space-x-3'>
             <input
               type='checkbox'
               id='useShortUrl'
               checked={useShortUrl}
-              onChange={e => setUseShortUrl(e.target.checked)}
-              className='w-4 h-4 text-purple-600 rounded focus:ring-purple-500'
+              onChange={event => setUseShortUrl(event.target.checked)}
+              className='h-4 w-4 rounded text-purple-600 focus:ring-purple-500'
             />
-            <label htmlFor='useShortUrl' className='text-white font-medium'>
+            <label htmlFor='useShortUrl' className='font-medium text-white'>
               🔗 使用短網址（更簡潔易分享）
             </label>
           </div>
-          {useShortUrl && (
-            <div className='bg-purple-900/30 border border-purple-600/30 rounded-lg p-3'>
-              <p className='text-purple-200 text-xs'>
-                ℹ️ 短網址將生成 <code className='bg-purple-800/50 px-1 rounded'>?s=xxxxxxxx</code>{' '}
-                格式的鏈接，更適合在社交媒體或消息應用中分享。
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* API 金鑰分享選項 */}
-        <div className='mb-6 bg-gray-700/30 rounded-xl p-6'>
-          <div className='flex items-center space-x-3 mb-4'>
-            <input
-              type='checkbox'
-              id='shareWithApiKeys'
-              checked={shareWithApiKeys}
-              onChange={e => setShareWithApiKeys(e.target.checked)}
-              className='w-4 h-4 text-cyan-600 rounded focus:ring-cyan-500'
-            />
-            <label htmlFor='shareWithApiKeys' className='text-white font-medium'>
-              🔐 包含我的 API 金鑰（讓接收者無需配置即可使用）
-            </label>
+          <div className='rounded-lg border border-blue-500/20 bg-blue-500/10 p-3'>
+            <p className='text-xs text-blue-100'>
+              助理分享只包含助理內容與連結，不再附帶 API 金鑰或服務商設定。若要分享 provider
+              設定，請到「AI 服務商」頁面使用新的安全分享功能。
+            </p>
           </div>
-
-          {shareWithApiKeys && (
-            <div className='space-y-4'>
-              {/* Provider Selection */}
-              {availableProviders.length > 0 && (
-                <div>
-                  <label className='block text-sm text-gray-400 mb-3'>
-                    選擇要分享的服務商 ({availableProviders.length} 個可用)
-                  </label>
-                  <div className='grid grid-cols-2 gap-2'>
-                    {availableProviders.map(provider => (
-                      <label
-                        key={provider.providerKey}
-                        className='flex items-center space-x-2 bg-gray-600/30 rounded-lg p-2 cursor-pointer hover:bg-gray-600/50 transition-colors'
-                      >
-                        <input
-                          type='radio'
-                          name='provider-selection'
-                          checked={selectedProvider === provider.providerKey}
-                          onChange={() => setSelectedProvider(provider.providerKey)}
-                          className='w-4 h-4 text-cyan-600 rounded-full focus:ring-cyan-500'
-                        />
-                        <span className='text-sm text-gray-200'>
-                          {provider.icon} {provider.name}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <label className='block text-sm text-gray-400 mb-2'>加密密碼</label>
-                <div className='flex gap-2'>
-                  <input
-                    type='text'
-                    value={sharePassword}
-                    onChange={e => setSharePassword(e.target.value)}
-                    className='flex-1 bg-gray-600 border border-gray-500 rounded-lg px-3 py-2 text-white text-sm'
-                    placeholder='設定密碼'
-                  />
-                  <button
-                    onClick={() => setSharePassword(CryptoService.generateRandomPassword())}
-                    className='px-3 py-2 bg-gray-500 hover:bg-gray-400 text-white rounded-lg text-sm'
-                  >
-                    重新生成
-                  </button>
-                </div>
-              </div>
-              <div className='bg-yellow-900/30 border border-yellow-600/30 rounded-lg p-3'>
-                <p className='text-yellow-200 text-xs'>
-                  ⚠️ 請將密碼 <code className='bg-yellow-800/50 px-1 rounded'>{sharePassword}</code>{' '}
-                  與分享連結分開傳送給接收者
-                </p>
-              </div>
-              <button
-                onClick={generateShareLink}
-                disabled={isGenerating}
-                className='w-full py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white rounded-lg font-medium transition-all duration-200 disabled:opacity-50'
-              >
-                {isGenerating ? '生成中...' : '🔐 重新生成加密分享連結'}
-              </button>
-            </div>
-          )}
+          <button
+            onClick={generateShareLink}
+            disabled={isGenerating}
+            className='mt-4 w-full rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 py-2 font-medium text-white transition-all duration-200 hover:from-purple-500 hover:to-pink-500 disabled:opacity-50'
+          >
+            {isGenerating ? '生成中...' : '重新生成分享連結'}
+          </button>
         </div>
 
-        {/* 狀態訊息 */}
         {shareStatus && (
           <div
-            className={`mb-6 p-4 rounded-xl border ${
+            className={`mb-6 rounded-xl border p-4 ${
               shareStatus.type === 'success'
-                ? 'bg-green-900/30 border-green-600/30 text-green-200'
+                ? 'border-green-600/30 bg-green-900/30 text-green-200'
                 : shareStatus.type === 'error'
-                  ? 'bg-red-900/30 border-red-600/30 text-red-200'
-                  : 'bg-blue-900/30 border-blue-600/30 text-blue-200'
+                  ? 'border-red-600/30 bg-red-900/30 text-red-200'
+                  : 'border-blue-600/30 bg-blue-900/30 text-blue-200'
             }`}
           >
-            <p className='text-sm flex items-center gap-2'>
+            <p className='flex items-center gap-2 text-sm'>
               <span>
                 {shareStatus.type === 'success' && '✅'}
                 {shareStatus.type === 'error' && '❌'}
@@ -516,12 +245,11 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
           </div>
         )}
 
-        {/* 底部按鈕 */}
         <div className='flex gap-3'>
           <button
             onClick={handleDownloadQR}
             disabled={!qrCodeDataUrl}
-            className='flex-1 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white rounded-xl font-medium transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2'
+            className='flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 py-3 font-medium text-white transition-all duration-200 hover:from-green-500 hover:to-emerald-500 disabled:opacity-50'
           >
             <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
               <path
@@ -535,7 +263,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, assista
           </button>
           <button
             onClick={onClose}
-            className='flex-1 py-3 bg-gray-600 hover:bg-gray-500 text-white rounded-xl font-medium transition-all duration-200'
+            className='flex-1 rounded-xl bg-gray-600 py-3 font-medium text-white transition-all duration-200 hover:bg-gray-500'
           >
             關閉
           </button>

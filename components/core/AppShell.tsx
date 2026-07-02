@@ -5,8 +5,8 @@ import { ChatContainer } from '../chat';
 import { HtmlProjectWorkspace } from '../canvas';
 import { ChatSession } from '../../types';
 import SharedAssistant from '../features/SharedAssistant';
-import ApiKeySetup from '../settings/ApiKeySetup';
 import ProviderSettings from '../settings/ProviderSettings';
+import ProviderSettingsImportModal from '../settings/ProviderSettingsImportModal';
 import { providerManager } from '../../services/providerRegistry';
 import { ChatCompactorService } from '../../services/chatCompactorService';
 import { countConversationRounds, groupMessagesByRounds } from '../../services/conversationUtils';
@@ -118,12 +118,9 @@ function AppContent(): React.JSX.Element {
         <SharedAssistant assistantId={state.sharedAssistantId} />
 
         {/* Render content based on current view mode, just like normal mode */}
-        {state.viewMode === 'api_setup' && (
-          <div className='p-6 bg-gray-800 h-full overflow-y-auto'>
-            <ApiKeySetup
-              onComplete={() => actions.setViewMode('chat')}
-              onCancel={() => actions.setViewMode('chat')}
-            />
+        {(state.viewMode === 'provider_settings' || state.viewMode === 'api_setup') && (
+          <div className='absolute inset-0 overflow-y-auto bg-gray-900'>
+            <ProviderSettings onClose={() => actions.setViewMode('chat')} />
           </div>
         )}
 
@@ -187,6 +184,8 @@ function AppContent(): React.JSX.Element {
           isVisible={state.isModelLoading}
           progress={state.modelLoadingProgress || undefined}
         />
+
+        <ProviderSettingsImportModal onApplied={() => actions.setViewMode('chat')} />
       </Layout>
     );
   }
@@ -277,7 +276,7 @@ function AppContent(): React.JSX.Element {
             {/* Header */}
             <div className='mb-6'>
               <h2 className='text-2xl md:text-3xl font-bold text-white mb-1.5'>設定</h2>
-              <p className='text-gray-400 text-sm'>管理您的 AI 服務商與 API 金鑰</p>
+              <p className='text-gray-400 text-sm'>管理您的 AI 服務商、模型與安全分享設定</p>
             </div>
 
             {/* 服務狀態 */}
@@ -317,7 +316,7 @@ function AppContent(): React.JSX.Element {
             <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
               <button
                 onClick={() => actions.setViewMode('provider_settings')}
-                className='group text-left p-5 rounded-2xl border border-gray-700/40 bg-gray-800/40 hover:border-cyan-500/50 hover:bg-gray-800/70 transition-all'
+                className='group text-left p-5 rounded-2xl border border-gray-700/40 bg-gray-800/40 hover:border-cyan-500/50 hover:bg-gray-800/70 transition-all sm:col-span-2'
               >
                 <div className='flex items-center gap-3 mb-2'>
                   <div className='flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500/30 to-fuchsia-500/20 text-xl'>
@@ -340,51 +339,14 @@ function AppContent(): React.JSX.Element {
                     />
                   </svg>
                 </div>
-                <p className='text-sm text-gray-400'>選擇並配置 Gemini、OpenRouter 等服務商</p>
-              </button>
-
-              <button
-                onClick={() => actions.setViewMode('api_setup')}
-                className='group text-left p-5 rounded-2xl border border-gray-700/40 bg-gray-800/40 hover:border-cyan-500/50 hover:bg-gray-800/70 transition-all'
-              >
-                <div className='flex items-center gap-3 mb-2'>
-                  <div className='flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500/30 to-blue-500/20 text-xl'>
-                    🔑
-                  </div>
-                  <h4 className='flex-1 text-white font-semibold group-hover:text-cyan-300 transition-colors'>
-                    API 金鑰
-                  </h4>
-                  <svg
-                    className='w-5 h-5 text-gray-500 group-hover:text-cyan-300 group-hover:translate-x-0.5 transition-all'
-                    fill='none'
-                    stroke='currentColor'
-                    viewBox='0 0 24 24'
-                  >
-                    <path
-                      strokeLinecap='round'
-                      strokeLinejoin='round'
-                      strokeWidth={2}
-                      d='M9 5l7 7-7 7'
-                    />
-                  </svg>
-                </div>
-                <p className='text-sm text-gray-400'>管理 API 金鑰與加密分享</p>
+                <p className='text-sm text-gray-400'>選擇並配置服務商、模型、端點與加密分享設定</p>
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {state.viewMode === 'api_setup' && (
-        <div className='h-full overflow-y-auto bg-gray-900 p-6 md:p-8'>
-          <ApiKeySetup
-            onComplete={() => actions.setViewMode('settings')}
-            onCancel={() => actions.setViewMode('settings')}
-          />
-        </div>
-      )}
-
-      {state.viewMode === 'provider_settings' && (
+      {(state.viewMode === 'provider_settings' || state.viewMode === 'api_setup') && (
         <div className='absolute inset-0 overflow-y-auto bg-gray-900'>
           <ProviderSettings onClose={() => actions.setViewMode('settings')} />
         </div>
@@ -482,6 +444,19 @@ function AppContent(): React.JSX.Element {
           assistant={state.assistantToShare}
         />
       )}
+
+      <ProviderSettingsImportModal
+        onApplied={() => {
+          if (state.viewMode === 'settings') {
+            actions.setViewMode('provider_settings');
+            return;
+          }
+
+          if (!state.currentAssistant) {
+            actions.setViewMode('provider_settings');
+          }
+        }}
+      />
     </Layout>
   );
 }

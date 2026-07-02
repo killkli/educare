@@ -1,10 +1,7 @@
 import React, { useReducer, useCallback, useEffect } from 'react';
 import { Assistant, ChatSession, EmbeddingConfig } from '../../types';
-import { ProviderType } from '../../services/llmAdapter';
 import * as db from '../../services/db';
-import { initializeProviders, providerManager } from '../../services/providerRegistry';
-import { CryptoService } from '../../services/cryptoService';
-import { ApiKeyManager } from '../../services/apiKeyManager';
+import { initializeProviders } from '../../services/providerRegistry';
 import {
   getAssistantFromTurso,
   initializeDatabase,
@@ -315,110 +312,6 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
           }
 
           dispatch({ type: 'SET_VIEW_MODE', payload: 'chat' });
-
-          const params = new URLSearchParams(window.location.search);
-          const keys = params.get('keys');
-          if (keys) {
-            const password = window.prompt('此助理包含已加密的 API 金鑰。請輸入密碼以解密：', '');
-            if (password) {
-              try {
-                const decryptedApiKeys = await CryptoService.decryptApiKeys(keys, password);
-                ApiKeyManager.setUserApiKeys(decryptedApiKeys);
-
-                if (decryptedApiKeys.provider) {
-                  const providerType = decryptedApiKeys.provider as ProviderType;
-
-                  // 1. Build config from decrypted keys - use direct key access for reliability
-                  const config: { apiKey?: string; baseUrl?: string; model?: string } = {};
-
-                  // Try multiple key formats for API key (handle different naming conventions)
-                  const apiKeyValue =
-                    decryptedApiKeys[`${providerType}ApiKey`] ||
-                    decryptedApiKeys[`${providerType}_api_key`] ||
-                    decryptedApiKeys['apiKey'];
-
-                  // Try multiple key formats for base URL
-                  const baseUrlValue =
-                    decryptedApiKeys[`${providerType}BaseUrl`] ||
-                    decryptedApiKeys[`${providerType}_base_url`] ||
-                    decryptedApiKeys['baseUrl'];
-
-                  const model = decryptedApiKeys.model;
-
-                  console.log(
-                    `🔑 [APP CONTEXT] Extracting config for ${providerType}:`,
-                    'apiKey:',
-                    apiKeyValue ? `${apiKeyValue.substring(0, 15)}...` : 'none',
-                    'baseUrl:',
-                    baseUrlValue || 'none',
-                    'model:',
-                    model || 'none',
-                  );
-
-                  if (apiKeyValue) {
-                    config.apiKey = apiKeyValue as string;
-                  }
-                  if (baseUrlValue) {
-                    config.baseUrl = baseUrlValue as string;
-                  }
-                  if (model) {
-                    config.model = model as string;
-                  }
-
-                  console.log('📝 [APP CONTEXT] Config to apply:', config);
-
-                  // 2. Update provider config and enable it
-                  if (Object.keys(config).length > 0) {
-                    providerManager.updateProviderConfig(providerType, config);
-                  }
-
-                  // IMPORTANT: Always enable the provider when importing with keys
-                  providerManager.enableProvider(providerType, true);
-
-                  // 3. Set the active provider
-                  providerManager.setActiveProvider(providerType);
-
-                  // 4. Initialize the provider with the config
-                  const provider = providerManager.getProvider(providerType);
-                  if (provider) {
-                    try {
-                      await provider.initialize(config);
-                      console.log(
-                        `✅ [APP CONTEXT] ${providerType} provider initialized successfully`,
-                      );
-                    } catch (error) {
-                      console.warn(
-                        `⚠️ [APP CONTEXT] Failed to initialize ${providerType} provider:`,
-                        error,
-                      );
-                    }
-                  }
-
-                  // 5. Dispatch to notify UI components
-                  dispatch({ type: 'SET_ACTIVE_PROVIDER', payload: providerType as string });
-
-                  console.log(
-                    `✅ [APP CONTEXT] ${providerType} provider set as active`,
-                    'enabled:',
-                    providerManager.isProviderEnabled(providerType),
-                  );
-
-                  // 6. Notify user of success
-                  alert(`API 金鑰與 ${providerType} 提供者已成功匯入並啟用！`);
-                  const newParams = new URLSearchParams(window.location.search);
-                  newParams.delete('keys');
-                  window.history.replaceState(
-                    {},
-                    '',
-                    `${window.location.pathname}?${newParams.toString()}`,
-                  );
-                }
-              } catch (error) {
-                alert('密碼錯誤或金鑰損毀，無法解密 API 金鑰。');
-                console.error('解密失敗:', error);
-              }
-            }
-          }
         } else {
           dispatch({ type: 'SET_ERROR', payload: '找不到分享的助理。' });
         }
@@ -758,7 +651,7 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       project.name,
       '已建立新的 HTML 專案',
     );
-  }, [state.currentSession]);
+  }, [attachProjectToCurrentSession, state.currentSession]);
 
   const openProjectForCurrentSession = useCallback(
     async (projectId: string) => {
@@ -777,7 +670,7 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
         '已開啟既有 HTML 專案',
       );
     },
-    [state.currentSession],
+    [attachProjectToCurrentSession, state.currentSession],
   );
 
   const deleteProjectForCurrentSession = useCallback(
@@ -804,7 +697,7 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
         payload: `已刪除 HTML 專案「${project.name}」。`,
       });
     },
-    [clearProjectWorkspace, state.currentSession],
+    [clearCurrentSessionProject, state.currentSession],
   );
 
   const syncProjectWorkspaceForSession = useCallback(
@@ -835,7 +728,7 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
         );
       }
     },
-    [clearProjectWorkspace],
+    [clearCurrentSessionProject, clearProjectWorkspace],
   );
 
   useEffect(() => {

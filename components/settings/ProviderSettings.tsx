@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { providerManager } from '../../services/providerRegistry';
 import { ProviderType, ProviderSettings as IProviderSettings } from '../../services/llmAdapter';
+import ProviderSettingsShareModal from './ProviderSettingsShareModal';
 
 interface ProviderSettingsProps {
   onClose?: () => void;
@@ -38,6 +39,7 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
   const [useCustomModel, setUseCustomModel] = useState<Record<ProviderType, boolean>>(
     {} as Record<ProviderType, boolean>,
   );
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
   const providerInfo: Record<ProviderType, ProviderInfo> = {
     gemini: {
@@ -257,18 +259,28 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
 
       {/* 目前使用中的服務商 */}
       <div className='mb-6 rounded-2xl border border-cyan-500/30 bg-gradient-to-r from-cyan-500/10 to-blue-500/10 p-5'>
-        <div className='flex items-center gap-4'>
-          <div className='flex items-center justify-center w-12 h-12 rounded-xl bg-gray-900/60 text-2xl'>
-            {activeInfo?.icon || '🎯'}
+        <div className='flex flex-col gap-4 sm:flex-row sm:items-center'>
+          <div className='flex items-center gap-4 flex-1 min-w-0'>
+            <div className='flex items-center justify-center w-12 h-12 rounded-xl bg-gray-900/60 text-2xl'>
+              {activeInfo?.icon || '🎯'}
+            </div>
+            <div className='flex-1 min-w-0'>
+              <p className='text-xs uppercase tracking-wide text-cyan-300/80 mb-0.5'>目前使用中</p>
+              <p className='text-lg font-semibold text-white truncate'>{activeInfo?.name}</p>
+            </div>
+            <span className='hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/20 text-cyan-300 text-xs font-medium border border-cyan-500/30'>
+              <span className='w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse'></span>
+              啟用
+            </span>
           </div>
-          <div className='flex-1 min-w-0'>
-            <p className='text-xs uppercase tracking-wide text-cyan-300/80 mb-0.5'>目前使用中</p>
-            <p className='text-lg font-semibold text-white truncate'>{activeInfo?.name}</p>
-          </div>
-          <span className='hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/20 text-cyan-300 text-xs font-medium border border-cyan-500/30'>
-            <span className='w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse'></span>
-            啟用
-          </span>
+          <button
+            type='button'
+            onClick={() => setIsShareModalOpen(true)}
+            className='inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-400/40 bg-cyan-500/15 px-4 py-2.5 text-sm font-medium text-cyan-100 transition hover:border-cyan-300 hover:bg-cyan-500/25 hover:text-white'
+          >
+            <span>🔐</span>
+            分享此服務商設定
+          </button>
         </div>
       </div>
 
@@ -673,6 +685,19 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
       <p className='mt-6 text-center text-xs text-gray-500'>
         想使用其他服務商？未來版本將陸續支援更多選項。
       </p>
+
+      <ProviderSettingsShareModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        settings={settings}
+        availableProviders={Array.from(
+          new Set([
+            settings.activeProvider,
+            ...VISIBLE_PROVIDERS.filter(providerType => settings.providers[providerType].enabled),
+          ]),
+        )}
+        initialProvider={settings.activeProvider}
+      />
     </div>
   );
 };

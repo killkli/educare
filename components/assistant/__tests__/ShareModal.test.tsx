@@ -5,10 +5,7 @@ import { describe, it, expect, beforeEach, afterEach, beforeAll } from 'vitest';
 import { vi } from 'vitest';
 import { ShareModal } from '../ShareModal';
 import { Assistant } from '../../../types';
-import { ApiKeyManager } from '../../../services/apiKeyManager';
-import { providerManager } from '../../../services/providerRegistry';
 import { saveAssistantToTurso } from '../../../services/tursoService';
-import { CryptoService } from '../../../services/cryptoService';
 import { generateShortUrl, buildShortUrl } from '../../../services/shortUrlService';
 import QRCode from 'qrcode';
 import { TEST_ASSISTANTS, setupAssistantTestEnvironment } from './test-utils';
@@ -16,32 +13,6 @@ import { TEST_ASSISTANTS, setupAssistantTestEnvironment } from './test-utils';
 // Mock dependencies
 vi.mock('../../../services/tursoService', () => ({
   saveAssistantToTurso: vi.fn().mockResolvedValue(undefined),
-}));
-
-// Mock crypto service
-vi.mock('../../../services/cryptoService', () => ({
-  CryptoService: {
-    encryptApiKeys: vi.fn().mockResolvedValue('encrypted-api-keys'),
-    generateRandomPassword: vi.fn().mockReturnValue('random-password-123'),
-  },
-}));
-
-// Mock API key manager
-vi.mock('../../../services/apiKeyManager', () => ({
-  ApiKeyManager: {
-    getUserApiKeys: vi.fn().mockReturnValue({
-      geminiApiKey: 'mock-gemini-key',
-      tursoWriteApiKey: 'mock-turso-key',
-    }),
-  },
-}));
-
-// Mock provider registry (required by ShareModal to check available providers)
-vi.mock('../../../services/providerRegistry', () => ({
-  providerManager: {
-    getSettings: vi.fn().mockReturnValue({ providers: {} }),
-    getAvailableProviders: vi.fn().mockReturnValue([]),
-  },
 }));
 
 // Mock short URL service
@@ -104,19 +75,10 @@ describe('ShareModal', () => {
     // vi.clearAllMocks() resets mockReturnValue/mockResolvedValue implementations
     // in Vitest 3.2.4, so every mock must be re-set here.
     vi.clearAllMocks();
-    vi.mocked(ApiKeyManager.getUserApiKeys).mockReturnValue({
-      geminiApiKey: 'mock-gemini-key',
-      tursoWriteApiKey: 'mock-turso-key',
-    } as ReturnType<typeof ApiKeyManager.getUserApiKeys>);
-    vi.mocked(providerManager.getSettings).mockReturnValue({ providers: {} } as ReturnType<
-      typeof providerManager.getSettings
-    >);
     vi.mocked(saveAssistantToTurso).mockResolvedValue(undefined);
     vi.mocked(QRCode.toDataURL).mockImplementation(
       (async () => 'data:image/png;base64,mocked-qr-code') as never,
     );
-    vi.mocked(CryptoService.generateRandomPassword).mockReturnValue('random-password-123');
-    vi.mocked(CryptoService.encryptApiKeys).mockResolvedValue('encrypted-api-keys');
     vi.mocked(generateShortUrl).mockResolvedValue('https://short.url/abc123');
     vi.mocked(buildShortUrl).mockReturnValue('https://short.url/abc123');
     Object.defineProperty(navigator, 'clipboard', {
@@ -156,15 +118,16 @@ describe('ShareModal', () => {
 
       expect(screen.getByText('分享助理')).toBeInTheDocument();
       expect(screen.getByText('分享連結')).toBeInTheDocument();
-      expect(screen.getByText(/包含我的 API 金鑰/)).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: '關閉' })).toBeInTheDocument();
+      expect(screen.getByLabelText(/使用短網址/)).toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: '關閉' })).toHaveLength(2);
     });
 
     it('renders close button with proper icon', () => {
       render(<ShareModal {...mockProps} />);
 
-      const closeButton = screen.getByRole('button', { name: '' }); // Close button has no text, only icon
+      const closeButton = screen.getByTestId('close-share-modal');
       expect(closeButton).toBeInTheDocument();
+      expect(closeButton.querySelector('svg')).toBeInTheDocument();
     });
 
     it('renders copy and download buttons', async () => {
@@ -421,189 +384,23 @@ describe('ShareModal', () => {
     });
   });
 
-  describe('API Key Sharing', () => {
-    it('toggles API key sharing option', () => {
+  describe('Provider Settings Messaging', () => {
+    it('explains that assistant sharing no longer includes provider credentials', () => {
       render(<ShareModal {...mockProps} />);
 
-      const checkbox = screen.getByLabelText(/包含我的 API 金鑰/);
-      expect(checkbox).not.toBeChecked();
-
-      fireEvent.click(checkbox);
-      expect(checkbox).toBeChecked();
-
-      // Should show password input
-      expect(screen.getByPlaceholderText('設定密碼')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: '重新生成' })).toBeInTheDocument();
+      expect(
+        screen.getByText(/助理分享只包含助理內容與連結，不再附帶 API 金鑰或服務商設定/),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/請到「AI 服務商」頁面使用新的安全分享功能/)).toBeInTheDocument();
     });
 
-    it('generates random password', async () => {
-      const { CryptoService } = await import('../../../services/cryptoService');
-      const mockCryptoService = vi.mocked(CryptoService);
-
+    it('does not render the removed api key sharing controls', () => {
       render(<ShareModal {...mockProps} />);
 
-      const checkbox = screen.getByLabelText(/包含我的 API 金鑰/);
-      fireEvent.click(checkbox);
-
-      const generateButton = screen.getByRole('button', { name: '重新生成' });
-      fireEvent.click(generateButton);
-
-      expect(mockCryptoService.generateRandomPassword).toHaveBeenCalled();
-      expect(screen.getByDisplayValue('random-password-123')).toBeInTheDocument();
-    });
-
-    it('shows error when trying to share API keys without password', async () => {
-      render(<ShareModal {...mockProps} />);
-
-      // Wait for initial generation to complete
-      await waitFor(() => {
-        expect(screen.getByText('分享連結生成成功！')).toBeInTheDocument();
-      });
-
-      const checkbox = screen.getByLabelText(/包含我的 API 金鑰/);
-      fireEvent.click(checkbox);
-
-      // Checkbox changes shareWithApiKeys → regenerates generateShareLink callback →
-      // useEffect re-fires; wait for that second generation to finish too
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: '🔐 重新生成加密分享連結' })).not.toBeDisabled();
-      });
-
-      const regenerateButton = screen.getByRole('button', { name: '🔐 重新生成加密分享連結' });
-      fireEvent.click(regenerateButton);
-
-      await waitFor(() => {
-        expect(screen.getByText('分享 API 金鑰時需要設定密碼。')).toBeInTheDocument();
-      });
-    });
-
-    it('shows error when no API keys are available', async () => {
-      // beforeEach provides geminiApiKey via ApiKeyManager, so availableProviders=[gemini]
-      // and selectedProvider auto-sets to 'gemini'. We just need to click checkbox + enter
-      // password, then clear the key before clicking regenerate.
-      render(<ShareModal {...mockProps} />);
-
-      // Wait for initial generation to complete
-      await waitFor(() => {
-        expect(screen.getByText('分享連結生成成功！')).toBeInTheDocument();
-      });
-
-      const checkbox = screen.getByLabelText(/包含我的 API 金鑰/);
-      fireEvent.click(checkbox);
-
-      // The checkbox triggers a re-run of generateShareLink (shareWithApiKeys in deps).
-      // With password='', it exits early → isGenerating=false. Find the button by text
-      // (it will show '生成中...' briefly then '🔐 重新生成加密分享連結').
-      // Use findByRole which has built-in async retry.
-      const regenerateButton = await screen.findByRole('button', {
-        name: '🔐 重新生成加密分享連結',
-      });
-
-      const passwordInput = screen.getByPlaceholderText('設定密碼');
-      fireEvent.change(passwordInput, { target: { value: 'test-password' } });
-
-      // Clear ApiKeyManager so key collection finds nothing → "no API keys" error.
-      vi.mocked(ApiKeyManager.getUserApiKeys).mockReturnValue({
-        geminiApiKey: '',
-        tursoWriteApiKey: '',
-      } as ReturnType<typeof ApiKeyManager.getUserApiKeys>);
-
-      fireEvent.click(regenerateButton);
-
-      await waitFor(() => {
-        expect(screen.getByText(/沒有可分享的 API 金鑰/)).toBeInTheDocument();
-      });
-    });
-
-    it('generates encrypted share link with API keys', async () => {
-      const { CryptoService } = await import('../../../services/cryptoService');
-      const mockCryptoService = vi.mocked(CryptoService);
-      const { saveAssistantToTurso } = await import('../../../services/tursoService');
-      const mockSaveAssistantToTurso = vi.mocked(saveAssistantToTurso);
-      mockSaveAssistantToTurso.mockResolvedValue(undefined);
-
-      render(<ShareModal {...mockProps} />);
-
-      // Wait for initial generation to complete
-      await waitFor(() => {
-        expect(screen.getByText('分享連結生成成功！')).toBeInTheDocument();
-      });
-
-      const checkbox = screen.getByLabelText(/包含我的 API 金鑰/);
-      fireEvent.click(checkbox);
-
-      // Wait for re-triggered generation to finish (password='', early return → button enabled)
-      const regenerateButton = await screen.findByRole('button', {
-        name: '🔐 重新生成加密分享連結',
-      });
-
-      const passwordInput = screen.getByPlaceholderText('設定密碼');
-      fireEvent.change(passwordInput, { target: { value: 'test-password' } });
-
-      fireEvent.click(regenerateButton);
-
-      await waitFor(() => {
-        expect(mockCryptoService.encryptApiKeys).toHaveBeenCalledWith(
-          expect.objectContaining({
-            geminiApiKey: 'mock-gemini-key',
-          }),
-          'test-password',
-        );
-      });
-
-      const expectedUrl = `https://example.com/chat?share=${TEST_ASSISTANTS.basic.id}&keys=encrypted-api-keys`;
-      expect(screen.getByDisplayValue(expectedUrl)).toBeInTheDocument();
-    });
-
-    it('shows password warning message', async () => {
-      render(<ShareModal {...mockProps} />);
-
-      const checkbox = screen.getByLabelText(/包含我的 API 金鑰/);
-      fireEvent.click(checkbox);
-
-      const passwordInput = screen.getByPlaceholderText('設定密碼');
-      fireEvent.change(passwordInput, { target: { value: 'my-password' } });
-
-      expect(screen.getByText('my-password')).toBeInTheDocument();
-      // The warning text is split across text nodes and an inline <code> in the same <p>.
-      // Match the paragraph's full text content with a regex.
-      expect(screen.getByText(/⚠️ 請將密碼/)).toBeInTheDocument();
-      expect(screen.getByText(/與分享連結分開傳送給接收者/)).toBeInTheDocument();
-    });
-
-    it('shows loading state during encrypted link generation', async () => {
-      const { CryptoService } = await import('../../../services/cryptoService');
-      const mockCryptoService = vi.mocked(CryptoService);
-      mockCryptoService.encryptApiKeys.mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve('encrypted'), 100)),
-      );
-
-      render(<ShareModal {...mockProps} />);
-
-      // Wait for initial generation to complete
-      await waitFor(() => {
-        expect(screen.getByText('分享連結生成成功！')).toBeInTheDocument();
-      });
-
-      const checkbox = screen.getByLabelText(/包含我的 API 金鑰/);
-      fireEvent.click(checkbox);
-
-      // Wait for re-triggered generation (password='', early return) to finish
-      const regenerateButton = await screen.findByRole('button', {
-        name: '🔐 重新生成加密分享連結',
-      });
-
-      const passwordInput = screen.getByPlaceholderText('設定密碼');
-      fireEvent.change(passwordInput, { target: { value: 'test-password' } });
-
-      fireEvent.click(regenerateButton);
-
-      expect(screen.getByText('生成中...')).toBeInTheDocument();
-      expect(regenerateButton).toBeDisabled();
-
-      await waitFor(() => {
-        expect(screen.getByText('🔐 重新生成加密分享連結')).toBeInTheDocument();
-      });
+      expect(screen.queryByLabelText(/包含我的 API 金鑰/)).not.toBeInTheDocument();
+      expect(screen.queryByPlaceholderText('設定密碼')).not.toBeInTheDocument();
+      expect(screen.queryByText('加密密碼')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /加密分享連結/ })).not.toBeInTheDocument();
     });
   });
 
@@ -625,8 +422,8 @@ describe('ShareModal', () => {
     it('calls onClose when bottom close button is clicked', () => {
       render(<ShareModal {...mockProps} />);
 
-      const closeButton = screen.getByRole('button', { name: '關閉' });
-      fireEvent.click(closeButton);
+      const closeButtons = screen.getAllByRole('button', { name: '關閉' });
+      fireEvent.click(closeButtons[1]);
 
       expect(mockProps.onClose).toHaveBeenCalled();
     });
@@ -690,18 +487,14 @@ describe('ShareModal', () => {
 
       expect(screen.getByRole('button', { name: '複製' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: '下載 QR Code' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: '關閉' })).toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: '關閉' })).toHaveLength(2);
     });
 
     it('has proper form labels', () => {
       render(<ShareModal {...mockProps} />);
 
-      const checkbox = screen.getByLabelText(/包含我的 API 金鑰/);
-      expect(checkbox).toBeInTheDocument();
-
-      fireEvent.click(checkbox);
-
-      expect(screen.getByText('加密密碼')).toBeInTheDocument();
+      expect(screen.getByLabelText(/使用短網址/)).toBeInTheDocument();
+      expect(screen.getByText('分享連結')).toBeInTheDocument();
     });
 
     it('has proper input attributes', async () => {

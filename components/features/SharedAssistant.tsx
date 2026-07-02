@@ -1,14 +1,7 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import { AppContext } from '../core/useAppContext';
-import {
-  initializeProviders,
-  providerManager,
-  isLLMAvailable,
-} from '../../services/providerRegistry';
-import { ProviderType } from '../../services/llmAdapter';
+import { initializeProviders, isLLMAvailable } from '../../services/providerRegistry';
 import { getAssistantFromTurso } from '../../services/tursoService';
-import CryptoService from '../../services/cryptoService';
-import { ApiKeyManager } from '../../services/apiKeyManager';
 import { AppContextValue } from '../core/AppContext.types';
 import { Assistant } from '../../types';
 
@@ -76,126 +69,14 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
       });
       console.log('💬 [SHARED ASSISTANT] Session set:', newSession);
 
-      // Handle encrypted keys directly with prompt (improved logic matching AppContext)
-      const encryptedKeys = CryptoService.extractKeysFromUrl();
-      let hasValidKeys = false;
-      if (encryptedKeys) {
-        console.log('🔐 [SHARED ASSISTANT] Encrypted keys found, prompting for password');
-        const password = window.prompt('此助理包含已加密的 API 金鑰。請輸入密碼以解密：', '');
-        if (password) {
-          try {
-            const decryptedApiKeys = await CryptoService.decryptApiKeys(encryptedKeys, password);
-            ApiKeyManager.setUserApiKeys(decryptedApiKeys);
-
-            // Initialize providers first to ensure all providers are registered
-            await initializeProviders();
-
-            // Handle provider-specific config if present in decrypted keys
-            if (decryptedApiKeys.provider) {
-              const providerType = decryptedApiKeys.provider as ProviderType;
-
-              // 1. Build config from decrypted keys - use direct key access for reliability
-              const config: { apiKey?: string; baseUrl?: string; model?: string } = {};
-
-              // Try multiple key formats for API key (handle different naming conventions)
-              const apiKeyValue =
-                decryptedApiKeys[`${providerType}ApiKey`] ||
-                decryptedApiKeys[`${providerType}_api_key`] ||
-                decryptedApiKeys['apiKey'];
-
-              // Try multiple key formats for base URL
-              const baseUrlValue =
-                decryptedApiKeys[`${providerType}BaseUrl`] ||
-                decryptedApiKeys[`${providerType}_base_url`] ||
-                decryptedApiKeys['baseUrl'];
-
-              const model = decryptedApiKeys.model;
-
-              console.log(
-                `🔑 [SHARED ASSISTANT] Extracting config for ${providerType}:`,
-                'apiKey:',
-                apiKeyValue ? `${apiKeyValue.substring(0, 15)}...` : 'none',
-                'baseUrl:',
-                baseUrlValue || 'none',
-                'model:',
-                model || 'none',
-              );
-
-              if (apiKeyValue) {
-                config.apiKey = apiKeyValue as string;
-              }
-              if (baseUrlValue) {
-                config.baseUrl = baseUrlValue as string;
-              }
-              if (model) {
-                config.model = model as string;
-              }
-
-              console.log('📝 [SHARED ASSISTANT] Config to apply:', config);
-
-              // 2. Update provider config and enable it
-              if (Object.keys(config).length > 0) {
-                providerManager.updateProviderConfig(providerType, config);
-              }
-
-              // IMPORTANT: Always enable the provider when importing with keys
-              providerManager.enableProvider(providerType, true);
-
-              // 3. Initialize the provider with the config
-              const provider = providerManager.getProvider(providerType);
-              if (provider) {
-                try {
-                  await provider.initialize(config);
-                  console.log(
-                    `✅ [SHARED ASSISTANT] ${providerType} provider initialized successfully`,
-                  );
-                } catch (error) {
-                  console.warn(
-                    `⚠️ [SHARED ASSISTANT] Failed to initialize ${providerType} provider:`,
-                    error,
-                  );
-                }
-              }
-
-              // 4. Set as active provider
-              providerManager.setActiveProvider(providerType);
-
-              // 5. Dispatch to notify UI components
-              dispatch({ type: 'SET_ACTIVE_PROVIDER', payload: providerType as string });
-
-              console.log(
-                `✅ [SHARED ASSISTANT] ${providerType} provider set as active`,
-                'enabled:',
-                providerManager.isProviderEnabled(providerType),
-              );
-            }
-            hasValidKeys = true;
-
-            // Clear URL params
-            const url = new URL(window.location.href);
-            url.searchParams.delete('keys');
-            window.history.replaceState({}, document.title, url.toString());
-
-            alert('API 金鑰已成功匯入！');
-          } catch (error) {
-            console.error('❌ [SHARED ASSISTANT] Decryption failed:', error);
-            alert('密碼錯誤或金鑰損毀，無法解密 API 金鑰。請檢查連結。');
-            hasValidKeys = false;
-          }
-        } else {
-          console.log('❌ [SHARED ASSISTANT] No password provided, fallback to api_setup');
-          hasValidKeys = false;
-        }
-      } else {
-        hasValidKeys = await checkApiKey();
-      }
+      const hasValidKeys = await checkApiKey();
 
       if (hasValidKeys) {
         console.log('🎯 [SHARED ASSISTANT] Valid API keys available, setting chat mode');
         dispatch({ type: 'SET_VIEW_MODE', payload: 'chat' });
       } else {
-        console.log('⚠️ [SHARED ASSISTANT] No valid API keys, setting api_setup mode');
-        dispatch({ type: 'SET_VIEW_MODE', payload: 'api_setup' });
+        console.log('⚠️ [SHARED ASSISTANT] No valid API keys, setting provider_settings mode');
+        dispatch({ type: 'SET_VIEW_MODE', payload: 'provider_settings' });
       }
 
       loadedRef.current = true;
