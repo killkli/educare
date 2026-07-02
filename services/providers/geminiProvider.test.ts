@@ -404,6 +404,61 @@ describe('GeminiProvider', () => {
     ]);
   });
 
+  it('serializes recoverable tool error payloads into function responses and continues to final text', async () => {
+    const provider = new GeminiProvider();
+    const { sendMessage, sendMessageStream } = await setupProvider(provider, {
+      sendMessageResponses: [
+        {
+          functionCalls: [{ id: 'call-1', name: 'search_docs', args: { query: 'financial aid' } }],
+        },
+        {
+          text: 'Recovered after tool error',
+          functionCalls: [],
+          usageMetadata: { promptTokenCount: 6, candidatesTokenCount: 9 },
+        },
+      ],
+    });
+
+    const recoverableError = {
+      ok: false,
+      recoverable: true,
+      code: 'search-temporary-unavailable',
+      message: 'Search index is warming up.',
+      guidance: 'Retry the same search in a moment.',
+      details: { retryAfterMs: 500 },
+    };
+    const executeTool = vi.fn().mockResolvedValue(recoverableError);
+
+    const responses = await collectResponses(provider, {
+      tools: [...TOOL_DEFINITIONS],
+      executeTool,
+    });
+
+    expect(executeTool).toHaveBeenCalledWith({
+      name: 'search_docs',
+      args: { query: 'financial aid' },
+    });
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(sendMessage.mock.calls[1]?.[0]).toMatchObject({
+      message: [
+        {
+          functionResponse: {
+            id: 'call-1',
+            name: 'search_docs',
+            response: {
+              output: recoverableError,
+            },
+          },
+        },
+      ],
+    });
+    expect(sendMessageStream).not.toHaveBeenCalled();
+    expect(responses).toEqual([
+      expect.objectContaining({ text: 'Recovered after tool error', isComplete: false }),
+      expect.objectContaining({ isComplete: true }),
+    ]);
+  });
+
   it('executes multiple function calls returned in the same turn before final text', async () => {
     const provider = new GeminiProvider();
     const { sendMessage } = await setupProvider(provider, {

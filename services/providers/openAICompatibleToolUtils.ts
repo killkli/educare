@@ -1,4 +1,4 @@
-import { ChatParams, StreamingResponse, ToolCall, ToolDefinition } from '../llmAdapter';
+import { ChatParams, StreamingResponse, ToolDefinition } from '../llmAdapter';
 import { readSseDataLines } from './sse';
 import { resolveToolPolicy } from './toolPolicyUtils';
 
@@ -37,6 +37,21 @@ interface StreamOptions {
   defaultTemperature?: number;
   defaultMaxTokens?: number;
   defaultMaxToolRounds?: number;
+}
+
+interface RecoverableToolErrorResult {
+  ok: false;
+  recoverable: true;
+  code: string;
+  message: string;
+  guidance: string;
+  details?: Record<string, unknown>;
+}
+
+interface NormalizedOpenAICompatibleToolCall {
+  name: string;
+  args: Record<string, unknown>;
+  argsError?: RecoverableToolErrorResult;
 }
 
 const buildFinalSystemPrompt = (params: ChatParams): string => {
@@ -105,34 +120,73 @@ const buildToolChoice = (params: ChatParams, tools?: ToolDefinition[]) => {
   }
 };
 
-const parseToolArgs = (rawArgs?: string): Record<string, unknown> => {
+const parseToolArgs = (
+  rawArgs?: string,
+): { args: Record<string, unknown>; error?: RecoverableToolErrorResult } => {
   if (!rawArgs) {
-    return {};
+    return { args: {} };
   }
 
   try {
     const parsed = JSON.parse(rawArgs);
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
+      return { args: parsed as Record<string, unknown> };
     }
   } catch (error) {
     console.warn('Failed to parse tool arguments:', error);
+    return {
+      args: {},
+      error: {
+        ok: false,
+        recoverable: true,
+        code: 'tool-arguments-invalid-json',
+        message: 'Tool call arguments must be valid JSON object syntax.',
+        guidance:
+          'Retry the same tool with a valid JSON object for arguments. Keep payloads smaller if the request is large.',
+        details: {
+          rawArgs,
+        },
+      },
+    };
   }
 
-  return {};
+  return {
+    args: {},
+    error: {
+      ok: false,
+      recoverable: true,
+      code: 'tool-arguments-invalid-shape',
+      message: 'Tool call arguments must decode to a JSON object.',
+      guidance:
+        'Retry the same tool with key/value object arguments instead of an array, string, or null.',
+      details: {
+        rawArgs,
+      },
+    },
+  };
 };
 
-const normalizeToolCall = (toolCall: OpenAICompatibleToolCall): ToolCall | null => {
+const normalizeToolCall = (
+  toolCall: OpenAICompatibleToolCall,
+): NormalizedOpenAICompatibleToolCall | null => {
   const name = toolCall.function?.name;
   if (!name) {
     return null;
   }
 
+  const { args, error } = parseToolArgs(toolCall.function?.arguments);
   return {
     name,
-    args: parseToolArgs(toolCall.function?.arguments),
+    args,
+    argsError: error,
   };
 };
+
+const createToolMessage = (toolCallId: string, result: unknown): OpenAICompatibleMessage => ({
+  role: 'tool',
+  tool_call_id: toolCallId,
+  content: JSON.stringify(result),
+});
 
 const executeToolCalls = async (
   toolCalls: OpenAICompatibleToolCall[],
@@ -146,13 +200,17 @@ const executeToolCalls = async (
       continue;
     }
 
-    const result = await executeTool(normalizedToolCall);
+    if (normalizedToolCall.argsError) {
+      toolMessages.push(createToolMessage(toolCall.id, normalizedToolCall.argsError));
+      continue;
+    }
 
-    toolMessages.push({
-      role: 'tool',
-      tool_call_id: toolCall.id,
-      content: JSON.stringify(result),
+    const result = await executeTool({
+      name: normalizedToolCall.name,
+      args: normalizedToolCall.args,
     });
+
+    toolMessages.push(createToolMessage(toolCall.id, result));
   }
 
   return toolMessages;

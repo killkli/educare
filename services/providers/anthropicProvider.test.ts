@@ -194,6 +194,77 @@ describe('AnthropicProvider', () => {
     expect(chunks[0]?.text).toBe('done');
   });
 
+  it('serializes recoverable tool error payloads into tool_result content and continues to final text', async () => {
+    const provider = new AnthropicProvider();
+    await provider.initialize({
+      apiKey: 'anthropic-test-key',
+      model: 'claude-opus-4-8',
+      maxToolRounds: 20,
+    });
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          content: [
+            {
+              type: 'tool_use',
+              id: 'call-1',
+              name: 'render_preview',
+              input: { projectId: 'project-1' },
+            },
+          ],
+          usage: { input_tokens: 2, output_tokens: 1 },
+        }),
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          content: [{ type: 'text', text: 'Recovered after tool error' }],
+          usage: { input_tokens: 3, output_tokens: 2 },
+        }),
+      );
+
+    const recoverableError = {
+      ok: false,
+      recoverable: true,
+      code: 'preview-temporary-unavailable',
+      message: 'Preview service is still starting.',
+      guidance: 'Retry the same preview shortly.',
+      details: { retryAfterMs: 750 },
+    };
+    const executeTool = vi.fn().mockResolvedValue(recoverableError);
+
+    const chunks = [];
+    for await (const chunk of provider.streamChat({
+      systemPrompt: 'You are helpful.',
+      history: [],
+      message: 'hello',
+      tools: [...TOOL_DEFINITIONS],
+      executeTool,
+    })) {
+      chunks.push(chunk);
+    }
+
+    expect(executeTool).toHaveBeenCalledWith({
+      name: 'render_preview',
+      args: { projectId: 'project-1' },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(chunks[0]?.text).toBe('Recovered after tool error');
+
+    const secondRequestBody = JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string);
+    expect(secondRequestBody.messages.at(-1)).toEqual({
+      role: 'user',
+      content: [
+        {
+          type: 'tool_result',
+          tool_use_id: 'call-1',
+          content: JSON.stringify(recoverableError),
+        },
+      ],
+    });
+  });
+
   it('throws when Anthropic exceeds the maximum number of tool rounds', async () => {
     const provider = new AnthropicProvider();
     await provider.initialize({

@@ -297,6 +297,106 @@ describe('streamOpenAICompatibleChat', () => {
     });
   });
 
+  it('serializes malformed tool-call JSON as a recoverable tool error and continues to final text', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    const executeTool = vi.fn();
+    const malformedArguments = '{"query":';
+
+    fetchMock
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: null,
+                tool_calls: [
+                  {
+                    id: 'call-1',
+                    type: 'function',
+                    function: {
+                      name: 'search_docs',
+                      arguments: malformedArguments,
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+          usage: { prompt_tokens: 3, completion_tokens: 1 },
+        }),
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: 'Recovered after invalid tool arguments.',
+              },
+            },
+          ],
+          usage: { prompt_tokens: 4, completion_tokens: 2 },
+        }),
+      );
+
+    const responses = [];
+    for await (const chunk of streamOpenAICompatibleChat({
+      endpoint: 'https://example.com/chat/completions',
+      headers: { Authorization: 'Bearer test' },
+      providerName: 'openai',
+      model: 'gpt-4o',
+      params: {
+        systemPrompt: 'You are helpful.',
+        history: [],
+        message: 'hello',
+        tools: [...TOOL_DEFINITIONS],
+        executeTool,
+      },
+    })) {
+      responses.push(chunk);
+    }
+
+    expect(executeTool).not.toHaveBeenCalled();
+    expect(responses).toEqual([
+      {
+        text: 'Recovered after invalid tool arguments.',
+        isComplete: false,
+        metadata: {
+          model: 'gpt-4o',
+          provider: 'openai',
+        },
+      },
+      {
+        text: '',
+        isComplete: true,
+        metadata: {
+          promptTokenCount: 7,
+          candidatesTokenCount: 3,
+          model: 'gpt-4o',
+          provider: 'openai',
+        },
+      },
+    ]);
+
+    const secondRequestBody = JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string);
+    expect(secondRequestBody.messages.at(-1)).toEqual({
+      role: 'tool',
+      tool_call_id: 'call-1',
+      content: JSON.stringify({
+        ok: false,
+        recoverable: true,
+        code: 'tool-arguments-invalid-json',
+        message: 'Tool call arguments must be valid JSON object syntax.',
+        guidance:
+          'Retry the same tool with a valid JSON object for arguments. Keep payloads smaller if the request is large.',
+        details: {
+          rawArgs: malformedArguments,
+        },
+      }),
+    });
+  });
+
   it('throws a clear error after exceeding the maximum number of tool rounds', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
       Promise.resolve(
