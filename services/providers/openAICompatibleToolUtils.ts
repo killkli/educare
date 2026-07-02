@@ -54,6 +54,17 @@ interface NormalizedOpenAICompatibleToolCall {
   argsError?: RecoverableToolErrorResult;
 }
 
+const MAX_RAW_TOOL_ARGS_PREVIEW_LENGTH = 500;
+
+const buildTruncatedRawArgsDetails = (rawArgs: string): Record<string, unknown> => ({
+  rawArgsLength: rawArgs.length,
+  rawArgsPreview:
+    rawArgs.length > MAX_RAW_TOOL_ARGS_PREVIEW_LENGTH
+      ? `${rawArgs.slice(0, MAX_RAW_TOOL_ARGS_PREVIEW_LENGTH)}…`
+      : rawArgs,
+  truncated: rawArgs.length > MAX_RAW_TOOL_ARGS_PREVIEW_LENGTH,
+});
+
 const buildFinalSystemPrompt = (params: ChatParams): string => {
   if (!params.ragContext) {
     return params.systemPrompt;
@@ -123,7 +134,7 @@ const buildToolChoice = (params: ChatParams, tools?: ToolDefinition[]) => {
 const parseToolArgs = (
   rawArgs?: string,
 ): { args: Record<string, unknown>; error?: RecoverableToolErrorResult } => {
-  if (!rawArgs) {
+  if (typeof rawArgs === 'undefined') {
     return { args: {} };
   }
 
@@ -143,9 +154,7 @@ const parseToolArgs = (
         message: 'Tool call arguments must be valid JSON object syntax.',
         guidance:
           'Retry the same tool with a valid JSON object for arguments. Keep payloads smaller if the request is large.',
-        details: {
-          rawArgs,
-        },
+        details: buildTruncatedRawArgsDetails(rawArgs),
       },
     };
   }
@@ -159,9 +168,7 @@ const parseToolArgs = (
       message: 'Tool call arguments must decode to a JSON object.',
       guidance:
         'Retry the same tool with key/value object arguments instead of an array, string, or null.',
-      details: {
-        rawArgs,
-      },
+      details: buildTruncatedRawArgsDetails(rawArgs),
     },
   };
 };

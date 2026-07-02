@@ -6,7 +6,11 @@ import {
 } from '../types';
 import type { ToolCall, ToolDefinition } from './llmAdapter';
 import { htmlPreviewService } from './htmlPreviewService';
-import { htmlProjectStore, type WriteHtmlProjectFileInput } from './htmlProjectStore';
+import {
+  HtmlProjectPathValidationError,
+  htmlProjectStore,
+  type WriteHtmlProjectFileInput,
+} from './htmlProjectStore';
 import { getTemplateFiles, type HtmlProjectTemplate } from './htmlProjectTemplates';
 
 const HTML_PROJECT_TOOL_NAMES = [
@@ -166,6 +170,14 @@ const createRecoverableToolExecutionResult = (
   result: { ...error },
   workspace: createWorkspaceUpdate(activeProjectId ?? null, error.message),
 });
+
+const getRecoverableActiveProjectId = (
+  args: Record<string, unknown>,
+  activeProjectId: string | null | undefined,
+): string | null => {
+  const explicitProjectId = typeof args.projectId === 'string' ? args.projectId : null;
+  return explicitProjectId || activeProjectId || null;
+};
 
 const getContentSizeInBytes = (content: string): number => textEncoder.encode(content).length;
 
@@ -477,14 +489,18 @@ const handleReplaceInFile = async (
   }
 
   let matchCount = 0;
+  let firstMatchIndex = -1;
   let searchIndex = 0;
   while (searchIndex <= file.content.length - oldText.length) {
     const matchIndex = file.content.indexOf(oldText, searchIndex);
     if (matchIndex === -1) {
       break;
     }
+    if (firstMatchIndex === -1) {
+      firstMatchIndex = matchIndex;
+    }
     matchCount += 1;
-    searchIndex = matchIndex + oldText.length;
+    searchIndex = matchIndex + 1;
   }
 
   if (matchCount === 0) {
@@ -516,11 +532,16 @@ const handleReplaceInFile = async (
     });
   }
 
+  const updatedContent =
+    file.content.slice(0, firstMatchIndex) +
+    args.newText +
+    file.content.slice(firstMatchIndex + oldText.length);
+
   const result = await htmlProjectStore.writeFiles(project.id, [
     {
       path: file.path,
       kind: file.kind,
-      content: file.content.replace(oldText, args.newText),
+      content: updatedContent,
       encoding: file.encoding,
     },
   ]);
@@ -850,8 +871,33 @@ export const executeHtmlProjectToolCall = async (
         throw new Error(`Unsupported HTML project tool: ${call.name}`);
     }
   } catch (error) {
+    const recoverableActiveProjectId = getRecoverableActiveProjectId(
+      call.args,
+      context.activeProjectId,
+    );
+
     if (error instanceof HtmlProjectToolRecoverableError) {
-      return createRecoverableToolExecutionResult(call.name, error.result, context.activeProjectId);
+      return createRecoverableToolExecutionResult(
+        call.name,
+        error.result,
+        recoverableActiveProjectId,
+      );
+    }
+    if (error instanceof HtmlProjectPathValidationError) {
+      return createRecoverableToolExecutionResult(
+        call.name,
+        {
+          ok: false,
+          recoverable: true,
+          code: error.code,
+          message: error.message,
+          guidance: error.guidance,
+          details: {
+            path: error.path,
+          },
+        },
+        recoverableActiveProjectId,
+      );
     }
     throw error;
   }

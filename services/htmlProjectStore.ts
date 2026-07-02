@@ -108,29 +108,62 @@ export interface SearchHtmlProjectFilesResult {
 let dbPromise: Promise<IDBPDatabase<HtmlProjectDB>> | null = null;
 
 const now = (): number => Date.now();
+const HTML_PROJECT_PATH_GUIDANCE =
+  'Use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js. Do not use host filesystem paths or URLs.';
+const EXTERNAL_PROJECT_REFERENCE_PATTERN = /^([a-z][a-z\d+.-]*:|\/\/)/i;
+const normalizeProjectPathSlashes = (path: string): string => path.replace(/\\/g, '/');
+const isExternalProjectReference = (path: string): boolean =>
+  EXTERNAL_PROJECT_REFERENCE_PATTERN.test(normalizeProjectPathSlashes(path));
+
+export class HtmlProjectPathValidationError extends Error {
+  readonly code: string;
+  readonly guidance: string;
+  readonly path: string;
+
+  constructor(path: string, code: string, message: string, guidance = HTML_PROJECT_PATH_GUIDANCE) {
+    super(message);
+    this.name = 'HtmlProjectPathValidationError';
+    this.code = code;
+    this.guidance = guidance;
+    this.path = path;
+  }
+}
 
 export const normalizePath = (path: string): string => {
-  const trimmedPath = path.trim();
-  if (!trimmedPath) {
-    throw new Error('Project file path is required.');
-  }
-
-  if (/^([a-z][a-z\d+.-]*:|\/\/)/i.test(trimmedPath)) {
-    throw new Error(`Project file path must stay inside the virtual project root: ${path}`);
-  }
-
   if (
-    Array.from(trimmedPath).some(character => {
+    Array.from(path).some(character => {
       const code = character.charCodeAt(0);
       return code <= 31 || code === 127;
     })
   ) {
-    throw new Error(`Project file path contains invalid control characters: ${path}`);
+    throw new HtmlProjectPathValidationError(
+      path,
+      'invalid-control-characters',
+      `Project file path contains invalid control characters: ${path}`,
+    );
   }
 
-  const normalizedPath = (trimmedPath.startsWith('/') ? trimmedPath : `/${trimmedPath}`)
-    .replace(/\\/g, '/')
-    .replace(/\/+/g, '/');
+  const trimmedPath = path.trim();
+  if (!trimmedPath) {
+    throw new HtmlProjectPathValidationError(
+      path,
+      'missing-path',
+      'Project file path is required.',
+    );
+  }
+
+  const slashNormalizedPath = normalizeProjectPathSlashes(trimmedPath);
+  if (isExternalProjectReference(slashNormalizedPath)) {
+    throw new HtmlProjectPathValidationError(
+      path,
+      'path-outside-project-root',
+      `Project file path must stay inside the virtual project root: ${path}`,
+    );
+  }
+
+  const normalizedPath = (
+    slashNormalizedPath.startsWith('/') ? slashNormalizedPath : `/${slashNormalizedPath}`
+  ).replace(/\/+/g, '/');
   const resolvedSegments: string[] = [];
 
   for (const segment of normalizedPath.split('/')) {
@@ -144,6 +177,14 @@ export const normalizePath = (path: string): string => {
     resolvedSegments.push(segment);
   }
 
+  if (resolvedSegments.length === 0) {
+    throw new HtmlProjectPathValidationError(
+      path,
+      'path-resolved-to-root',
+      `Project file path must include a file inside the virtual project root: ${path}`,
+    );
+  }
+
   return `/${resolvedSegments.join('/')}`;
 };
 
@@ -151,7 +192,11 @@ const inferDependencies = (kind: HtmlProjectFileKind, content: string): string[]
   const dependencies = new Set<string>();
   const add = (value: string) => {
     const trimmed = value.trim();
-    if (!trimmed || /^([a-z]+:|#|\/\/)/i.test(trimmed)) {
+    if (!trimmed || trimmed.startsWith('#')) {
+      return;
+    }
+
+    if (isExternalProjectReference(trimmed)) {
       return;
     }
     dependencies.add(normalizePath(trimmed));

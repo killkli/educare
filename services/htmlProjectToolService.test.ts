@@ -19,16 +19,21 @@ const {
   mockWriteFiles: vi.fn(),
 }));
 
-vi.mock('./htmlProjectStore', () => ({
-  htmlProjectStore: {
-    assertProjectOwnership: mockAssertProjectOwnership,
-    listFiles: mockListFiles,
-    listProjectsByAssistant: mockListProjectsByAssistant,
-    readFile: mockReadFile,
-    searchFiles: mockSearchFiles,
-    writeFiles: mockWriteFiles,
-  },
-}));
+vi.mock('./htmlProjectStore', async importOriginal => {
+  const actual = await importOriginal<typeof import('./htmlProjectStore')>();
+
+  return {
+    ...actual,
+    htmlProjectStore: {
+      assertProjectOwnership: mockAssertProjectOwnership,
+      listFiles: mockListFiles,
+      listProjectsByAssistant: mockListProjectsByAssistant,
+      readFile: mockReadFile,
+      searchFiles: mockSearchFiles,
+      writeFiles: mockWriteFiles,
+    },
+  };
+});
 
 vi.mock('./htmlPreviewService', () => ({
   htmlPreviewService: {
@@ -136,6 +141,61 @@ describe('executeHtmlProjectToolCall', () => {
       },
     });
     expect(mockWriteFiles).not.toHaveBeenCalled();
+    expect(mockResolveProjectForPreview).not.toHaveBeenCalled();
+  });
+
+  it('returns a structured recoverable result when writeFiles path validation fails inside the store', async () => {
+    const { HtmlProjectPathValidationError } = await import('./htmlProjectStore');
+    mockWriteFiles.mockRejectedValue(
+      new HtmlProjectPathValidationError(
+        '../..',
+        'path-resolved-to-root',
+        'Project file path must include a file inside the virtual project root: ../..',
+      ),
+    );
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'writeFiles',
+        args: {
+          projectId: 'project-1',
+          files: [
+            {
+              path: '../..',
+              content: '<main>Hello</main>',
+            },
+          ],
+        },
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-9',
+      },
+    );
+
+    expect(mockAssertProjectOwnership).toHaveBeenCalledWith('project-1', 'assistant-1');
+    expect(result).toMatchObject({
+      toolName: 'writeFiles',
+      summary: 'Project file path must include a file inside the virtual project root: ../..',
+      result: {
+        ok: false,
+        recoverable: true,
+        code: 'path-resolved-to-root',
+        message: 'Project file path must include a file inside the virtual project root: ../..',
+        guidance:
+          'Use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js. Do not use host filesystem paths or URLs.',
+        details: {
+          path: '../..',
+        },
+      },
+      workspace: {
+        activeProjectId: 'project-1',
+        activityMessage:
+          'Project file path must include a file inside the virtual project root: ../..',
+        preview: null,
+      },
+    });
     expect(mockResolveProjectForPreview).not.toHaveBeenCalled();
   });
 
@@ -251,6 +311,49 @@ describe('executeHtmlProjectToolCall', () => {
     });
   });
 
+  it('treats replaceInFile newText as a literal string', async () => {
+    mockReadFile.mockResolvedValue({
+      path: '/index.html',
+      kind: 'html',
+      content: '<main>Hello</main>',
+      encoding: 'utf-8',
+      dependencies: [],
+      size: 18,
+      updatedAt: 1700000001000,
+    });
+    mockWriteFiles.mockResolvedValue({
+      updated: ['/index.html'],
+      previewVersion: 4,
+    });
+
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    await executeHtmlProjectToolCall(
+      {
+        name: 'replaceInFile',
+        args: {
+          projectId: 'project-1',
+          path: '/index.html',
+          oldText: 'Hello',
+          newText: '$&',
+        },
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-1',
+      },
+    );
+
+    expect(mockWriteFiles).toHaveBeenCalledWith('project-1', [
+      {
+        path: '/index.html',
+        kind: 'html',
+        content: '<main>$&</main>',
+        encoding: 'utf-8',
+      },
+    ]);
+  });
+
   it('returns a structured recoverable result when replaceInFile oldText is missing', async () => {
     const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
 
@@ -288,6 +391,60 @@ describe('executeHtmlProjectToolCall', () => {
       },
     });
     expect(mockReadFile).not.toHaveBeenCalled();
+    expect(mockWriteFiles).not.toHaveBeenCalled();
+    expect(mockResolveProjectForPreview).not.toHaveBeenCalled();
+  });
+
+  it('returns a structured recoverable result when replaceInFile path validation fails inside the store', async () => {
+    const { HtmlProjectPathValidationError } = await import('./htmlProjectStore');
+    mockReadFile.mockRejectedValue(
+      new HtmlProjectPathValidationError(
+        '../..',
+        'path-resolved-to-root',
+        'Project file path must include a file inside the virtual project root: ../..',
+      ),
+    );
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'replaceInFile',
+        args: {
+          projectId: 'project-1',
+          path: '../..',
+          oldText: 'Hello',
+          newText: 'Hi',
+        },
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-7',
+      },
+    );
+
+    expect(mockAssertProjectOwnership).toHaveBeenCalledWith('project-1', 'assistant-1');
+    expect(mockReadFile).toHaveBeenCalledWith('project-1', '../..');
+    expect(result).toMatchObject({
+      toolName: 'replaceInFile',
+      summary: 'Project file path must include a file inside the virtual project root: ../..',
+      result: {
+        ok: false,
+        recoverable: true,
+        code: 'path-resolved-to-root',
+        message: 'Project file path must include a file inside the virtual project root: ../..',
+        guidance:
+          'Use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js. Do not use host filesystem paths or URLs.',
+        details: {
+          path: '../..',
+        },
+      },
+      workspace: {
+        activeProjectId: 'project-1',
+        activityMessage:
+          'Project file path must include a file inside the virtual project root: ../..',
+        preview: null,
+      },
+    });
     expect(mockWriteFiles).not.toHaveBeenCalled();
     expect(mockResolveProjectForPreview).not.toHaveBeenCalled();
   });

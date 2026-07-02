@@ -254,17 +254,24 @@ describe('htmlProjectImportService', () => {
     ]);
   });
 
-  it('rejects protocol-like and control-character import paths with explicit errors', async () => {
+  it('rejects protocol-like, control-character, and root-only import paths with explicit errors', async () => {
     const protocolFile = createFileWithRelativePath(
       ['console.log("bad")'],
       'app.js',
       'https://example.com/app.js',
     );
+    const controlCharacterPath = `scripts/${String.fromCharCode(0)}app.js`;
     const controlCharFile = createFileWithRelativePath(
       ['console.log("bad")'],
       'app.js',
-      'scripts/ app.js',
+      controlCharacterPath,
     );
+    const trailingNewlineFile = createFileWithRelativePath(
+      ['console.log("bad")'],
+      'app.js',
+      'scripts/app.js\n',
+    );
+    const rootTraversalFile = createFileWithRelativePath(['console.log("bad")'], 'app.js', '../..');
 
     await expect(
       htmlProjectImportService.prepareFilesForProjectUpload([protocolFile]),
@@ -273,6 +280,16 @@ describe('htmlProjectImportService', () => {
     );
     await expect(
       htmlProjectImportService.prepareFilesForProjectUpload([controlCharFile]),
-    ).rejects.toThrow('Project file path contains invalid control characters: scripts/ app.js');
+    ).rejects.toThrow(
+      `Project file path contains invalid control characters: ${controlCharacterPath}`,
+    );
+    await expect(
+      htmlProjectImportService.prepareFilesForProjectUpload([trailingNewlineFile]),
+    ).rejects.toThrow('Project file path contains invalid control characters: scripts/app.js\n');
+    await expect(
+      htmlProjectImportService.prepareFilesForProjectUpload([rootTraversalFile]),
+    ).rejects.toThrow(
+      'Project file path must include a file inside the virtual project root: ../..',
+    );
   });
 });
