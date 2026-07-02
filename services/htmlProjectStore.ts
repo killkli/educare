@@ -115,16 +115,36 @@ export const normalizePath = (path: string): string => {
     throw new Error('Project file path is required.');
   }
 
+  if (/^([a-z][a-z\d+.-]*:|\/\/)/i.test(trimmedPath)) {
+    throw new Error(`Project file path must stay inside the virtual project root: ${path}`);
+  }
+
+  if (
+    Array.from(trimmedPath).some(character => {
+      const code = character.charCodeAt(0);
+      return code <= 31 || code === 127;
+    })
+  ) {
+    throw new Error(`Project file path contains invalid control characters: ${path}`);
+  }
+
   const normalizedPath = (trimmedPath.startsWith('/') ? trimmedPath : `/${trimmedPath}`)
     .replace(/\\/g, '/')
     .replace(/\/+/g, '/');
-  const segments = normalizedPath.split('/').filter(Boolean);
+  const resolvedSegments: string[] = [];
 
-  if (segments.some(segment => segment === '..')) {
-    throw new Error(`Unsafe project file path: ${path}`);
+  for (const segment of normalizedPath.split('/')) {
+    if (!segment || segment === '.') {
+      continue;
+    }
+    if (segment === '..') {
+      resolvedSegments.pop();
+      continue;
+    }
+    resolvedSegments.push(segment);
   }
 
-  return `/${segments.filter(segment => segment !== '.').join('/')}`;
+  return `/${resolvedSegments.join('/')}`;
 };
 
 const inferDependencies = (kind: HtmlProjectFileKind, content: string): string[] => {

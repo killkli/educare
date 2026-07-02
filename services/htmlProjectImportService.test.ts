@@ -221,14 +221,58 @@ describe('htmlProjectImportService', () => {
     expect(importedProject.entryFile).toBe('/demo/index.html');
   });
 
-  it('rejects unsafe zip paths before writing any files', async () => {
+  it('canonicalizes traversal-like zip paths during zip import', async () => {
     const zipBytes = zipSync({
-      '../outside/index.html': strToU8('<h1>Unsafe</h1>'),
+      '../data/ruby.js': strToU8('console.log("ruby")'),
+      './src/app.js': strToU8('console.log("dot")'),
+      'src/index.html': strToU8('<!doctype html><html><body>Demo</body></html>'),
     });
     const zipFile = createTestFile([zipBytes], 'unsafe.zip', { type: 'application/zip' });
 
-    await expect(htmlProjectImportService.importZipProject(zipFile)).rejects.toThrow(
-      'Unsafe project file path: ../outside/index.html',
+    const importedProject = await htmlProjectImportService.importZipProject(zipFile);
+
+    expect(importedProject.entryFile).toBe('/src/index.html');
+    expect(importedProject.files).toEqual([
+      {
+        path: '/data/ruby.js',
+        kind: 'js',
+        content: 'console.log("ruby")',
+        encoding: 'utf-8',
+      },
+      {
+        path: '/src/app.js',
+        kind: 'js',
+        content: 'console.log("dot")',
+        encoding: 'utf-8',
+      },
+      {
+        path: '/src/index.html',
+        kind: 'html',
+        content: '<!doctype html><html><body>Demo</body></html>',
+        encoding: 'utf-8',
+      },
+    ]);
+  });
+
+  it('rejects protocol-like and control-character import paths with explicit errors', async () => {
+    const protocolFile = createFileWithRelativePath(
+      ['console.log("bad")'],
+      'app.js',
+      'https://example.com/app.js',
     );
+    const controlCharFile = createFileWithRelativePath(
+      ['console.log("bad")'],
+      'app.js',
+      'scripts/ app.js',
+    );
+
+    await expect(
+      htmlProjectImportService.prepareFilesForProjectUpload([protocolFile]),
+    ).rejects.toThrow(
+      'Project file path must stay inside the virtual project root: https://example.com/app.js',
+    );
+    await expect(
+      htmlProjectImportService.prepareFilesForProjectUpload([controlCharFile]),
+    ).rejects.toThrow('Project file path contains invalid control characters: scripts/ app.js');
   });
 });
