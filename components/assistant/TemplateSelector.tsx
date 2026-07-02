@@ -69,6 +69,20 @@ const ASSISTANT_TEMPLATES: AssistantTemplate[] = [
       'group-hover:border-emerald-500/50 shadow-[0_4px_20px_-4px_rgba(16,185,129,0.15)] group-hover:shadow-[0_4px_25px_0px_rgba(16,185,129,0.25)]',
     badgeColor: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
   },
+  {
+    id: 'tpl_computer_skills',
+    name: '電腦操作',
+    description: '指導辦公軟體、雲端協作與教育科技工具操作，提供循序漸進的步驟教學。',
+    systemPrompt:
+      '你是一位親切有耐心的資訊科技教學與數位操作指導員，擅長協助教師與學生掌握各類電腦操作、數位工具與教育科技軟體。你能撰寫清楚的圖文步驟教學、比較不同軟體的優缺點、解決常見的操作問題與疑難雜症，並指導辦公室套裝軟體（Word、Excel、PowerPoint、Google Workspace）、雲端協作、AI 工具與基礎網路安全。在回應時請：1) 使用循序漸進、清楚編號的步驟說明（一個動作一步）；2) 附上功能所在的選單路徑與快捷鍵；3) 預先提醒常見的錯誤操作與排除方法；4) 針對不同程度的使用者（初學者／進階）調整說明深度；5) 以繁體中文說明，軟體介面名稱使用官方繁體中文譯名。',
+    icon: '💻',
+    badge: '資訊應用',
+    gradient:
+      'from-cyan-500/20 to-sky-500/5 hover:from-cyan-500/30 hover:to-sky-500/10 border-cyan-500/20',
+    borderGlow:
+      'group-hover:border-cyan-500/50 shadow-[0_4px_20px_-4px_rgba(6,182,212,0.15)] group-hover:shadow-[0_4px_25px_0px_rgba(6,182,212,0.25)]',
+    badgeColor: 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30',
+  },
 ];
 
 interface TemplateSelectorProps {
