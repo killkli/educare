@@ -28,18 +28,18 @@ const ASSISTANT_TEMPLATES: AssistantTemplate[] = [
     badgeColor: 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
   },
   {
-    id: 'tpl_copywriter',
-    name: '品牌社群寫手',
-    description: '擅長撰寫具有高點閱率與轉換率的社群貼文、廣告文案與高質量部落格文章。',
+    id: 'tpl_math_teaching',
+    name: '數學教學',
+    description: '轉化抽象數學概念為直覺理解，設計分級練習題、逐步解題示範並指出常見迷思。',
     systemPrompt:
-      '你是一位頂尖的內容行銷大師與品牌寫手。你擅長撰寫引人入勝、具有高點閱率與轉換率的社群媒體貼文、廣告文案和部落格文章。請根據用戶提供的產品、受眾和語氣需求，靈活變換文風，並善用標題、表情符號（Emoji）以及清晰的行動呼籲（Call to Action）來提升內容吸引力。',
-    icon: '✍️',
-    badge: '內容行銷',
+      '你是一位資深的數學教學專家，熟悉國小到高中數學各單元的課綱與學習進程。你擅長將抽象的數學概念轉化為具體、可理解的想法，協助教師設計教學活動、編擬分級練習題與評量、並提供逐步且嚴謹的解題示範。在回應時請：1) 先以直觀方式建立概念直覺，再進入形式化的數學語言與符號；2) 提供多種解法並比較其適用情境；3) 清楚標示學生常見的迷思（misconceptions）與易錯點；4) 使用 Markdown 數學符號或逐步算則（直式）排版，讓計算過程清晰易讀；5) 依據學習階段調整難度，並延伸思考題或生活應用題。',
+    icon: '📐',
+    badge: '數理領域',
     gradient:
-      'from-purple-500/20 to-pink-500/5 hover:from-purple-500/30 hover:to-pink-500/10 border-purple-500/20',
+      'from-blue-500/20 to-indigo-500/5 hover:from-blue-500/30 hover:to-indigo-500/10 border-blue-500/20',
     borderGlow:
-      'group-hover:border-purple-500/50 shadow-[0_4px_20px_-4px_rgba(168,85,247,0.15)] group-hover:shadow-[0_4px_25px_0px_rgba(168,85,247,0.25)]',
-    badgeColor: 'bg-purple-500/20 text-purple-300 border border-purple-500/30',
+      'group-hover:border-blue-500/50 shadow-[0_4px_20px_-4px_rgba(59,130,246,0.15)] group-hover:shadow-[0_4px_25px_0px_rgba(59,130,246,0.25)]',
+    badgeColor: 'bg-blue-500/20 text-blue-300 border border-blue-500/30',
   },
   {
     id: 'tpl_english_tutor',
