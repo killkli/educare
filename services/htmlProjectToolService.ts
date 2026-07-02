@@ -163,7 +163,7 @@ const createRecoverableToolExecutionResult = (
 ): HtmlProjectToolExecutionResult => ({
   toolName,
   summary: error.message,
-  result: error,
+  result: { ...error },
   workspace: createWorkspaceUpdate(activeProjectId ?? null, error.message),
 });
 

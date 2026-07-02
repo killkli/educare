@@ -65,8 +65,11 @@ export const buildHtmlProjectSystemPrompt = (activeProjectId?: string | null): s
   return [
     'You can maintain browser-only HTML projects for the user using dedicated project tools.',
     continuationPrompt,
-    'When building or editing UI, prefer createProject, listProjects, openProject, searchFiles, listFiles, readFile, writeFiles, deleteFile, setEntrypoint, and renderPreview over dumping large HTML directly into the chat response.',
-    'For targeted edits, inspect existing work first: use searchFiles to locate relevant code, use listFiles to inspect structure, then use readFile before writeFiles.',
+    'When building or editing UI, prefer createProject, listProjects, openProject, searchFiles, listFiles, readFile, writeFiles, replaceInFile, deleteFile, setEntrypoint, and renderPreview over dumping large HTML directly into the chat response.',
+    'Always use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js. Never use host filesystem paths or URLs.',
+    'For targeted edits, inspect existing work first: use searchFiles to locate relevant code, use listFiles to inspect structure, then use readFile before writeFiles or replaceInFile.',
+    'Use writeFiles only for small complete-file writes. For edits inside an existing text file, prefer replaceInFile after readFile instead of resending the entire file.',
+    'If a tool returns a recoverable validation error, retry once with corrected arguments or a smaller payload.',
     'After opening an existing project, continue editing that same project unless the user explicitly asks to fork or replace it.',
     'After file changes, call renderPreview so the UI can refresh the sandboxed preview.',
     'Keep final chat responses concise and summarize the project changes rather than pasting the full source code.',
