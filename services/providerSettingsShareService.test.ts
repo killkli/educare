@@ -136,9 +136,15 @@ describe('providerSettingsShareService', () => {
 
     it('rejects missing provider settings', () => {
       const settings = buildSettings();
-      delete settings.providers.openai;
+      const providersWithoutOpenai = Object.fromEntries(
+        Object.entries(settings.providers).filter(([providerKey]) => providerKey !== 'openai'),
+      );
+      const invalidSettings = {
+        ...settings,
+        providers: providersWithoutOpenai,
+      } as unknown as ProviderSettings;
 
-      expect(() => buildProviderSettingsPayload(settings, 'openai')).toThrow(
+      expect(() => buildProviderSettingsPayload(invalidSettings, 'openai')).toThrow(
         '找不到要分享的服務商設定',
       );
     });
@@ -212,7 +218,7 @@ describe('providerSettingsShareService', () => {
         validateProviderSettingsPayload({
           ...buildPayload(),
           v: 2,
-        } as SharedProviderSettingsPayload),
+        } as unknown as SharedProviderSettingsPayload),
       ).toThrow('不支援的分享內容版本');
     });
 
@@ -221,7 +227,7 @@ describe('providerSettingsShareService', () => {
         validateProviderSettingsPayload({
           ...buildPayload(),
           provider: 'invalid-provider',
-        } as SharedProviderSettingsPayload),
+        } as unknown as SharedProviderSettingsPayload),
       ).toThrow('分享內容中的服務商無效');
     });
 
