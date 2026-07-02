@@ -5,6 +5,7 @@ const {
   mockAssertProjectOwnership,
   mockListFiles,
   mockListProjectsByAssistant,
+  mockReadFile,
   mockResolveProjectForPreview,
   mockSearchFiles,
   mockWriteFiles,
@@ -12,6 +13,7 @@ const {
   mockAssertProjectOwnership: vi.fn(),
   mockListFiles: vi.fn(),
   mockListProjectsByAssistant: vi.fn(),
+  mockReadFile: vi.fn(),
   mockResolveProjectForPreview: vi.fn(),
   mockSearchFiles: vi.fn(),
   mockWriteFiles: vi.fn(),
@@ -22,6 +24,7 @@ vi.mock('./htmlProjectStore', () => ({
     assertProjectOwnership: mockAssertProjectOwnership,
     listFiles: mockListFiles,
     listProjectsByAssistant: mockListProjectsByAssistant,
+    readFile: mockReadFile,
     searchFiles: mockSearchFiles,
     writeFiles: mockWriteFiles,
   },
@@ -97,24 +100,250 @@ describe('executeHtmlProjectToolCall', () => {
     });
   });
 
-  it('fails invalid writeFiles input with a clear validation error', async () => {
+  it('returns a structured recoverable result when writeFiles receives an empty files array', async () => {
     const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
 
-    const call: ToolCall = {
-      name: 'writeFiles',
-      args: {
-        projectId: 'project-1',
-        files: 'index.html' as unknown as Record<string, unknown>,
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'writeFiles',
+        args: {
+          projectId: 'project-1',
+          files: [],
+        },
       },
-    };
-
-    await expect(
-      executeHtmlProjectToolCall(call, {
+      {
         assistantId: 'assistant-1',
         activeProjectId: 'project-1',
-      }),
-    ).rejects.toThrow('writeFiles requires a non-empty files array.');
+      },
+    );
 
+    expect(mockAssertProjectOwnership).toHaveBeenCalledWith('project-1', 'assistant-1');
+    expect(result).toMatchObject({
+      toolName: 'writeFiles',
+      summary: 'writeFiles requires a non-empty files array.',
+      result: {
+        ok: false,
+        recoverable: true,
+        code: 'invalid-write-files-input',
+        message: 'writeFiles requires a non-empty files array.',
+        guidance:
+          'Pass one or more file objects in files[]. Use writeFiles for small complete files only.',
+      },
+      workspace: {
+        activeProjectId: 'project-1',
+        activityMessage: 'writeFiles requires a non-empty files array.',
+        preview: null,
+      },
+    });
+    expect(mockWriteFiles).not.toHaveBeenCalled();
+    expect(mockResolveProjectForPreview).not.toHaveBeenCalled();
+  });
+
+  it('returns a structured recoverable result when a writeFiles payload exceeds the size limit', async () => {
+    const oversizedContent = 'a'.repeat(24 * 1024 + 1);
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'writeFiles',
+        args: {
+          projectId: 'project-1',
+          files: [
+            {
+              path: '/index.html',
+              content: oversizedContent,
+            },
+          ],
+        },
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-1',
+      },
+    );
+
+    expect(mockAssertProjectOwnership).toHaveBeenCalledWith('project-1', 'assistant-1');
+    expect(result).toMatchObject({
+      toolName: 'writeFiles',
+      summary: `writeFiles payload for /index.html is too large (${oversizedContent.length} bytes).`,
+      result: {
+        ok: false,
+        recoverable: true,
+        code: 'write-file-too-large',
+        message: `writeFiles payload for /index.html is too large (${oversizedContent.length} bytes).`,
+        guidance:
+          'Use writeFiles only for small complete files. For existing files, readFile first and then use replaceInFile for targeted edits.',
+        details: {
+          path: '/index.html',
+          contentBytes: oversizedContent.length,
+          maxBytes: 24 * 1024,
+        },
+      },
+      workspace: {
+        activeProjectId: 'project-1',
+        activityMessage: `writeFiles payload for /index.html is too large (${oversizedContent.length} bytes).`,
+        preview: null,
+      },
+    });
+    expect(mockWriteFiles).not.toHaveBeenCalled();
+    expect(mockResolveProjectForPreview).not.toHaveBeenCalled();
+  });
+
+  it('replaces an exact single match inside an existing text file', async () => {
+    mockReadFile.mockResolvedValue({
+      path: '/index.html',
+      kind: 'html',
+      content: '<main>Hello</main>',
+      encoding: 'utf-8',
+      dependencies: [],
+      size: 18,
+      updatedAt: 1700000001000,
+    });
+    mockWriteFiles.mockResolvedValue({
+      updated: ['/index.html'],
+      previewVersion: 4,
+    });
+
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'replaceInFile',
+        args: {
+          projectId: 'project-1',
+          path: '/index.html',
+          oldText: 'Hello',
+          newText: 'Hi',
+        },
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-9',
+      },
+    );
+
+    expect(mockAssertProjectOwnership).toHaveBeenCalledWith('project-1', 'assistant-1');
+    expect(mockReadFile).toHaveBeenCalledWith('project-1', '/index.html');
+    expect(mockWriteFiles).toHaveBeenCalledWith('project-1', [
+      {
+        path: '/index.html',
+        kind: 'html',
+        content: '<main>Hi</main>',
+        encoding: 'utf-8',
+      },
+    ]);
+    expect(mockResolveProjectForPreview).toHaveBeenCalledWith('project-1');
+    expect(result).toMatchObject({
+      toolName: 'replaceInFile',
+      summary: '已更新檔案 /index.html 的指定內容。',
+      result: {
+        projectId: 'project-1',
+        path: '/index.html',
+        updated: ['/index.html'],
+        previewVersion: 4,
+        replaced: true,
+        matchCount: 1,
+      },
+      workspace: {
+        activeProjectId: 'project-1',
+        activityMessage: '已更新檔案 /index.html 的指定內容。',
+      },
+    });
+  });
+
+  it('returns a structured recoverable result when replaceInFile oldText is missing', async () => {
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'replaceInFile',
+        args: {
+          projectId: 'project-1',
+          path: '/index.html',
+          oldText: '',
+          newText: 'Hi',
+        },
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-1',
+      },
+    );
+
+    expect(mockAssertProjectOwnership).toHaveBeenCalledWith('project-1', 'assistant-1');
+    expect(result).toMatchObject({
+      toolName: 'replaceInFile',
+      summary: 'replaceInFile requires a non-empty oldText value.',
+      result: {
+        ok: false,
+        recoverable: true,
+        code: 'invalid-replace-old-text',
+        message: 'replaceInFile requires a non-empty oldText value.',
+        guidance: 'Call readFile first, copy the exact text to replace, then retry replaceInFile.',
+      },
+      workspace: {
+        activeProjectId: 'project-1',
+        activityMessage: 'replaceInFile requires a non-empty oldText value.',
+        preview: null,
+      },
+    });
+    expect(mockReadFile).not.toHaveBeenCalled();
+    expect(mockWriteFiles).not.toHaveBeenCalled();
+    expect(mockResolveProjectForPreview).not.toHaveBeenCalled();
+  });
+
+  it('returns a structured recoverable result when replaceInFile oldText is ambiguous', async () => {
+    mockReadFile.mockResolvedValue({
+      path: '/index.html',
+      kind: 'html',
+      content: '<p>Hello</p>\n<p>Hello</p>',
+      encoding: 'utf-8',
+      dependencies: [],
+      size: 25,
+      updatedAt: 1700000001000,
+    });
+
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'replaceInFile',
+        args: {
+          projectId: 'project-1',
+          path: '/index.html',
+          oldText: 'Hello',
+          newText: 'Hi',
+        },
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-1',
+      },
+    );
+
+    expect(mockAssertProjectOwnership).toHaveBeenCalledWith('project-1', 'assistant-1');
+    expect(mockReadFile).toHaveBeenCalledWith('project-1', '/index.html');
+    expect(result).toMatchObject({
+      toolName: 'replaceInFile',
+      summary: 'replaceInFile found 2 matches in /index.html.',
+      result: {
+        ok: false,
+        recoverable: true,
+        code: 'replace-old-text-ambiguous',
+        message: 'replaceInFile found 2 matches in /index.html.',
+        guidance:
+          'Use a longer oldText snippet that uniquely identifies the section to replace, or narrow the edit after reading the file again.',
+        details: {
+          path: '/index.html',
+          matchCount: 2,
+        },
+      },
+      workspace: {
+        activeProjectId: 'project-1',
+        activityMessage: 'replaceInFile found 2 matches in /index.html.',
+        preview: null,
+      },
+    });
     expect(mockWriteFiles).not.toHaveBeenCalled();
     expect(mockResolveProjectForPreview).not.toHaveBeenCalled();
   });
@@ -360,5 +589,31 @@ describe('executeHtmlProjectToolCall', () => {
 
     expect(mockAssertProjectOwnership).toHaveBeenCalledWith('project-2', 'assistant-1');
     expect(mockSearchFiles).not.toHaveBeenCalled();
+  });
+});
+
+describe('getHtmlProjectToolDefinitions', () => {
+  it('includes replaceInFile and describes writeFiles as a small complete-file tool using virtual project paths', async () => {
+    const { getHtmlProjectToolDefinitions } = await import('./htmlProjectToolService');
+
+    const definitions = getHtmlProjectToolDefinitions();
+    const writeFilesDefinition = definitions.find(({ name }) => name === 'writeFiles');
+    const replaceInFileDefinition = definitions.find(({ name }) => name === 'replaceInFile');
+
+    expect(replaceInFileDefinition).toMatchObject({
+      name: 'replaceInFile',
+      parameters: {
+        required: ['path', 'oldText', 'newText'],
+      },
+    });
+    expect(writeFilesDefinition?.description).toContain(
+      'Write or overwrite one or more small complete project files in a single tool call.',
+    );
+    expect(writeFilesDefinition?.description).toContain(
+      'Use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js.',
+    );
+    expect(writeFilesDefinition?.description).toContain(
+      'For existing files, prefer readFile plus replaceInFile over sending a large full-file rewrite.',
+    );
   });
 });

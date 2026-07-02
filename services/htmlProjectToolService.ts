@@ -15,6 +15,7 @@ const HTML_PROJECT_TOOL_NAMES = [
   'openProject',
   'searchFiles',
   'writeFiles',
+  'replaceInFile',
   'listFiles',
   'readFile',
   'deleteFile',
@@ -62,6 +63,13 @@ interface WriteFilesArgs {
 interface ReadFileArgs {
   projectId?: string;
   path: string;
+}
+
+interface ReplaceInFileArgs {
+  projectId?: string;
+  path: string;
+  oldText: string;
+  newText: string;
 }
 
 interface DeleteFileArgs {
@@ -123,6 +131,44 @@ const summarizeSearchResult = (result: {
 
 const summarizeFileList = (paths: string[]): string => paths.join(', ');
 
+const VIRTUAL_PROJECT_PATH_GUIDANCE =
+  'Use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js. Do not use host filesystem paths or URLs.';
+const WRITE_FILE_MAX_BYTES = 24 * 1024;
+const WRITE_FILES_MAX_BYTES = 64 * 1024;
+const textEncoder = new TextEncoder();
+
+interface RecoverableToolErrorResult {
+  ok: false;
+  recoverable: true;
+  code: string;
+  message: string;
+  guidance: string;
+  details?: Record<string, unknown>;
+}
+
+class HtmlProjectToolRecoverableError extends Error {
+  readonly result: RecoverableToolErrorResult;
+
+  constructor(result: RecoverableToolErrorResult) {
+    super(result.message);
+    this.name = 'HtmlProjectToolRecoverableError';
+    this.result = result;
+  }
+}
+
+const createRecoverableToolExecutionResult = (
+  toolName: string,
+  error: RecoverableToolErrorResult,
+  activeProjectId: string | null | undefined,
+): HtmlProjectToolExecutionResult => ({
+  toolName,
+  summary: error.message,
+  result: error,
+  workspace: createWorkspaceUpdate(activeProjectId ?? null, error.message),
+});
+
+const getContentSizeInBytes = (content: string): number => textEncoder.encode(content).length;
+
 const inferHtmlProjectFileKind = (path: string): HtmlProjectFileKind => {
   const normalizedPath = path.toLowerCase();
 
@@ -164,17 +210,73 @@ const normalizeWriteFilesInput = (files: WriteFilesArgs['files']): WriteHtmlProj
   const fileList = Array.isArray(files) ? files : files && typeof files === 'object' ? [files] : [];
 
   if (fileList.length === 0) {
-    throw new Error('writeFiles requires a non-empty files array.');
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'invalid-write-files-input',
+      message: 'writeFiles requires a non-empty files array.',
+      guidance:
+        'Pass one or more file objects in files[]. Use writeFiles for small complete files only.',
+    });
   }
+
+  let totalBytes = 0;
 
   return fileList.map((file, index) => {
     const path = typeof file.path === 'string' ? file.path.trim() : '';
     if (!path) {
-      throw new Error(`writeFiles.files[${index}] is missing a valid path.`);
+      throw new HtmlProjectToolRecoverableError({
+        ok: false,
+        recoverable: true,
+        code: 'invalid-write-file-path',
+        message: `writeFiles.files[${index}] is missing a valid path.`,
+        guidance: VIRTUAL_PROJECT_PATH_GUIDANCE,
+      });
     }
 
     if (typeof file.content !== 'string') {
-      throw new Error(`writeFiles.files[${index}] is missing string content.`);
+      throw new HtmlProjectToolRecoverableError({
+        ok: false,
+        recoverable: true,
+        code: 'invalid-write-file-content',
+        message: `writeFiles.files[${index}] is missing string content.`,
+        guidance:
+          'Provide UTF-8 text content for text files. Use targeted edit tools for existing files.',
+      });
+    }
+
+    const contentBytes = getContentSizeInBytes(file.content);
+    if (contentBytes > WRITE_FILE_MAX_BYTES) {
+      throw new HtmlProjectToolRecoverableError({
+        ok: false,
+        recoverable: true,
+        code: 'write-file-too-large',
+        message: `writeFiles payload for ${path} is too large (${contentBytes} bytes).`,
+        guidance:
+          'Use writeFiles only for small complete files. For existing files, readFile first and then use replaceInFile for targeted edits.',
+        details: {
+          path,
+          contentBytes,
+          maxBytes: WRITE_FILE_MAX_BYTES,
+        },
+      });
+    }
+
+    totalBytes += contentBytes;
+    if (totalBytes > WRITE_FILES_MAX_BYTES) {
+      throw new HtmlProjectToolRecoverableError({
+        ok: false,
+        recoverable: true,
+        code: 'write-files-payload-too-large',
+        message: `writeFiles payload is too large (${totalBytes} bytes across ${fileList.length} files).`,
+        guidance:
+          'Split the change into smaller writeFiles calls, or use replaceInFile for focused edits to existing files.',
+        details: {
+          contentBytes: totalBytes,
+          maxBytes: WRITE_FILES_MAX_BYTES,
+          fileCount: fileList.length,
+        },
+      });
     }
 
     return {
@@ -309,6 +411,132 @@ const handleWriteFiles = async (
       projectId: project.id,
       updated: result.updated,
       previewVersion: result.previewVersion,
+    },
+    workspace: createWorkspaceUpdate(project.id, summary, preview),
+  };
+};
+
+const handleReplaceInFile = async (
+  args: ReplaceInFileArgs,
+  context: HtmlProjectToolContext,
+): Promise<HtmlProjectToolExecutionResult> => {
+  const project = await requireOwnedProject(args.projectId, context);
+  const path = typeof args.path === 'string' ? args.path.trim() : '';
+  const oldText = typeof args.oldText === 'string' ? args.oldText : '';
+
+  if (!path) {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'invalid-replace-path',
+      message: 'replaceInFile requires a valid path.',
+      guidance: VIRTUAL_PROJECT_PATH_GUIDANCE,
+    });
+  }
+
+  if (!oldText) {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'invalid-replace-old-text',
+      message: 'replaceInFile requires a non-empty oldText value.',
+      guidance: 'Call readFile first, copy the exact text to replace, then retry replaceInFile.',
+    });
+  }
+
+  if (typeof args.newText !== 'string') {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'invalid-replace-new-text',
+      message: 'replaceInFile requires string newText.',
+      guidance: 'Provide the replacement content as a string.',
+    });
+  }
+
+  const file = await htmlProjectStore.readFile(project.id, path);
+  if (!file) {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'replace-file-not-found',
+      message: `Project file ${path} not found.`,
+      guidance:
+        'Call listFiles or readFile first to confirm the exact project path before retrying.',
+    });
+  }
+
+  if (file.encoding === 'base64') {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'replace-binary-file',
+      message: `replaceInFile only supports text files, but ${file.path} uses ${file.encoding} encoding.`,
+      guidance: 'Use writeFiles to replace the full asset instead of replaceInFile.',
+    });
+  }
+
+  let matchCount = 0;
+  let searchIndex = 0;
+  while (searchIndex <= file.content.length - oldText.length) {
+    const matchIndex = file.content.indexOf(oldText, searchIndex);
+    if (matchIndex === -1) {
+      break;
+    }
+    matchCount += 1;
+    searchIndex = matchIndex + oldText.length;
+  }
+
+  if (matchCount === 0) {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'replace-old-text-not-found',
+      message: `replaceInFile could not find the requested text in ${file.path}.`,
+      guidance:
+        'Call readFile again and retry with an exact oldText snippet from the current file contents.',
+      details: {
+        path: file.path,
+      },
+    });
+  }
+
+  if (matchCount > 1) {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'replace-old-text-ambiguous',
+      message: `replaceInFile found ${matchCount} matches in ${file.path}.`,
+      guidance:
+        'Use a longer oldText snippet that uniquely identifies the section to replace, or narrow the edit after reading the file again.',
+      details: {
+        path: file.path,
+        matchCount,
+      },
+    });
+  }
+
+  const result = await htmlProjectStore.writeFiles(project.id, [
+    {
+      path: file.path,
+      kind: file.kind,
+      content: file.content.replace(oldText, args.newText),
+      encoding: file.encoding,
+    },
+  ]);
+  const preview = await htmlPreviewService.resolveProjectForPreview(project.id);
+  const summary = `已更新檔案 ${file.path} 的指定內容。`;
+
+  return {
+    toolName: 'replaceInFile',
+    summary,
+    result: {
+      projectId: project.id,
+      path: file.path,
+      updated: result.updated,
+      previewVersion: result.previewVersion,
+      replaced: true,
+      matchCount,
     },
     workspace: createWorkspaceUpdate(project.id, summary, preview),
   };
@@ -480,17 +708,20 @@ export const getHtmlProjectToolDefinitions = (): ToolDefinition[] => [
   },
   {
     name: 'writeFiles',
-    description: 'Write or overwrite one or more project files in a single tool call.',
+    description:
+      'Write or overwrite one or more small complete project files in a single tool call. Use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js. Do not use host filesystem paths or URLs. For existing files, prefer readFile plus replaceInFile over sending a large full-file rewrite.',
     parameters: {
       type: 'object',
+      additionalProperties: false,
       properties: {
         projectId: { type: 'string' },
         files: {
           type: 'array',
           items: {
             type: 'object',
+            additionalProperties: false,
             properties: {
-              path: { type: 'string' },
+              path: { type: 'string', description: VIRTUAL_PROJECT_PATH_GUIDANCE },
               content: { type: 'string' },
               kind: { type: 'string', enum: ['html', 'css', 'js', 'json', 'svg', 'asset', 'md'] },
             },
@@ -499,6 +730,22 @@ export const getHtmlProjectToolDefinitions = (): ToolDefinition[] => [
         },
       },
       required: ['files'],
+    },
+  },
+  {
+    name: 'replaceInFile',
+    description:
+      'Replace one exact text span inside an existing text file after you inspect it with readFile. Use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js. If the text is ambiguous, read the file again and retry with a longer oldText snippet.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        projectId: { type: 'string' },
+        path: { type: 'string', description: VIRTUAL_PROJECT_PATH_GUIDANCE },
+        oldText: { type: 'string' },
+        newText: { type: 'string' },
+      },
+      required: ['path', 'oldText', 'newText'],
     },
   },
   {
@@ -514,36 +761,42 @@ export const getHtmlProjectToolDefinitions = (): ToolDefinition[] => [
   },
   {
     name: 'readFile',
-    description: 'Read a single project file and inspect its current content.',
+    description:
+      'Read a single project file and inspect its current content. Use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js.',
     parameters: {
       type: 'object',
+      additionalProperties: false,
       properties: {
         projectId: { type: 'string' },
-        path: { type: 'string' },
+        path: { type: 'string', description: VIRTUAL_PROJECT_PATH_GUIDANCE },
       },
       required: ['path'],
     },
   },
   {
     name: 'deleteFile',
-    description: 'Delete a single project file from the active HTML project.',
+    description:
+      'Delete a single project file from the active HTML project. Use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js.',
     parameters: {
       type: 'object',
+      additionalProperties: false,
       properties: {
         projectId: { type: 'string' },
-        path: { type: 'string' },
+        path: { type: 'string', description: VIRTUAL_PROJECT_PATH_GUIDANCE },
       },
       required: ['path'],
     },
   },
   {
     name: 'setEntrypoint',
-    description: 'Set which HTML file should be used as the preview entrypoint.',
+    description:
+      'Set which HTML file should be used as the preview entrypoint. Use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js.',
     parameters: {
       type: 'object',
+      additionalProperties: false,
       properties: {
         projectId: { type: 'string' },
-        path: { type: 'string' },
+        path: { type: 'string', description: VIRTUAL_PROJECT_PATH_GUIDANCE },
       },
       required: ['path'],
     },
@@ -569,28 +822,37 @@ export const executeHtmlProjectToolCall = async (
   call: ToolCall,
   context: HtmlProjectToolContext,
 ): Promise<HtmlProjectToolExecutionResult> => {
-  switch (call.name) {
-    case 'createProject':
-      return handleCreateProject(call.args as unknown as CreateProjectArgs, context);
-    case 'listProjects':
-      return handleListProjects(context);
-    case 'openProject':
-      return handleOpenProject(call.args as unknown as OpenProjectArgs, context);
-    case 'searchFiles':
-      return handleSearchFiles(call.args as unknown as SearchFilesArgs, context);
-    case 'writeFiles':
-      return handleWriteFiles(call.args as unknown as WriteFilesArgs, context);
-    case 'listFiles':
-      return handleListFiles(call.args as { projectId?: string }, context);
-    case 'readFile':
-      return handleReadFile(call.args as unknown as ReadFileArgs, context);
-    case 'deleteFile':
-      return handleDeleteFile(call.args as unknown as DeleteFileArgs, context);
-    case 'setEntrypoint':
-      return handleSetEntrypoint(call.args as unknown as SetEntrypointArgs, context);
-    case 'renderPreview':
-      return handleRenderPreview(call.args as unknown as RenderPreviewArgs, context);
-    default:
-      throw new Error(`Unsupported HTML project tool: ${call.name}`);
+  try {
+    switch (call.name) {
+      case 'createProject':
+        return await handleCreateProject(call.args as unknown as CreateProjectArgs, context);
+      case 'listProjects':
+        return await handleListProjects(context);
+      case 'openProject':
+        return await handleOpenProject(call.args as unknown as OpenProjectArgs, context);
+      case 'searchFiles':
+        return await handleSearchFiles(call.args as unknown as SearchFilesArgs, context);
+      case 'writeFiles':
+        return await handleWriteFiles(call.args as unknown as WriteFilesArgs, context);
+      case 'replaceInFile':
+        return await handleReplaceInFile(call.args as unknown as ReplaceInFileArgs, context);
+      case 'listFiles':
+        return await handleListFiles(call.args as { projectId?: string }, context);
+      case 'readFile':
+        return await handleReadFile(call.args as unknown as ReadFileArgs, context);
+      case 'deleteFile':
+        return await handleDeleteFile(call.args as unknown as DeleteFileArgs, context);
+      case 'setEntrypoint':
+        return await handleSetEntrypoint(call.args as unknown as SetEntrypointArgs, context);
+      case 'renderPreview':
+        return await handleRenderPreview(call.args as unknown as RenderPreviewArgs, context);
+      default:
+        throw new Error(`Unsupported HTML project tool: ${call.name}`);
+    }
+  } catch (error) {
+    if (error instanceof HtmlProjectToolRecoverableError) {
+      return createRecoverableToolExecutionResult(call.name, error.result, context.activeProjectId);
+    }
+    throw error;
   }
 };
