@@ -5,11 +5,9 @@ import { ChatContainer } from '../chat';
 import { HtmlProjectWorkspace } from '../canvas';
 import { ChatSession } from '../../types';
 import SharedAssistant from '../features/SharedAssistant';
-import MigrationPanel from '../settings/MigrationPanel';
 import ApiKeySetup from '../settings/ApiKeySetup';
 import ProviderSettings from '../settings/ProviderSettings';
 import { providerManager } from '../../services/providerRegistry';
-import { canWriteToTurso } from '../../services/tursoService';
 import { ChatCompactorService } from '../../services/chatCompactorService';
 import { countConversationRounds, groupMessagesByRounds } from '../../services/conversationUtils';
 
@@ -274,81 +272,111 @@ function AppContent(): React.JSX.Element {
       )}
 
       {state.viewMode === 'settings' && (
-        <div className='p-6 bg-gray-800 h-full overflow-y-auto'>
-          <h2 className='text-2xl font-bold mb-6 text-white'>設定</h2>
-
-          {/* 服務狀態 */}
-          <div className='mb-6 bg-gray-700 rounded-lg p-4'>
-            <h3 className='text-lg font-semibold text-white mb-4'>服務狀態</h3>
-            <div className='grid grid-cols-1 md:grid-cols-2 gap-4 mb-4'>
-              <div
-                className={`p-3 rounded-md border-2 ${
-                  providerManager.getAvailableProviders().length > 0
-                    ? 'border-green-500 bg-green-800 bg-opacity-20'
-                    : 'border-yellow-500 bg-yellow-800 bg-opacity-20'
-                }`}
-              >
-                <div className='flex items-center mb-2'>
-                  <span className='text-lg mr-2'>
-                    {providerManager.getAvailableProviders().length > 0 ? '✅' : '⚠️'}
-                  </span>
-                  <span className='font-medium text-white'>AI 服務商</span>
-                </div>
-                <p
-                  className={`text-sm ${
-                    providerManager.getAvailableProviders().length > 0
-                      ? 'text-green-200'
-                      : 'text-yellow-200'
-                  }`}
-                >
-                  {providerManager.getAvailableProviders().length > 0
-                    ? `${providerManager.getAvailableProviders().length} 個服務商可用`
-                    : '需要配置 AI 服務商'}
-                </p>
-              </div>
-              <div
-                className={`p-3 rounded-md border-2 ${
-                  canWriteToTurso()
-                    ? 'border-green-500 bg-green-800 bg-opacity-20'
-                    : 'border-yellow-500 bg-yellow-800 bg-opacity-20'
-                }`}
-              >
-                <div className='flex items-center mb-2'>
-                  <span className='text-lg mr-2'>{canWriteToTurso() ? '✅' : '⚠️'}</span>
-                  <span className='font-medium text-white'>Turso 資料庫</span>
-                </div>
-                <p
-                  className={`text-sm ${canWriteToTurso() ? 'text-green-200' : 'text-yellow-200'}`}
-                >
-                  {canWriteToTurso() ? '可以保存助理和 RAG' : '需要配置才能保存'}
-                </p>
-              </div>
+        <div className='h-full overflow-y-auto bg-gray-900'>
+          <div className='max-w-3xl mx-auto p-6 md:p-8'>
+            {/* Header */}
+            <div className='mb-6'>
+              <h2 className='text-2xl md:text-3xl font-bold text-white mb-1.5'>設定</h2>
+              <p className='text-gray-400 text-sm'>管理您的 AI 服務商與 API 金鑰</p>
             </div>
-            <div className='flex gap-3 mb-3'>
+
+            {/* 服務狀態 */}
+            {(() => {
+              const providerCount = providerManager.getAvailableProviders().length;
+              const ready = providerCount > 0;
+              return (
+                <div className='mb-6 rounded-2xl border border-gray-700/40 bg-gray-800/40 p-5'>
+                  <h3 className='text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3'>
+                    服務狀態
+                  </h3>
+                  <div className='flex items-center gap-3'>
+                    <span
+                      className={`flex items-center justify-center w-10 h-10 rounded-xl text-lg ${
+                        ready ? 'bg-green-500/15' : 'bg-yellow-500/15'
+                      }`}
+                    >
+                      {ready ? '✅' : '⚠️'}
+                    </span>
+                    <div>
+                      <p className='text-white font-medium'>
+                        {ready ? `${providerCount} 個 AI 服務商可用` : '尚未配置 AI 服務商'}
+                      </p>
+                      <p className={`text-sm ${ready ? 'text-green-300' : 'text-yellow-300'}`}>
+                        {ready ? 'AI 功能已就緒' : '請至下方完成 AI 服務商設定'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* 設定入口 */}
+            <h3 className='text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3 px-1'>
+              設定項目
+            </h3>
+            <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
               <button
                 onClick={() => actions.setViewMode('provider_settings')}
-                className='flex-1 px-6 py-3 bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 text-white rounded-xl font-medium shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5'
+                className='group text-left p-5 rounded-2xl border border-gray-700/40 bg-gray-800/40 hover:border-cyan-500/50 hover:bg-gray-800/70 transition-all'
               >
-                AI 服務商設定
+                <div className='flex items-center gap-3 mb-2'>
+                  <div className='flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500/30 to-fuchsia-500/20 text-xl'>
+                    ⚙️
+                  </div>
+                  <h4 className='flex-1 text-white font-semibold group-hover:text-cyan-300 transition-colors'>
+                    AI 服務商
+                  </h4>
+                  <svg
+                    className='w-5 h-5 text-gray-500 group-hover:text-cyan-300 group-hover:translate-x-0.5 transition-all'
+                    fill='none'
+                    stroke='currentColor'
+                    viewBox='0 0 24 24'
+                  >
+                    <path
+                      strokeLinecap='round'
+                      strokeLinejoin='round'
+                      strokeWidth={2}
+                      d='M9 5l7 7-7 7'
+                    />
+                  </svg>
+                </div>
+                <p className='text-sm text-gray-400'>選擇並配置 Gemini、OpenRouter 等服務商</p>
               </button>
+
               <button
                 onClick={() => actions.setViewMode('api_setup')}
-                className='flex-1 px-6 py-3 bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 text-white rounded-xl font-medium shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5'
+                className='group text-left p-5 rounded-2xl border border-gray-700/40 bg-gray-800/40 hover:border-cyan-500/50 hover:bg-gray-800/70 transition-all'
               >
-                資料庫設定
+                <div className='flex items-center gap-3 mb-2'>
+                  <div className='flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500/30 to-blue-500/20 text-xl'>
+                    🔑
+                  </div>
+                  <h4 className='flex-1 text-white font-semibold group-hover:text-cyan-300 transition-colors'>
+                    API 金鑰
+                  </h4>
+                  <svg
+                    className='w-5 h-5 text-gray-500 group-hover:text-cyan-300 group-hover:translate-x-0.5 transition-all'
+                    fill='none'
+                    stroke='currentColor'
+                    viewBox='0 0 24 24'
+                  >
+                    <path
+                      strokeLinecap='round'
+                      strokeLinejoin='round'
+                      strokeWidth={2}
+                      d='M9 5l7 7-7 7'
+                    />
+                  </svg>
+                </div>
+                <p className='text-sm text-gray-400'>管理 API 金鑰與加密分享</p>
               </button>
             </div>
-          </div>
-
-          {/* Turso Migration Panel */}
-          <div className='mb-6'>
-            <MigrationPanel />
           </div>
         </div>
       )}
 
       {state.viewMode === 'api_setup' && (
-        <div className='p-6 bg-gray-800 h-full overflow-y-auto'>
+        <div className='h-full overflow-y-auto bg-gray-900 p-6 md:p-8'>
           <ApiKeySetup
             onComplete={() => actions.setViewMode('settings')}
             onCancel={() => actions.setViewMode('settings')}
@@ -357,7 +385,7 @@ function AppContent(): React.JSX.Element {
       )}
 
       {state.viewMode === 'provider_settings' && (
-        <div className='bg-gray-800 absolute inset-0 overflow-y-auto'>
+        <div className='absolute inset-0 overflow-y-auto bg-gray-900'>
           <ProviderSettings onClose={() => actions.setViewMode('settings')} />
         </div>
       )}
