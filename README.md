@@ -34,10 +34,20 @@ Since 2002, Boyo Social Welfare Foundation has been dedicated to education for d
    ```
 
 4. **Start Development Server:**
+
    ```bash
    pnpm run dev
    ```
+
    The app will run at http://localhost:5173.
+
+   To test browser encryption and other secure-context APIs with a self-signed local certificate, use:
+
+   ```bash
+   pnpm run dev:https
+   ```
+
+   This starts the app at https://localhost:5173. Your browser will show a self-signed certificate warning the first time; accept it once to continue local testing.
 
 ## ✨ Core Features
 
@@ -82,7 +92,8 @@ Since 2002, Boyo Social Welfare Foundation has been dedicated to education for d
 
 | Command                     | Description                                            |
 | --------------------------- | ------------------------------------------------------ |
-| `pnpm run dev`              | Start dev server                                       |
+| `pnpm run dev`              | Start HTTP dev server                                  |
+| `pnpm run dev:https`        | Start self-signed HTTPS dev server                     |
 | `pnpm run build`            | Build production version                               |
 | `pnpm run preview`          | Preview production build                               |
 | `pnpm run quality`          | Run all quality checks (lint, format, typecheck, test) |
