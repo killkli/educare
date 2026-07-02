@@ -14,7 +14,16 @@ interface ProviderInfo {
   apiKeyLabel: string;
   apiKeyPlaceholder: string;
   helpUrl: string;
+  /** 為 true 時，設定欄以「端點網址 (Base URL)」為主，API 金鑰為選填 */
+  isEndpoint?: boolean;
 }
+
+/**
+ * 目前要在設定介面上顯示的服務商。
+ * 其他服務商（openai / anthropic / ollama / groq）的資料與底層邏輯皆保留，
+ * 只是不在 UI 上顯示，未來需要時再加入此陣列即可。
+ */
+const VISIBLE_PROVIDERS: ProviderType[] = ['gemini', 'openrouter', 'lmstudio'];
 
 const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
   const [settings, setSettings] = useState<IProviderSettings>(providerManager.getSettings());
@@ -33,8 +42,8 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
   const providerInfo: Record<ProviderType, ProviderInfo> = {
     gemini: {
       name: 'Google Gemini',
-      description: '高品質的 AI 助手，適合日常對話和創作',
-      icon: '🧠',
+      description: 'Google 官方模型，適合日常對話、寫作與多模態任務',
+      icon: '✨',
       color: 'from-blue-500 to-cyan-500',
       apiKeyLabel: 'Gemini API Key',
       apiKeyPlaceholder: '請輸入您的 Google AI Studio API Key',
@@ -78,7 +87,7 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
     },
     openrouter: {
       name: 'OpenRouter',
-      description: '統一的 AI 模型路由服務，支持多種前沿模型',
+      description: '統一路由服務，一組金鑰即可使用多種前沿模型',
       icon: '🚀',
       color: 'from-pink-500 to-rose-500',
       apiKeyLabel: 'OpenRouter API Key',
@@ -86,13 +95,14 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
       helpUrl: 'https://openrouter.ai/keys',
     },
     lmstudio: {
-      name: 'LM Studio',
-      description: '本地 OpenAI 兼容 API，支持各種開源模型',
-      icon: '🖥️',
+      name: 'OpenAI 相容端點',
+      description: '連接任何相容於 OpenAI API 的本地端點（LM Studio、Ollama、vLLM 等）',
+      icon: '🔌',
       color: 'from-emerald-500 to-green-500',
-      apiKeyLabel: '服務地址',
-      apiKeyPlaceholder: 'http://localhost:1234/v1',
+      apiKeyLabel: 'API 金鑰（選填）',
+      apiKeyPlaceholder: '若端點需要 Bearer Token 才填寫',
       helpUrl: 'https://lmstudio.ai/',
+      isEndpoint: true,
     },
   };
 
@@ -204,17 +214,34 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
     return { status: 'warning', text: '需要配置' };
   };
 
+  const statusBadgeClass = (status: string) =>
+    status === 'ready'
+      ? 'bg-green-500/15 text-green-300 border border-green-500/30'
+      : status === 'warning'
+        ? 'bg-yellow-500/15 text-yellow-300 border border-yellow-500/30'
+        : status === 'disabled'
+          ? 'bg-gray-500/15 text-gray-400 border border-gray-500/30'
+          : 'bg-red-500/15 text-red-300 border border-red-500/30';
+
+  const inputClass =
+    'w-full px-4 py-2.5 bg-gray-900/60 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-colors';
+  const labelClass = 'block text-sm font-medium text-gray-300 mb-2';
+
+  const activeInfo = providerInfo[settings.activeProvider];
+
   return (
-    <div className='max-w-4xl mx-auto p-6'>
-      <div className='flex items-center justify-between mb-8'>
+    <div className='max-w-3xl mx-auto p-6 md:p-8'>
+      {/* Header */}
+      <div className='flex items-start justify-between mb-6'>
         <div>
-          <h2 className='text-3xl font-bold text-white mb-2'>AI 服務商設定</h2>
-          <p className='text-gray-400'>配置和管理不同的 AI 服務商，包括本地模型</p>
+          <h2 className='text-2xl md:text-3xl font-bold text-white mb-1.5'>AI 服務商設定</h2>
+          <p className='text-gray-400 text-sm'>選擇並配置您要使用的 AI 服務商</p>
         </div>
         {onClose && (
           <button
             onClick={onClose}
             className='p-2 text-gray-400 hover:text-white rounded-lg hover:bg-gray-700/50 transition-colors'
+            aria-label='關閉'
           >
             <svg className='w-6 h-6' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
               <path
@@ -228,111 +255,83 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
         )}
       </div>
 
-      {/* Active Provider Selection */}
-      <div className='mb-8 bg-gray-800/50 rounded-xl p-6 border border-gray-700/30'>
-        <h3 className='text-xl font-semibold text-white mb-4 flex items-center'>
-          <span className='mr-2'>🎯</span>
-          當前使用的服務商
-        </h3>
-        <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
-          {Object.entries(providerInfo).map(([key, info]) => {
-            const providerType = key as ProviderType;
-            const isActive = settings.activeProvider === providerType;
-            const isEnabled = settings.providers[providerType].enabled;
-            const status = getProviderStatus(providerType);
-
-            return (
-              <div
-                key={providerType}
-                className={`p-4 rounded-lg border-2 transition-all cursor-pointer ${
-                  isActive
-                    ? `border-cyan-500 bg-gradient-to-r ${info.color} bg-opacity-20`
-                    : isEnabled && status.status === 'ready'
-                      ? 'border-gray-600 bg-gray-700/30 hover:border-gray-500'
-                      : 'border-gray-700 bg-gray-800/30 opacity-50 cursor-not-allowed'
-                }`}
-                onClick={() => {
-                  if (isEnabled && status.status === 'ready') {
-                    handleActiveProviderChange(providerType);
-                  }
-                }}
-              >
-                <div className='flex items-center justify-between mb-2'>
-                  <div className='flex items-center'>
-                    <span className='text-2xl mr-3'>{info.icon}</span>
-                    <span className='font-semibold text-white'>{info.name}</span>
-                  </div>
-                  {isActive && (
-                    <span className='text-xs bg-cyan-500 text-white px-2 py-1 rounded-full'>
-                      使用中
-                    </span>
-                  )}
-                </div>
-                <div className='flex items-center justify-between'>
-                  <span
-                    className={`text-xs px-2 py-1 rounded-full ${
-                      status.status === 'ready'
-                        ? 'bg-green-500/20 text-green-400'
-                        : status.status === 'warning'
-                          ? 'bg-yellow-500/20 text-yellow-400'
-                          : status.status === 'disabled'
-                            ? 'bg-gray-500/20 text-gray-400'
-                            : 'bg-red-500/20 text-red-400'
-                    }`}
-                  >
-                    {status.text}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
+      {/* 目前使用中的服務商 */}
+      <div className='mb-6 rounded-2xl border border-cyan-500/30 bg-gradient-to-r from-cyan-500/10 to-blue-500/10 p-5'>
+        <div className='flex items-center gap-4'>
+          <div className='flex items-center justify-center w-12 h-12 rounded-xl bg-gray-900/60 text-2xl'>
+            {activeInfo?.icon || '🎯'}
+          </div>
+          <div className='flex-1 min-w-0'>
+            <p className='text-xs uppercase tracking-wide text-cyan-300/80 mb-0.5'>目前使用中</p>
+            <p className='text-lg font-semibold text-white truncate'>{activeInfo?.name}</p>
+          </div>
+          <span className='hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/20 text-cyan-300 text-xs font-medium border border-cyan-500/30'>
+            <span className='w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse'></span>
+            啟用
+          </span>
         </div>
       </div>
 
-      {/* Provider Configuration */}
-      <div className='space-y-4'>
-        <h3 className='text-xl font-semibold text-white mb-4 flex items-center'>
-          <span className='mr-2'>⚙️</span>
-          服務商配置
+      {/* 服務商列表 */}
+      <div className='space-y-3'>
+        <h3 className='text-sm font-semibold text-gray-400 uppercase tracking-wide px-1 mb-1'>
+          所有服務商
         </h3>
 
-        {Object.entries(providerInfo).map(([key, info]) => {
-          const providerType = key as ProviderType;
+        {VISIBLE_PROVIDERS.map(providerType => {
+          const info = providerInfo[providerType];
           const provider = providerManager.getProvider(providerType);
           const isExpanded = expandedProvider === providerType;
           const isEnabled = settings.providers[providerType].enabled;
+          const isActive = settings.activeProvider === providerType;
           const config = settings.providers[providerType].config;
           const status = getProviderStatus(providerType);
 
           return (
-            <div key={providerType} className='bg-gray-800/50 rounded-xl border border-gray-700/30'>
+            <div
+              key={providerType}
+              className={`rounded-2xl border transition-colors ${
+                isActive ? 'border-cyan-500/40 bg-gray-800/60' : 'border-gray-700/40 bg-gray-800/40'
+              }`}
+            >
               <div
-                className='p-6 cursor-pointer'
+                className='p-5 cursor-pointer'
                 onClick={() => setExpandedProvider(isExpanded ? null : providerType)}
               >
-                <div className='flex items-center justify-between'>
-                  <div className='flex items-center'>
-                    <span className='text-3xl mr-4'>{info.icon}</span>
-                    <div>
-                      <h4 className='text-lg font-semibold text-white'>{info.name}</h4>
-                      <p className='text-gray-400 text-sm'>{info.description}</p>
+                <div className='flex items-center justify-between gap-3'>
+                  <div className='flex items-center gap-3 min-w-0'>
+                    <div
+                      className={`flex items-center justify-center w-11 h-11 rounded-xl bg-gradient-to-br ${info.color} bg-opacity-20 text-xl shrink-0`}
+                    >
+                      {info.icon}
+                    </div>
+                    <div className='min-w-0'>
+                      <div className='flex items-center gap-2'>
+                        <h4 className='text-base font-semibold text-white'>{info.name}</h4>
+                        {isActive && (
+                          <span className='text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-medium'>
+                            使用中
+                          </span>
+                        )}
+                      </div>
+                      <p className='text-gray-400 text-xs truncate'>{info.description}</p>
                     </div>
                   </div>
-                  <div className='flex items-center space-x-4'>
+
+                  <div className='flex items-center gap-3 shrink-0'>
                     <span
-                      className={`text-xs px-3 py-1 rounded-full ${
-                        status.status === 'ready'
-                          ? 'bg-green-500/20 text-green-400'
-                          : status.status === 'warning'
-                            ? 'bg-yellow-500/20 text-yellow-400'
-                            : status.status === 'disabled'
-                              ? 'bg-gray-500/20 text-gray-400'
-                              : 'bg-red-500/20 text-red-400'
-                      }`}
+                      className={`hidden sm:inline-block text-xs px-2.5 py-1 rounded-full font-medium ${statusBadgeClass(
+                        status.status,
+                      )}`}
                     >
                       {status.text}
                     </span>
-                    <label className='flex items-center cursor-pointer'>
+
+                    {/* Enable toggle */}
+                    <label
+                      className='flex items-center cursor-pointer'
+                      onClick={e => e.stopPropagation()}
+                    >
                       <input
                         type='checkbox'
                         checked={isEnabled}
@@ -354,8 +353,9 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
                         />
                       </div>
                     </label>
+
                     <svg
-                      className={`w-5 h-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                      className={`w-5 h-5 text-gray-400 transition-transform shrink-0 ${isExpanded ? 'rotate-180' : ''}`}
                       fill='none'
                       stroke='currentColor'
                       viewBox='0 0 24 24'
@@ -372,15 +372,13 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
               </div>
 
               {isExpanded && isEnabled && (
-                <div className='px-6 pb-6 border-t border-gray-700/30 transition-all duration-200 ease-in-out'>
-                  <div className='pt-6 space-y-4'>
-                    {/* API Key / Base URL */}
-                    {providerType === 'lmstudio' ? (
+                <div className='px-5 pb-5 border-t border-gray-700/40'>
+                  <div className='pt-5 space-y-5'>
+                    {/* 端點網址 (Base URL) — for endpoint-style providers (lmstudio) */}
+                    {info.isEndpoint ? (
                       <div className='space-y-4'>
                         <div>
-                          <label className='block text-sm font-medium text-gray-300 mb-2'>
-                            LM Studio Base URL
-                          </label>
+                          <label className={labelClass}>端點網址 (Base URL)</label>
                           <div className='flex space-x-2'>
                             <input
                               type='url'
@@ -389,14 +387,14 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
                                 handleConfigUpdate(providerType, 'baseUrl', e.target.value)
                               }
                               placeholder='http://localhost:1234/v1'
-                              className='flex-1 px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500'
+                              className={inputClass}
                             />
                             <a
                               href={info.helpUrl}
                               target='_blank'
                               rel='noopener noreferrer'
-                              className='px-3 py-2 bg-gray-600 hover:bg-gray-500 rounded-lg text-gray-300 hover:text-white transition-colors'
-                              title='開啟 LM Studio 文件'
+                              className='flex items-center justify-center px-3 bg-gray-700 hover:bg-gray-600 rounded-lg text-gray-300 hover:text-white transition-colors'
+                              title='查看說明文件'
                             >
                               <svg
                                 className='w-5 h-5'
@@ -413,52 +411,46 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
                               </svg>
                             </a>
                           </div>
+                          <p className='text-xs text-gray-500 mt-1.5'>
+                            支援任何相容於 OpenAI API 的本機服務（<code>/v1/chat/completions</code>
+                            ）。
+                          </p>
                         </div>
                         <div>
-                          <label className='block text-sm font-medium text-gray-300 mb-2'>
-                            LM Studio API Key（選填）
-                          </label>
+                          <label className={labelClass}>{info.apiKeyLabel}</label>
                           <input
                             type='password'
                             value={config.apiKey || ''}
                             onChange={e =>
                               handleConfigUpdate(providerType, 'apiKey', e.target.value)
                             }
-                            placeholder='若您的 LM Studio 端點需要 Bearer Token，請在此輸入'
-                            className='w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500'
+                            placeholder='若端點需要 Bearer Token 才填寫'
+                            className={inputClass}
                           />
-                          <p className='text-xs text-gray-400 mt-1'>
-                            留空時不會傳送 Authorization header。
+                          <p className='text-xs text-gray-500 mt-1.5'>
+                            留空則不傳送 Authorization 標頭。
                           </p>
                         </div>
                       </div>
-                    ) : provider?.requiresApiKey || providerType === 'ollama' ? (
+                    ) : provider?.requiresApiKey ? (
                       <div>
-                        <label className='block text-sm font-medium text-gray-300 mb-2'>
-                          {info.apiKeyLabel}
-                        </label>
+                        <label className={labelClass}>{info.apiKeyLabel}</label>
                         <div className='flex space-x-2'>
                           <input
-                            type={providerType === 'ollama' ? 'url' : 'password'}
-                            value={
-                              providerType === 'ollama' ? config.baseUrl || '' : config.apiKey || ''
-                            }
+                            type='password'
+                            value={config.apiKey || ''}
                             onChange={e =>
-                              handleConfigUpdate(
-                                providerType,
-                                providerType === 'ollama' ? 'baseUrl' : 'apiKey',
-                                e.target.value,
-                              )
+                              handleConfigUpdate(providerType, 'apiKey', e.target.value)
                             }
                             placeholder={info.apiKeyPlaceholder}
-                            className='flex-1 px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500'
+                            className={inputClass}
                           />
                           <a
                             href={info.helpUrl}
                             target='_blank'
                             rel='noopener noreferrer'
-                            className='px-3 py-2 bg-gray-600 hover:bg-gray-500 rounded-lg text-gray-300 hover:text-white transition-colors'
-                            title='獲取 API Key'
+                            className='flex items-center justify-center px-3 bg-gray-700 hover:bg-gray-600 rounded-lg text-gray-300 hover:text-white transition-colors'
+                            title='取得 API Key'
                           >
                             <svg
                               className='w-5 h-5'
@@ -481,7 +473,7 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
                     {/* Model Selection */}
                     {provider?.supportedModels && provider.supportedModels.length > 0 && (
                       <div>
-                        <div className='flex items-center justify-between mb-2'>
+                        <div className='flex items-center justify-between mb-2 gap-2 flex-wrap'>
                           <label className='block text-sm font-medium text-gray-300'>
                             模型選擇
                           </label>
@@ -489,12 +481,12 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
                             <button
                               onClick={() => fetchAvailableModels(providerType)}
                               disabled={fetchingModels[providerType]}
-                              className='px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white rounded transition-colors flex items-center space-x-1'
+                              className='px-3 py-1 text-xs bg-blue-600/80 hover:bg-blue-600 disabled:bg-gray-600 text-white rounded-md transition-colors flex items-center space-x-1'
                             >
                               {fetchingModels[providerType] ? (
                                 <>
                                   <svg
-                                    className='animate-spin -ml-1 mr-1 h-3 w-3 text-white'
+                                    className='animate-spin -ml-0.5 mr-1 h-3 w-3 text-white'
                                     xmlns='http://www.w3.org/2000/svg'
                                     fill='none'
                                     viewBox='0 0 24 24'
@@ -516,7 +508,7 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
                                   <span>獲取中</span>
                                 </>
                               ) : (
-                                <span>🔄 獲取模型列表</span>
+                                <span>🔄 取得模型列表</span>
                               )}
                             </button>
                             <button
@@ -526,7 +518,7 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
                                   [providerType]: !prev[providerType],
                                 }))
                               }
-                              className='px-3 py-1 text-xs bg-gray-600 hover:bg-gray-700 text-white rounded transition-colors'
+                              className='px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-white rounded-md transition-colors'
                             >
                               {useCustomModel[providerType] ? '📋 使用列表' : '✏️ 自訂輸入'}
                             </button>
@@ -540,8 +532,8 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
                             onChange={e =>
                               handleConfigUpdate(providerType, 'model', e.target.value)
                             }
-                            placeholder='請輸入模型名稱 (例如: gpt-4, llama3.2:latest)'
-                            className='w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500'
+                            placeholder='請輸入模型名稱 (例如: gpt-4o, gemini-2.5-flash)'
+                            className={inputClass}
                           />
                         ) : (
                           <select
@@ -553,7 +545,7 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
                             onChange={e =>
                               handleConfigUpdate(providerType, 'model', e.target.value)
                             }
-                            className='w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500'
+                            className={`${inputClass} appearance-none cursor-pointer`}
                           >
                             {(availableModels[providerType] || provider.supportedModels).map(
                               model => (
@@ -567,8 +559,8 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
 
                         {availableModels[providerType] &&
                           availableModels[providerType].length > 0 && (
-                            <p className='text-xs text-gray-400 mt-1'>
-                              已動態獲取 {availableModels[providerType].length} 個可用模型
+                            <p className='text-xs text-gray-500 mt-1.5'>
+                              已動態取得 {availableModels[providerType].length} 個可用模型
                             </p>
                           )}
                       </div>
@@ -576,8 +568,9 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
 
                     {/* Temperature */}
                     <div>
-                      <label className='block text-sm font-medium text-gray-300 mb-2'>
-                        創造性 (Temperature): {config.temperature || 0.7}
+                      <label className='flex items-center justify-between text-sm font-medium text-gray-300 mb-2'>
+                        <span>創造性 (Temperature)</span>
+                        <span className='text-cyan-300 font-mono'>{config.temperature || 0.7}</span>
                       </label>
                       <input
                         type='range'
@@ -594,72 +587,78 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
                         }
                         className='w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer slider'
                       />
-                      <div className='flex justify-between text-xs text-gray-400 mt-1'>
+                      <div className='flex justify-between text-xs text-gray-500 mt-1.5'>
                         <span>保守 (0)</span>
                         <span>平衡 (1)</span>
                         <span>創新 (2)</span>
                       </div>
                     </div>
 
-                    {/* Max Tokens */}
-                    <div>
-                      <label className='block text-sm font-medium text-gray-300 mb-2'>
-                        最大回應長度 (Max Tokens)
-                      </label>
-                      <input
-                        type='number'
-                        min='100'
-                        max='32000'
-                        step='100'
-                        value={config.maxTokens || 4096}
-                        onChange={e =>
-                          handleConfigUpdate(providerType, 'maxTokens', parseInt(e.target.value))
-                        }
-                        className='w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500'
-                      />
-                    </div>
+                    <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
+                      {/* Max Tokens */}
+                      <div>
+                        <label className={labelClass}>最大回應長度 (Tokens)</label>
+                        <input
+                          type='number'
+                          min='100'
+                          max='32000'
+                          step='100'
+                          value={config.maxTokens || 4096}
+                          onChange={e =>
+                            handleConfigUpdate(providerType, 'maxTokens', parseInt(e.target.value))
+                          }
+                          className={inputClass}
+                        />
+                      </div>
 
-                    {/* Tool Rounds */}
-                    <div>
-                      <label className='block text-sm font-medium text-gray-300 mb-2'>
-                        Function Tool Call 次數上限
-                      </label>
-                      <input
-                        type='number'
-                        min='1'
-                        max='50'
-                        step='1'
-                        value={typeof config.maxToolRounds === 'number' ? config.maxToolRounds : 20}
-                        onChange={e =>
-                          handleConfigUpdate(
-                            providerType,
-                            'maxToolRounds',
-                            parseInt(e.target.value || '20', 10),
-                          )
-                        }
-                        className='w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500'
-                      />
-                      <p className='mt-1 text-xs text-gray-400'>
-                        控制模型在同一輪對話中最多可進行幾次 function / tool call 往返。預設
-                        20，避免複雜工具工作流太早中斷。
-                      </p>
+                      {/* Tool Rounds */}
+                      <div>
+                        <label className={labelClass}>工具呼叫次數上限</label>
+                        <input
+                          type='number'
+                          min='1'
+                          max='50'
+                          step='1'
+                          value={
+                            typeof config.maxToolRounds === 'number' ? config.maxToolRounds : 20
+                          }
+                          onChange={e =>
+                            handleConfigUpdate(
+                              providerType,
+                              'maxToolRounds',
+                              parseInt(e.target.value || '20', 10),
+                            )
+                          }
+                          className={inputClass}
+                        />
+                      </div>
                     </div>
+                    <p className='-mt-2 text-xs text-gray-500'>
+                      控制模型在同一輪對話中最多可進行幾次工具呼叫往返，預設 20。
+                    </p>
 
-                    {/* Test Button */}
-                    <div className='pt-4'>
+                    {/* Actions */}
+                    <div className='flex flex-col sm:flex-row gap-3 pt-1'>
                       <button
                         onClick={() => testProvider(providerType)}
                         disabled={testingProvider === providerType || status.status !== 'ready'}
-                        className='w-full px-4 py-2 bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 disabled:from-gray-600 disabled:to-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-all duration-200'
+                        className='flex-1 px-4 py-2.5 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-700/50 disabled:text-gray-500 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors flex items-center justify-center'
                       >
                         {testingProvider === providerType ? (
-                          <span className='flex items-center justify-center'>
-                            <div className='w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2'></div>
+                          <>
+                            <span className='w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2'></span>
                             測試中...
-                          </span>
+                          </>
                         ) : (
-                          '測試連接'
+                          '🔌 測試連接'
                         )}
+                      </button>
+                      <button
+                        onClick={() => handleActiveProviderChange(providerType)}
+                        disabled={isActive || status.status !== 'ready'}
+                        className='flex-1 px-4 py-2.5 bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 disabled:from-gray-700 disabled:to-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-all'
+                      >
+                        {isActive ? '✓ 目前使用中' : '設為目前使用'}
                       </button>
                     </div>
                   </div>
@@ -669,6 +668,11 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
           );
         })}
       </div>
+
+      {/* Footer hint */}
+      <p className='mt-6 text-center text-xs text-gray-500'>
+        想使用其他服務商？未來版本將陸續支援更多選項。
+      </p>
     </div>
   );
 };
