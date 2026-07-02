@@ -32,6 +32,13 @@ const Modal: React.FC<ModalProps> = ({
     return null;
   }
 
+  const sizeClassName =
+    size === 'fullscreen'
+      ? 'h-[calc(100vh-2rem)] max-h-[calc(100vh-2rem)] max-w-[calc(100vw-2rem)]'
+      : size === 'wide'
+        ? 'max-h-[90vh] max-w-5xl'
+        : 'max-h-[90vh] max-w-lg';
+
   return createPortal(
     <div className='fixed inset-0 z-50 flex items-center justify-center p-4'>
       {/* Backdrop */}
@@ -43,7 +50,7 @@ const Modal: React.FC<ModalProps> = ({
 
       {/* Modal */}
       <div
-        className={`relative flex w-full flex-col overflow-hidden rounded-2xl bg-gray-800 shadow-2xl ${size === 'fullscreen' ? 'h-[calc(100vh-2rem)] max-h-[calc(100vh-2rem)] max-w-[calc(100vw-2rem)]' : 'max-h-[90vh] max-w-lg'} ${className}`}
+        className={`relative flex w-full flex-col overflow-hidden rounded-2xl bg-gray-800 shadow-2xl ${sizeClassName} ${className}`}
         role='dialog'
         aria-modal='true'
         aria-labelledby={title ? 'modal-title' : undefined}

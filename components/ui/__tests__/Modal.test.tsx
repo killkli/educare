@@ -106,6 +106,18 @@ describe('Modal', () => {
     expect(modal).toHaveClass('custom-modal');
   });
 
+  it('applies wide size classes when requested', () => {
+    render(
+      <Modal isOpen={true} onClose={vi.fn()} size='wide'>
+        <div>Modal content</div>
+      </Modal>,
+    );
+
+    const modal = screen.getByRole('dialog');
+    expect(modal).toHaveClass('max-w-5xl');
+    expect(modal).toHaveClass('max-h-[90vh]');
+  });
+
   it('sets overflow hidden on body when open', () => {
     // Reset body overflow first
     document.body.style.overflow = '';
