@@ -195,6 +195,20 @@ const createToolMessage = (toolCallId: string, result: unknown): OpenAICompatibl
   content: JSON.stringify(result),
 });
 
+const createRecoverableToolCallError = (
+  code: string,
+  message: string,
+  guidance: string,
+  details?: Record<string, unknown>,
+): RecoverableToolErrorResult => ({
+  ok: false,
+  recoverable: true,
+  code,
+  message,
+  guidance,
+  details,
+});
+
 const executeToolCalls = async (
   toolCalls: OpenAICompatibleToolCall[],
   executeTool: NonNullable<ChatParams['executeTool']>,
@@ -202,8 +216,29 @@ const executeToolCalls = async (
   const toolMessages: OpenAICompatibleMessage[] = [];
 
   for (const toolCall of toolCalls) {
+    if (!toolCall.id) {
+      continue;
+    }
+
+    if (!toolCall.function?.name) {
+      toolMessages.push(
+        createToolMessage(
+          toolCall.id,
+          createRecoverableToolCallError(
+            'tool-call-missing-name',
+            'Tool call is missing a function name.',
+            'Retry the tool call with a valid function name and JSON object arguments.',
+            {
+              toolCallType: toolCall.type ?? null,
+            },
+          ),
+        ),
+      );
+      continue;
+    }
+
     const normalizedToolCall = normalizeToolCall(toolCall);
-    if (!normalizedToolCall || !toolCall.id) {
+    if (!normalizedToolCall) {
       continue;
     }
 
@@ -226,6 +261,7 @@ const executeToolCalls = async (
 const fetchToolCallResponse = async (
   options: StreamOptions,
   messages: OpenAICompatibleMessage[],
+  forceAutoToolChoice = false,
 ) => {
   const {
     endpoint,
@@ -245,7 +281,7 @@ const fetchToolCallResponse = async (
       model,
       messages,
       tools: buildTools(visibleTools),
-      tool_choice: buildToolChoice(params, visibleTools),
+      tool_choice: forceAutoToolChoice ? 'auto' : buildToolChoice(params, visibleTools),
       stream: false,
       temperature: params.temperature || defaultTemperature,
       max_tokens: params.maxTokens || defaultMaxTokens,
@@ -285,7 +321,7 @@ export async function* streamOpenAICompatibleChat(
     let toolRoundCount = 0;
 
     while (true) {
-      const toolResponse = await fetchToolCallResponse(options, messages);
+      const toolResponse = await fetchToolCallResponse(options, messages, toolRoundCount > 0);
       const assistantMessage = toolResponse.choices?.[0]?.message;
 
       promptTokenCount += toolResponse.usage?.prompt_tokens || 0;

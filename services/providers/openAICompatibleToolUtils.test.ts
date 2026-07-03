@@ -168,6 +168,80 @@ describe('streamOpenAICompatibleChat', () => {
     });
   });
 
+  it('downgrades forced tool choice to auto after the first tool round', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    const executeTool = vi.fn().mockResolvedValueOnce({ html: '<div>preview</div>' });
+
+    fetchMock
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: null,
+                tool_calls: [
+                  {
+                    id: 'call-1',
+                    type: 'function',
+                    function: {
+                      name: 'render_preview',
+                      arguments: JSON.stringify({ projectId: 'proj-123' }),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+          usage: { prompt_tokens: 2, completion_tokens: 1 },
+        }),
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: 'Recovered after required tool call.',
+              },
+            },
+          ],
+          usage: { prompt_tokens: 3, completion_tokens: 2 },
+        }),
+      );
+
+    const responses = [];
+    for await (const chunk of streamOpenAICompatibleChat({
+      endpoint: 'https://example.com/chat/completions',
+      headers: { Authorization: 'Bearer test' },
+      providerName: 'openai',
+      model: 'gpt-4o',
+      params: {
+        systemPrompt: 'You are helpful.',
+        history: [],
+        message: 'hello',
+        tools: [...TOOL_DEFINITIONS],
+        toolChoice: { mode: 'requireSpecific', name: 'render_preview' },
+        executeTool,
+      },
+    })) {
+      responses.push(chunk);
+    }
+
+    expect(executeTool).toHaveBeenCalledTimes(1);
+    expect(responses.at(0)).toMatchObject({ text: 'Recovered after required tool call.' });
+
+    const firstRequestBody = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string);
+    const secondRequestBody = JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string);
+    expect(firstRequestBody.tool_choice).toEqual({
+      type: 'function',
+      function: {
+        name: 'render_preview',
+      },
+    });
+    expect(secondRequestBody.tool_choice).toBe('auto');
+  });
+
   it('handles two tool-call rounds before yielding the final assistant text', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch');
     const executeTool = vi
@@ -294,6 +368,84 @@ describe('streamOpenAICompatibleChat', () => {
       role: 'tool',
       tool_call_id: 'call-2',
       content: JSON.stringify({ html: '<div>preview</div>' }),
+    });
+  });
+
+  it('serializes malformed tool calls without a function name as recoverable tool errors', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    const executeTool = vi.fn();
+
+    fetchMock
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: null,
+                tool_calls: [
+                  {
+                    id: 'call-missing-name',
+                    type: 'function',
+                    function: {
+                      arguments: JSON.stringify({ query: 'financial aid' }),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+          usage: { prompt_tokens: 2, completion_tokens: 1 },
+        }),
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: 'Recovered after missing tool name.',
+              },
+            },
+          ],
+          usage: { prompt_tokens: 3, completion_tokens: 2 },
+        }),
+      );
+
+    const responses = [];
+    for await (const chunk of streamOpenAICompatibleChat({
+      endpoint: 'https://example.com/chat/completions',
+      headers: { Authorization: 'Bearer test' },
+      providerName: 'openai',
+      model: 'gpt-4o',
+      params: {
+        systemPrompt: 'You are helpful.',
+        history: [],
+        message: 'hello',
+        tools: [...TOOL_DEFINITIONS],
+        executeTool,
+      },
+    })) {
+      responses.push(chunk);
+    }
+
+    expect(executeTool).not.toHaveBeenCalled();
+    expect(responses.at(0)).toMatchObject({ text: 'Recovered after missing tool name.' });
+
+    const secondRequestBody = JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string);
+    expect(secondRequestBody.messages.at(-1)).toEqual({
+      role: 'tool',
+      tool_call_id: 'call-missing-name',
+      content: JSON.stringify({
+        ok: false,
+        recoverable: true,
+        code: 'tool-call-missing-name',
+        message: 'Tool call is missing a function name.',
+        guidance: 'Retry the tool call with a valid function name and JSON object arguments.',
+        details: {
+          toolCallType: 'function',
+        },
+      }),
     });
   });
 

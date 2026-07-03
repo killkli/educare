@@ -235,6 +235,17 @@ const normalizeWriteFilesInput = (files: WriteFilesArgs['files']): WriteHtmlProj
   let totalBytes = 0;
 
   return fileList.map((file, index) => {
+    if (!file || typeof file !== 'object' || Array.isArray(file)) {
+      throw new HtmlProjectToolRecoverableError({
+        ok: false,
+        recoverable: true,
+        code: 'invalid-write-file-entry',
+        message: `writeFiles.files[${index}] must be an object with path and content.`,
+        guidance:
+          'Pass files as objects like { path, content, kind? } and avoid null or primitive entries.',
+      });
+    }
+
     const path = typeof file.path === 'string' ? file.path.trim() : '';
     if (!path) {
       throw new HtmlProjectToolRecoverableError({
@@ -591,7 +602,17 @@ const handleReadFile = async (
   const project = await requireOwnedProject(args.projectId, context);
   const file = await htmlProjectStore.readFile(project.id, args.path);
   if (!file) {
-    throw new Error(`Project file ${args.path} not found.`);
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'read-file-not-found',
+      message: `Project file ${args.path} not found.`,
+      guidance:
+        'Call listFiles or searchFiles first to confirm the exact virtual project path before retrying readFile.',
+      details: {
+        path: args.path,
+      },
+    });
   }
 
   const summary = `已讀取檔案 ${file.path}。`;

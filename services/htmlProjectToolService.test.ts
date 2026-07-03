@@ -144,6 +144,45 @@ describe('executeHtmlProjectToolCall', () => {
     expect(mockResolveProjectForPreview).not.toHaveBeenCalled();
   });
 
+  it('returns a structured recoverable result when writeFiles contains a non-object file entry', async () => {
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'writeFiles',
+        args: {
+          projectId: 'project-1',
+          files: [null],
+        },
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-1',
+      },
+    );
+
+    expect(mockAssertProjectOwnership).toHaveBeenCalledWith('project-1', 'assistant-1');
+    expect(result).toMatchObject({
+      toolName: 'writeFiles',
+      summary: 'writeFiles.files[0] must be an object with path and content.',
+      result: {
+        ok: false,
+        recoverable: true,
+        code: 'invalid-write-file-entry',
+        message: 'writeFiles.files[0] must be an object with path and content.',
+        guidance:
+          'Pass files as objects like { path, content, kind? } and avoid null or primitive entries.',
+      },
+      workspace: {
+        activeProjectId: 'project-1',
+        activityMessage: 'writeFiles.files[0] must be an object with path and content.',
+        preview: null,
+      },
+    });
+    expect(mockWriteFiles).not.toHaveBeenCalled();
+    expect(mockResolveProjectForPreview).not.toHaveBeenCalled();
+  });
+
   it('returns a structured recoverable result when writeFiles path validation fails inside the store', async () => {
     const { HtmlProjectPathValidationError } = await import('./htmlProjectStore');
     mockWriteFiles.mockRejectedValue(
@@ -503,6 +542,49 @@ describe('executeHtmlProjectToolCall', () => {
     });
     expect(mockWriteFiles).not.toHaveBeenCalled();
     expect(mockResolveProjectForPreview).not.toHaveBeenCalled();
+  });
+
+  it('returns a structured recoverable result when readFile cannot find the requested path', async () => {
+    mockReadFile.mockResolvedValue(undefined);
+
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'readFile',
+        args: {
+          projectId: 'project-1',
+          path: '/missing.html',
+        },
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-1',
+      },
+    );
+
+    expect(mockAssertProjectOwnership).toHaveBeenCalledWith('project-1', 'assistant-1');
+    expect(mockReadFile).toHaveBeenCalledWith('project-1', '/missing.html');
+    expect(result).toMatchObject({
+      toolName: 'readFile',
+      summary: 'Project file /missing.html not found.',
+      result: {
+        ok: false,
+        recoverable: true,
+        code: 'read-file-not-found',
+        message: 'Project file /missing.html not found.',
+        guidance:
+          'Call listFiles or searchFiles first to confirm the exact virtual project path before retrying readFile.',
+        details: {
+          path: '/missing.html',
+        },
+      },
+      workspace: {
+        activeProjectId: 'project-1',
+        activityMessage: 'Project file /missing.html not found.',
+        preview: null,
+      },
+    });
   });
 
   it('lists assistant-scoped projects', async () => {
