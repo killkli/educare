@@ -144,6 +144,38 @@ describe('executeHtmlProjectToolCall', () => {
     expect(mockResolveProjectForPreview).not.toHaveBeenCalled();
   });
 
+  it('returns a structured recoverable result when writeFiles receives null call args', async () => {
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'writeFiles',
+        args: null as unknown as Record<string, unknown>,
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-1',
+      },
+    );
+
+    expect(mockAssertProjectOwnership).toHaveBeenCalledWith('project-1', 'assistant-1');
+    expect(result).toMatchObject({
+      toolName: 'writeFiles',
+      summary: 'writeFiles requires a non-empty files array.',
+      result: {
+        ok: false,
+        recoverable: true,
+        code: 'invalid-write-files-input',
+        message: 'writeFiles requires a non-empty files array.',
+      },
+      workspace: {
+        activeProjectId: 'project-1',
+        activityMessage: 'writeFiles requires a non-empty files array.',
+        preview: null,
+      },
+    });
+  });
+
   it('returns a structured recoverable result when writeFiles contains a non-object file entry', async () => {
     const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
 
@@ -188,8 +220,8 @@ describe('executeHtmlProjectToolCall', () => {
     mockWriteFiles.mockRejectedValue(
       new HtmlProjectPathValidationError(
         '../..',
-        'path-resolved-to-root',
-        'Project file path must include a file inside the virtual project root: ../..',
+        'path-parent-traversal',
+        'Project file path must not use parent-directory traversal: ../..',
       ),
     );
     const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
@@ -216,12 +248,12 @@ describe('executeHtmlProjectToolCall', () => {
     expect(mockAssertProjectOwnership).toHaveBeenCalledWith('project-1', 'assistant-1');
     expect(result).toMatchObject({
       toolName: 'writeFiles',
-      summary: 'Project file path must include a file inside the virtual project root: ../..',
+      summary: 'Project file path must not use parent-directory traversal: ../..',
       result: {
         ok: false,
         recoverable: true,
-        code: 'path-resolved-to-root',
-        message: 'Project file path must include a file inside the virtual project root: ../..',
+        code: 'path-parent-traversal',
+        message: 'Project file path must not use parent-directory traversal: ../..',
         guidance:
           'Use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js. Do not use host filesystem paths or URLs.',
         details: {
@@ -230,11 +262,55 @@ describe('executeHtmlProjectToolCall', () => {
       },
       workspace: {
         activeProjectId: 'project-1',
-        activityMessage:
-          'Project file path must include a file inside the virtual project root: ../..',
+        activityMessage: 'Project file path must not use parent-directory traversal: ../..',
         preview: null,
       },
     });
+    expect(mockResolveProjectForPreview).not.toHaveBeenCalled();
+  });
+
+  it('returns a structured recoverable result when writeFiles receives an unsupported kind', async () => {
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'writeFiles',
+        args: {
+          projectId: 'project-1',
+          files: [
+            {
+              path: '/index.html',
+              content: '<main>Hello</main>',
+              kind: 'javascript',
+            },
+          ],
+        },
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-1',
+      },
+    );
+
+    expect(mockAssertProjectOwnership).toHaveBeenCalledWith('project-1', 'assistant-1');
+    expect(result).toMatchObject({
+      toolName: 'writeFiles',
+      summary: 'writeFiles.files[0] has unsupported kind "javascript".',
+      result: {
+        ok: false,
+        recoverable: true,
+        code: 'invalid-write-file-kind',
+        message: 'writeFiles.files[0] has unsupported kind "javascript".',
+        guidance:
+          'Use one of: html, css, js, json, svg, asset, or md. Omit kind to let the tool infer it from the path.',
+      },
+      workspace: {
+        activeProjectId: 'project-1',
+        activityMessage: 'writeFiles.files[0] has unsupported kind "javascript".',
+        preview: null,
+      },
+    });
+    expect(mockWriteFiles).not.toHaveBeenCalled();
     expect(mockResolveProjectForPreview).not.toHaveBeenCalled();
   });
 
@@ -439,8 +515,8 @@ describe('executeHtmlProjectToolCall', () => {
     mockReadFile.mockRejectedValue(
       new HtmlProjectPathValidationError(
         '../..',
-        'path-resolved-to-root',
-        'Project file path must include a file inside the virtual project root: ../..',
+        'path-parent-traversal',
+        'Project file path must not use parent-directory traversal: ../..',
       ),
     );
     const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
@@ -465,12 +541,12 @@ describe('executeHtmlProjectToolCall', () => {
     expect(mockReadFile).toHaveBeenCalledWith('project-1', '../..');
     expect(result).toMatchObject({
       toolName: 'replaceInFile',
-      summary: 'Project file path must include a file inside the virtual project root: ../..',
+      summary: 'Project file path must not use parent-directory traversal: ../..',
       result: {
         ok: false,
         recoverable: true,
-        code: 'path-resolved-to-root',
-        message: 'Project file path must include a file inside the virtual project root: ../..',
+        code: 'path-parent-traversal',
+        message: 'Project file path must not use parent-directory traversal: ../..',
         guidance:
           'Use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js. Do not use host filesystem paths or URLs.',
         details: {
@@ -479,8 +555,7 @@ describe('executeHtmlProjectToolCall', () => {
       },
       workspace: {
         activeProjectId: 'project-1',
-        activityMessage:
-          'Project file path must include a file inside the virtual project root: ../..',
+        activityMessage: 'Project file path must not use parent-directory traversal: ../..',
         preview: null,
       },
     });
@@ -542,6 +617,44 @@ describe('executeHtmlProjectToolCall', () => {
     });
     expect(mockWriteFiles).not.toHaveBeenCalled();
     expect(mockResolveProjectForPreview).not.toHaveBeenCalled();
+  });
+
+  it('returns a structured recoverable result when readFile path is missing or invalid', async () => {
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'readFile',
+        args: {
+          projectId: 'project-1',
+          path: null,
+        },
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-1',
+      },
+    );
+
+    expect(mockAssertProjectOwnership).not.toHaveBeenCalled();
+    expect(mockReadFile).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      toolName: 'readFile',
+      summary: 'readFile requires a valid path.',
+      result: {
+        ok: false,
+        recoverable: true,
+        code: 'invalid-read-file-path',
+        message: 'readFile requires a valid path.',
+        guidance:
+          'Use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js. Do not use host filesystem paths or URLs.',
+      },
+      workspace: {
+        activeProjectId: 'project-1',
+        activityMessage: 'readFile requires a valid path.',
+        preview: null,
+      },
+    });
   });
 
   it('returns a structured recoverable result when readFile cannot find the requested path', async () => {

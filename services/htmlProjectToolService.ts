@@ -172,14 +172,30 @@ const createRecoverableToolExecutionResult = (
 });
 
 const getRecoverableActiveProjectId = (
-  args: Record<string, unknown>,
+  args: unknown,
   activeProjectId: string | null | undefined,
 ): string | null => {
-  const explicitProjectId = typeof args.projectId === 'string' ? args.projectId : null;
+  if (!args || typeof args !== 'object' || Array.isArray(args)) {
+    return activeProjectId || null;
+  }
+
+  const explicitProjectId =
+    typeof (args as { projectId?: unknown }).projectId === 'string'
+      ? ((args as { projectId?: string }).projectId ?? null)
+      : null;
   return explicitProjectId || activeProjectId || null;
 };
 
 const getContentSizeInBytes = (content: string): number => textEncoder.encode(content).length;
+const HTML_PROJECT_FILE_KINDS = new Set<HtmlProjectFileKind>([
+  'html',
+  'css',
+  'js',
+  'json',
+  'svg',
+  'asset',
+  'md',
+]);
 
 const inferHtmlProjectFileKind = (path: string): HtmlProjectFileKind => {
   const normalizedPath = path.toLowerCase();
@@ -299,6 +315,17 @@ const normalizeWriteFilesInput = (files: WriteFilesArgs['files']): WriteHtmlProj
           maxBytes: WRITE_FILES_MAX_BYTES,
           fileCount: fileList.length,
         },
+      });
+    }
+
+    if (typeof file.kind !== 'undefined' && !HTML_PROJECT_FILE_KINDS.has(file.kind)) {
+      throw new HtmlProjectToolRecoverableError({
+        ok: false,
+        recoverable: true,
+        code: 'invalid-write-file-kind',
+        message: `writeFiles.files[${index}] has unsupported kind "${String(file.kind)}".`,
+        guidance:
+          'Use one of: html, css, js, json, svg, asset, or md. Omit kind to let the tool infer it from the path.',
       });
     }
 
@@ -599,18 +626,29 @@ const handleReadFile = async (
   args: ReadFileArgs,
   context: HtmlProjectToolContext,
 ): Promise<HtmlProjectToolExecutionResult> => {
+  const path = typeof args.path === 'string' ? args.path.trim() : '';
+  if (!path) {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'invalid-read-file-path',
+      message: 'readFile requires a valid path.',
+      guidance: VIRTUAL_PROJECT_PATH_GUIDANCE,
+    });
+  }
+
   const project = await requireOwnedProject(args.projectId, context);
-  const file = await htmlProjectStore.readFile(project.id, args.path);
+  const file = await htmlProjectStore.readFile(project.id, path);
   if (!file) {
     throw new HtmlProjectToolRecoverableError({
       ok: false,
       recoverable: true,
       code: 'read-file-not-found',
-      message: `Project file ${args.path} not found.`,
+      message: `Project file ${path} not found.`,
       guidance:
         'Call listFiles or searchFiles first to confirm the exact virtual project path before retrying readFile.',
       details: {
-        path: args.path,
+        path,
       },
     });
   }
@@ -864,36 +902,41 @@ export const executeHtmlProjectToolCall = async (
   call: ToolCall,
   context: HtmlProjectToolContext,
 ): Promise<HtmlProjectToolExecutionResult> => {
+  const safeArgs =
+    call.args && typeof call.args === 'object' && !Array.isArray(call.args)
+      ? call.args
+      : ({} as Record<string, unknown>);
+
   try {
     switch (call.name) {
       case 'createProject':
-        return await handleCreateProject(call.args as unknown as CreateProjectArgs, context);
+        return await handleCreateProject(safeArgs as unknown as CreateProjectArgs, context);
       case 'listProjects':
         return await handleListProjects(context);
       case 'openProject':
-        return await handleOpenProject(call.args as unknown as OpenProjectArgs, context);
+        return await handleOpenProject(safeArgs as unknown as OpenProjectArgs, context);
       case 'searchFiles':
-        return await handleSearchFiles(call.args as unknown as SearchFilesArgs, context);
+        return await handleSearchFiles(safeArgs as unknown as SearchFilesArgs, context);
       case 'writeFiles':
-        return await handleWriteFiles(call.args as unknown as WriteFilesArgs, context);
+        return await handleWriteFiles(safeArgs as unknown as WriteFilesArgs, context);
       case 'replaceInFile':
-        return await handleReplaceInFile(call.args as unknown as ReplaceInFileArgs, context);
+        return await handleReplaceInFile(safeArgs as unknown as ReplaceInFileArgs, context);
       case 'listFiles':
-        return await handleListFiles(call.args as { projectId?: string }, context);
+        return await handleListFiles(safeArgs as { projectId?: string }, context);
       case 'readFile':
-        return await handleReadFile(call.args as unknown as ReadFileArgs, context);
+        return await handleReadFile(safeArgs as unknown as ReadFileArgs, context);
       case 'deleteFile':
-        return await handleDeleteFile(call.args as unknown as DeleteFileArgs, context);
+        return await handleDeleteFile(safeArgs as unknown as DeleteFileArgs, context);
       case 'setEntrypoint':
-        return await handleSetEntrypoint(call.args as unknown as SetEntrypointArgs, context);
+        return await handleSetEntrypoint(safeArgs as unknown as SetEntrypointArgs, context);
       case 'renderPreview':
-        return await handleRenderPreview(call.args as unknown as RenderPreviewArgs, context);
+        return await handleRenderPreview(safeArgs as unknown as RenderPreviewArgs, context);
       default:
         throw new Error(`Unsupported HTML project tool: ${call.name}`);
     }
   } catch (error) {
     const recoverableActiveProjectId = getRecoverableActiveProjectId(
-      call.args,
+      safeArgs,
       context.activeProjectId,
     );
 
