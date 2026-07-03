@@ -36,16 +36,19 @@ describe('buildHtmlProjectSystemPrompt', () => {
       'Reuse it for incremental edits unless the user explicitly asks for a fresh project.',
     );
     expect(prompt).toContain(
-      'prefer createProject, listProjects, openProject, searchFiles, listFiles, readFile, writeFiles, replaceInFile, deleteFile, setEntrypoint, and renderPreview',
+      'prefer createProject, listProjects, openProject, searchFiles, listFiles, readFile, writeFiles, replaceInFile, modifyLinesInFile, deleteFile, setEntrypoint, and renderPreview',
     );
     expect(prompt).toContain(
       'Always use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js. Never use host filesystem paths or URLs.',
     );
     expect(prompt).toContain(
-      'For targeted edits, inspect existing work first: use searchFiles to locate relevant code, use listFiles to inspect structure, then use readFile before writeFiles or replaceInFile.',
+      'For targeted edits, inspect existing work first: use searchFiles to locate relevant code, use listFiles to inspect structure, then use readFile before writeFiles, replaceInFile, or modifyLinesInFile.',
     );
     expect(prompt).toContain(
-      'Use writeFiles only for small complete-file writes. For edits inside an existing text file, prefer replaceInFile after readFile instead of resending the entire file.',
+      'Use writeFiles only for small complete-file writes. For edits inside an existing text file, prefer modifyLinesInFile after readFile.numberedContent when line-based edits are clearer, or use replaceInFile with raw content when you have one exact unique snippet.',
+    );
+    expect(prompt).toContain(
+      'Each displayed line in readFile.numberedContent starts with "<line> | ". That line-number prefix is only for display and must never be copied into replaceInFile.oldText, replaceInFile.newText, modifyLinesInFile.content, or modifyLinesInFile.expectedOriginal.',
     );
     expect(prompt).toContain(
       'If a tool returns a recoverable validation error, retry once with corrected arguments or a smaller payload.',

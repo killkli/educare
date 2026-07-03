@@ -440,6 +440,8 @@ export interface HtmlProjectSnapshot {
 
 避免模型每次重寫整份檔案。
 
+> 目前實作可先落在較簡化的 `modifyLinesInFile`：由 `readFile` 回傳帶行號的 `numberedContent`，再用 1-based line range 做 replace / insert / delete。底層仍可維持 service-layer read → transform → full write，不必先改動 store 的資料模型。
+
 **input**
 
 ```json

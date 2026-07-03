@@ -347,7 +347,7 @@ describe('executeHtmlProjectToolCall', () => {
         code: 'write-file-too-large',
         message: `writeFiles payload for /index.html is too large (${oversizedContent.length} bytes).`,
         guidance:
-          'Use writeFiles only for small complete files. For existing files, readFile first and then use replaceInFile for targeted edits.',
+          'Use writeFiles only for small complete files. For existing files, readFile first and then use replaceInFile or modifyLinesInFile for targeted edits.',
         details: {
           path: '/index.html',
           contentBytes: oversizedContent.length,
@@ -617,6 +617,267 @@ describe('executeHtmlProjectToolCall', () => {
     });
     expect(mockWriteFiles).not.toHaveBeenCalled();
     expect(mockResolveProjectForPreview).not.toHaveBeenCalled();
+  });
+
+  it('modifies a specific line range with modifyLinesInFile', async () => {
+    mockReadFile.mockResolvedValue({
+      path: '/index.html',
+      kind: 'html',
+      content: '<h1>Title</h1>\n<p>Body</p>\n<footer>Footer</footer>',
+      encoding: 'utf-8',
+      dependencies: [],
+      size: 54,
+      updatedAt: 1700000001000,
+    });
+    mockWriteFiles.mockResolvedValue({
+      updated: ['/index.html'],
+      previewVersion: 4,
+    });
+
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'modifyLinesInFile',
+        args: {
+          projectId: 'project-1',
+          path: '/index.html',
+          operation: 'replace',
+          startLine: 2,
+          content: '<p>Updated</p>',
+          expectedOriginal: '<p>Body</p>',
+        },
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-9',
+      },
+    );
+
+    expect(mockAssertProjectOwnership).toHaveBeenCalledWith('project-1', 'assistant-1');
+    expect(mockReadFile).toHaveBeenCalledWith('project-1', '/index.html');
+    expect(mockWriteFiles).toHaveBeenCalledWith('project-1', [
+      {
+        path: '/index.html',
+        kind: 'html',
+        content: '<h1>Title</h1>\n<p>Updated</p>\n<footer>Footer</footer>',
+        encoding: 'utf-8',
+      },
+    ]);
+    expect(mockResolveProjectForPreview).toHaveBeenCalledWith('project-1');
+    expect(result).toMatchObject({
+      toolName: 'modifyLinesInFile',
+      summary: '已修改檔案 /index.html 的第 2 行。',
+      result: {
+        projectId: 'project-1',
+        path: '/index.html',
+        updated: ['/index.html'],
+        previewVersion: 4,
+        modified: true,
+        operation: 'replace',
+        startLine: 2,
+        endLine: 2,
+        totalLinesBefore: 3,
+        totalLinesAfter: 3,
+      },
+      workspace: {
+        activeProjectId: 'project-1',
+        activityMessage: '已修改檔案 /index.html 的第 2 行。',
+      },
+    });
+  });
+
+  it('returns a recoverable result when modifyLinesInFile expectedOriginal is stale', async () => {
+    mockReadFile.mockResolvedValue({
+      path: '/index.html',
+      kind: 'html',
+      content: '<h1>Title</h1>\n<p>Body</p>\n<footer>Footer</footer>',
+      encoding: 'utf-8',
+      dependencies: [],
+      size: 54,
+      updatedAt: 1700000001000,
+    });
+
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'modifyLinesInFile',
+        args: {
+          projectId: 'project-1',
+          path: '/index.html',
+          operation: 'replace',
+          startLine: 2,
+          content: '<p>Updated</p>',
+          expectedOriginal: '<p>Old</p>',
+        },
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-1',
+      },
+    );
+
+    expect(result).toMatchObject({
+      toolName: 'modifyLinesInFile',
+      summary: 'modifyLinesInFile expectedOriginal no longer matches /index.html lines 2-2.',
+      result: {
+        ok: false,
+        recoverable: true,
+        code: 'modify-lines-expected-original-mismatch',
+        message: 'modifyLinesInFile expectedOriginal no longer matches /index.html lines 2-2.',
+        details: {
+          path: '/index.html',
+          startLine: 2,
+          endLine: 2,
+        },
+      },
+      workspace: {
+        activeProjectId: 'project-1',
+        activityMessage:
+          'modifyLinesInFile expectedOriginal no longer matches /index.html lines 2-2.',
+        preview: null,
+      },
+    });
+    expect(mockWriteFiles).not.toHaveBeenCalled();
+    expect(mockResolveProjectForPreview).not.toHaveBeenCalled();
+  });
+
+  it('returns a recoverable result when modifyLinesInFile line range is outside the file', async () => {
+    mockReadFile.mockResolvedValue({
+      path: '/index.html',
+      kind: 'html',
+      content: '<h1>Title</h1>\n<p>Body</p>\n<footer>Footer</footer>',
+      encoding: 'utf-8',
+      dependencies: [],
+      size: 54,
+      updatedAt: 1700000001000,
+    });
+
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'modifyLinesInFile',
+        args: {
+          projectId: 'project-1',
+          path: '/index.html',
+          operation: 'replace',
+          startLine: 4,
+          content: '<p>Updated</p>',
+        },
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-1',
+      },
+    );
+
+    expect(result).toMatchObject({
+      toolName: 'modifyLinesInFile',
+      summary: 'modifyLinesInFile line range 4-4 is outside the file (total lines: 3).',
+      result: {
+        ok: false,
+        recoverable: true,
+        code: 'invalid-modify-lines-range',
+        message: 'modifyLinesInFile line range 4-4 is outside the file (total lines: 3).',
+        details: {
+          startLine: 4,
+          endLine: 4,
+          totalLines: 3,
+        },
+      },
+    });
+    expect(mockWriteFiles).not.toHaveBeenCalled();
+  });
+
+  it('returns numberedContent and raw content from readFile', async () => {
+    mockReadFile.mockResolvedValue({
+      path: '/index.html',
+      kind: 'html',
+      content: 'alpha\nbeta\ngamma',
+      encoding: 'utf-8',
+      dependencies: [],
+      size: 16,
+      updatedAt: 1700000001000,
+    });
+
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'readFile',
+        args: {
+          projectId: 'project-1',
+          path: '/index.html',
+        },
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-1',
+      },
+    );
+
+    expect(result).toMatchObject({
+      toolName: 'readFile',
+      summary: '已讀取檔案 /index.html。',
+      result: {
+        projectId: 'project-1',
+        path: '/index.html',
+        kind: 'html',
+        content: 'alpha\nbeta\ngamma',
+        numberedContent: '1 | alpha\n2 | beta\n3 | gamma',
+        lineNumberFormat:
+          'Each displayed line in numberedContent starts with "<line> | ". This prefix is only for display and is not part of the real file content.',
+        lineStart: 1,
+        lineEnd: 3,
+        totalLines: 3,
+        contentRangeOnly: false,
+      },
+    });
+  });
+
+  it('supports reading a line range with readFile', async () => {
+    mockReadFile.mockResolvedValue({
+      path: '/index.html',
+      kind: 'html',
+      content: 'alpha\nbeta\ngamma',
+      encoding: 'utf-8',
+      dependencies: [],
+      size: 16,
+      updatedAt: 1700000001000,
+    });
+
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'readFile',
+        args: {
+          projectId: 'project-1',
+          path: '/index.html',
+          startLine: 2,
+          endLine: 3,
+        },
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-1',
+      },
+    );
+
+    expect(result).toMatchObject({
+      toolName: 'readFile',
+      summary: '已讀取檔案 /index.html 的第 2-3 行。',
+      result: {
+        content: 'beta\ngamma',
+        numberedContent: '2 | beta\n3 | gamma',
+        lineStart: 2,
+        lineEnd: 3,
+        totalLines: 3,
+        contentRangeOnly: true,
+      },
+    });
   });
 
   it('returns a structured recoverable result when readFile path is missing or invalid', async () => {
@@ -945,17 +1206,27 @@ describe('executeHtmlProjectToolCall', () => {
 });
 
 describe('getHtmlProjectToolDefinitions', () => {
-  it('includes replaceInFile and describes writeFiles as a small complete-file tool using virtual project paths', async () => {
+  it('includes modifyLinesInFile and describes numbered readFile guidance', async () => {
     const { getHtmlProjectToolDefinitions } = await import('./htmlProjectToolService');
 
     const definitions = getHtmlProjectToolDefinitions();
     const writeFilesDefinition = definitions.find(({ name }) => name === 'writeFiles');
     const replaceInFileDefinition = definitions.find(({ name }) => name === 'replaceInFile');
+    const modifyLinesInFileDefinition = definitions.find(
+      ({ name }) => name === 'modifyLinesInFile',
+    );
+    const readFileDefinition = definitions.find(({ name }) => name === 'readFile');
 
     expect(replaceInFileDefinition).toMatchObject({
       name: 'replaceInFile',
       parameters: {
         required: ['path', 'oldText', 'newText'],
+      },
+    });
+    expect(modifyLinesInFileDefinition).toMatchObject({
+      name: 'modifyLinesInFile',
+      parameters: {
+        required: ['path', 'operation', 'startLine'],
       },
     });
     expect(writeFilesDefinition?.description).toContain(
@@ -965,7 +1236,11 @@ describe('getHtmlProjectToolDefinitions', () => {
       'Use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js.',
     );
     expect(writeFilesDefinition?.description).toContain(
-      'For existing files, prefer readFile plus replaceInFile over sending a large full-file rewrite.',
+      'For existing files, prefer readFile plus replaceInFile or modifyLinesInFile over sending a large full-file rewrite.',
+    );
+    expect(readFileDefinition?.description).toContain('numberedContent');
+    expect(readFileDefinition?.description).toContain(
+      'that prefix is not part of the real file content',
     );
   });
 });

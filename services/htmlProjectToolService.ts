@@ -20,6 +20,7 @@ const HTML_PROJECT_TOOL_NAMES = [
   'searchFiles',
   'writeFiles',
   'replaceInFile',
+  'modifyLinesInFile',
   'listFiles',
   'readFile',
   'deleteFile',
@@ -67,6 +68,8 @@ interface WriteFilesArgs {
 interface ReadFileArgs {
   projectId?: string;
   path: string;
+  startLine?: number;
+  endLine?: number;
 }
 
 interface ReplaceInFileArgs {
@@ -74,6 +77,16 @@ interface ReplaceInFileArgs {
   path: string;
   oldText: string;
   newText: string;
+}
+
+interface ModifyLinesInFileArgs {
+  projectId?: string;
+  path: string;
+  operation: 'replace' | 'insertBefore' | 'insertAfter' | 'delete';
+  startLine: number;
+  endLine?: number;
+  content?: string;
+  expectedOriginal?: string;
 }
 
 interface DeleteFileArgs {
@@ -137,8 +150,11 @@ const summarizeFileList = (paths: string[]): string => paths.join(', ');
 
 const VIRTUAL_PROJECT_PATH_GUIDANCE =
   'Use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js. Do not use host filesystem paths or URLs.';
+const LINE_NUMBER_PREFIX_GUIDANCE =
+  'Each displayed line in numberedContent starts with "<line> | ". This prefix is only for display and is not part of the real file content.';
 const WRITE_FILE_MAX_BYTES = 24 * 1024;
 const WRITE_FILES_MAX_BYTES = 64 * 1024;
+const MODIFY_LINES_CONTENT_MAX_BYTES = 64 * 1024;
 const textEncoder = new TextEncoder();
 
 interface RecoverableToolErrorResult {
@@ -187,6 +203,354 @@ const getRecoverableActiveProjectId = (
 };
 
 const getContentSizeInBytes = (content: string): number => textEncoder.encode(content).length;
+
+const splitLines = (content: string): string[] => {
+  if (!content) {
+    return [];
+  }
+
+  return content.split('\n');
+};
+
+const splitInsertedLines = (content: string): string[] => {
+  return content === '' ? [''] : content.split('\n');
+};
+
+const getTotalLines = (content: string): number => splitLines(content).length;
+
+const padLineNumber = (lineNumber: number, width: number): string =>
+  String(lineNumber).padStart(width, ' ');
+
+const formatNumberedContent = (content: string, startLine: number): string => {
+  const lines = splitLines(content);
+  if (lines.length === 0) {
+    return '';
+  }
+
+  const maxLineNumber = startLine + lines.length - 1;
+  const width = String(maxLineNumber).length;
+  return lines
+    .map((line, index) => `${padLineNumber(startLine + index, width)} | ${line}`)
+    .join('\n');
+};
+
+const normalizeOptionalLineNumber = (value: unknown): number | undefined => {
+  if (typeof value === 'undefined') {
+    return undefined;
+  }
+
+  return typeof value === 'number' ? value : Number.NaN;
+};
+
+const normalizeReadFileRange = (
+  startLineValue: unknown,
+  endLineValue: unknown,
+  totalLines: number,
+): { startLine: number; endLine: number; contentRangeOnly: boolean } => {
+  const normalizedStartLine = normalizeOptionalLineNumber(startLineValue);
+  const normalizedEndLine = normalizeOptionalLineNumber(endLineValue);
+
+  if (typeof normalizedStartLine === 'undefined' && typeof normalizedEndLine === 'undefined') {
+    return {
+      startLine: totalLines > 0 ? 1 : 0,
+      endLine: totalLines,
+      contentRangeOnly: false,
+    };
+  }
+
+  if (
+    typeof normalizedStartLine !== 'number' ||
+    !Number.isInteger(normalizedStartLine) ||
+    normalizedStartLine < 1
+  ) {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'invalid-read-file-range',
+      message: 'readFile startLine must be a positive integer when provided.',
+      guidance:
+        'Use 1-based inclusive line numbers from readFile.numberedContent or searchFiles results.',
+    });
+  }
+
+  const effectiveEndLine =
+    typeof normalizedEndLine === 'undefined' ? normalizedStartLine : normalizedEndLine;
+  if (!Number.isInteger(effectiveEndLine) || effectiveEndLine < normalizedStartLine) {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'invalid-read-file-range',
+      message: 'readFile endLine must be a positive integer greater than or equal to startLine.',
+      guidance: 'Use 1-based inclusive line ranges such as startLine=10 and endLine=14.',
+    });
+  }
+
+  if (totalLines === 0) {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'invalid-read-file-range',
+      message: 'readFile cannot select a line range from an empty file.',
+      guidance: 'Retry readFile without a line range, or write new content into the file first.',
+    });
+  }
+
+  if (normalizedStartLine > totalLines || effectiveEndLine > totalLines) {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'invalid-read-file-range',
+      message: `readFile line range ${normalizedStartLine}-${effectiveEndLine} is outside the file (total lines: ${totalLines}).`,
+      guidance:
+        'Call readFile without a range or inspect totalLines before retrying with valid 1-based line numbers.',
+      details: {
+        startLine: normalizedStartLine,
+        endLine: effectiveEndLine,
+        totalLines,
+      },
+    });
+  }
+
+  return {
+    startLine: normalizedStartLine,
+    endLine: effectiveEndLine,
+    contentRangeOnly: true,
+  };
+};
+
+const extractLineRangeContent = (content: string, startLine: number, endLine: number): string => {
+  if (startLine === 0 && endLine === 0) {
+    return '';
+  }
+
+  return splitLines(content)
+    .slice(startLine - 1, endLine)
+    .join('\n');
+};
+
+const normalizeModifyOperation = (
+  operation: unknown,
+): ModifyLinesInFileArgs['operation'] | null => {
+  switch (operation) {
+    case 'replace':
+    case 'insertBefore':
+    case 'insertAfter':
+    case 'delete':
+      return operation;
+    default:
+      return null;
+  }
+};
+
+const normalizeModifyLinesRange = (
+  operation: ModifyLinesInFileArgs['operation'],
+  startLineValue: unknown,
+  endLineValue: unknown,
+  totalLines: number,
+): { startLine: number; endLine: number } => {
+  const startLine = typeof startLineValue === 'number' ? startLineValue : Number.NaN;
+  const endLineRaw = normalizeOptionalLineNumber(endLineValue);
+
+  if (!Number.isInteger(startLine) || startLine < 1) {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'invalid-modify-lines-range',
+      message: 'modifyLinesInFile startLine must be a positive integer.',
+      guidance:
+        'Use 1-based line numbers from readFile.numberedContent or searchFiles results before retrying.',
+    });
+  }
+
+  if (operation === 'insertBefore' || operation === 'insertAfter') {
+    if (totalLines === 0 || startLine > totalLines) {
+      throw new HtmlProjectToolRecoverableError({
+        ok: false,
+        recoverable: true,
+        code: 'invalid-modify-lines-range',
+        message: `modifyLinesInFile anchor line ${startLine} is outside the file (total lines: ${totalLines}).`,
+        guidance: 'Read the file again and retry with a valid existing 1-based anchor line.',
+        details: {
+          startLine,
+          totalLines,
+        },
+      });
+    }
+
+    if (typeof endLineRaw !== 'undefined' && endLineRaw !== startLine) {
+      throw new HtmlProjectToolRecoverableError({
+        ok: false,
+        recoverable: true,
+        code: 'invalid-modify-lines-range',
+        message: `${operation} only supports a single anchor line.`,
+        guidance: 'Omit endLine, or set endLine to the same value as startLine.',
+      });
+    }
+
+    return { startLine, endLine: startLine };
+  }
+
+  const endLine = typeof endLineRaw === 'undefined' ? startLine : endLineRaw;
+  if (!Number.isInteger(endLine) || endLine < startLine) {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'invalid-modify-lines-range',
+      message:
+        'modifyLinesInFile endLine must be a positive integer greater than or equal to startLine.',
+      guidance: 'Use 1-based inclusive line ranges such as startLine=10 and endLine=14.',
+    });
+  }
+
+  if (totalLines === 0 || startLine > totalLines || endLine > totalLines) {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'invalid-modify-lines-range',
+      message: `modifyLinesInFile line range ${startLine}-${endLine} is outside the file (total lines: ${totalLines}).`,
+      guidance: 'Read the file again and retry with valid 1-based line numbers.',
+      details: {
+        startLine,
+        endLine,
+        totalLines,
+      },
+    });
+  }
+
+  return { startLine, endLine };
+};
+
+const normalizeModifyLinesContent = (
+  operation: ModifyLinesInFileArgs['operation'],
+  content: unknown,
+): string => {
+  if (operation === 'delete') {
+    if (typeof content !== 'undefined') {
+      throw new HtmlProjectToolRecoverableError({
+        ok: false,
+        recoverable: true,
+        code: 'invalid-modify-lines-content',
+        message: 'modifyLinesInFile delete does not accept content.',
+        guidance: 'Remove the content field when using operation="delete".',
+      });
+    }
+
+    return '';
+  }
+
+  if (typeof content !== 'string') {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'invalid-modify-lines-content',
+      message: `modifyLinesInFile ${operation} requires string content.`,
+      guidance: 'Provide raw replacement text without numberedContent prefixes such as "12 | ".',
+    });
+  }
+
+  const contentBytes = getContentSizeInBytes(content);
+  if (contentBytes > MODIFY_LINES_CONTENT_MAX_BYTES) {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'modify-lines-content-too-large',
+      message: `modifyLinesInFile content is too large (${contentBytes} bytes).`,
+      guidance:
+        'Split the change into smaller line-based edits or use multiple targeted tool calls.',
+      details: {
+        contentBytes,
+        maxBytes: MODIFY_LINES_CONTENT_MAX_BYTES,
+      },
+    });
+  }
+
+  return content;
+};
+
+const validateExpectedOriginal = (
+  expectedOriginal: unknown,
+  actualContent: string,
+  path: string,
+  startLine: number,
+  endLine: number,
+): string | undefined => {
+  if (typeof expectedOriginal === 'undefined') {
+    return undefined;
+  }
+
+  if (typeof expectedOriginal !== 'string') {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'invalid-modify-lines-content',
+      message: 'modifyLinesInFile expectedOriginal must be a string when provided.',
+      guidance:
+        'Copy the current raw text from readFile.content for the target lines, without numberedContent prefixes.',
+    });
+  }
+
+  if (expectedOriginal !== actualContent) {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'modify-lines-expected-original-mismatch',
+      message: `modifyLinesInFile expectedOriginal no longer matches ${path} lines ${startLine}-${endLine}.`,
+      guidance:
+        'Call readFile again to get the latest numberedContent and retry with the current raw text for that line range.',
+      details: {
+        path,
+        startLine,
+        endLine,
+      },
+    });
+  }
+
+  return expectedOriginal;
+};
+
+const applyLineModification = (
+  content: string,
+  operation: ModifyLinesInFileArgs['operation'],
+  startLine: number,
+  endLine: number,
+  replacementContent: string,
+): {
+  updatedContent: string;
+  previousContent: string;
+  totalLinesBefore: number;
+  totalLinesAfter: number;
+} => {
+  const lines = splitLines(content);
+  const previousContent = extractLineRangeContent(content, startLine, endLine);
+  const replacementLines = operation === 'delete' ? [] : splitInsertedLines(replacementContent);
+  const before = lines.slice(0, startLine - 1);
+  const target = lines.slice(startLine - 1, endLine);
+  const after = lines.slice(endLine);
+
+  let updatedLines: string[];
+  switch (operation) {
+    case 'replace':
+      updatedLines = [...before, ...replacementLines, ...after];
+      break;
+    case 'insertBefore':
+      updatedLines = [...before, ...replacementLines, ...target, ...after];
+      break;
+    case 'insertAfter':
+      updatedLines = [...before, ...target, ...replacementLines, ...after];
+      break;
+    case 'delete':
+      updatedLines = [...before, ...after];
+      break;
+  }
+
+  return {
+    updatedContent: updatedLines.join('\n'),
+    previousContent,
+    totalLinesBefore: lines.length,
+    totalLinesAfter: updatedLines.length,
+  };
+};
+
 const HTML_PROJECT_FILE_KINDS = new Set<HtmlProjectFileKind>([
   'html',
   'css',
@@ -292,7 +656,7 @@ const normalizeWriteFilesInput = (files: WriteFilesArgs['files']): WriteHtmlProj
         code: 'write-file-too-large',
         message: `writeFiles payload for ${path} is too large (${contentBytes} bytes).`,
         guidance:
-          'Use writeFiles only for small complete files. For existing files, readFile first and then use replaceInFile for targeted edits.',
+          'Use writeFiles only for small complete files. For existing files, readFile first and then use replaceInFile or modifyLinesInFile for targeted edits.',
         details: {
           path,
           contentBytes,
@@ -309,7 +673,7 @@ const normalizeWriteFilesInput = (files: WriteFilesArgs['files']): WriteHtmlProj
         code: 'write-files-payload-too-large',
         message: `writeFiles payload is too large (${totalBytes} bytes across ${fileList.length} files).`,
         guidance:
-          'Split the change into smaller writeFiles calls, or use replaceInFile for focused edits to existing files.',
+          'Split the change into smaller writeFiles calls, or use replaceInFile or modifyLinesInFile for focused edits to existing files.',
         details: {
           contentBytes: totalBytes,
           maxBytes: WRITE_FILES_MAX_BYTES,
@@ -653,7 +1017,17 @@ const handleReadFile = async (
     });
   }
 
-  const summary = `已讀取檔案 ${file.path}。`;
+  const totalLines = getTotalLines(file.content);
+  const range = normalizeReadFileRange(args.startLine, args.endLine, totalLines);
+  const selectedContent =
+    range.contentRangeOnly && totalLines > 0
+      ? extractLineRangeContent(file.content, range.startLine, range.endLine)
+      : file.content;
+  const numberedContent = formatNumberedContent(selectedContent, range.startLine || 1);
+  const summary = range.contentRangeOnly
+    ? `已讀取檔案 ${file.path} 的第 ${range.startLine}-${range.endLine} 行。`
+    : `已讀取檔案 ${file.path}。`;
+
   return {
     toolName: 'readFile',
     summary,
@@ -661,11 +1035,122 @@ const handleReadFile = async (
       projectId: project.id,
       path: file.path,
       kind: file.kind,
-      content: file.content,
+      content: selectedContent,
+      numberedContent,
+      lineNumberFormat: LINE_NUMBER_PREFIX_GUIDANCE,
+      lineStart: range.startLine,
+      lineEnd: range.endLine,
+      totalLines,
+      contentRangeOnly: range.contentRangeOnly,
       dependencies: file.dependencies || [],
       updatedAt: file.updatedAt,
     },
     workspace: createWorkspaceUpdate(project.id, summary),
+  };
+};
+
+const handleModifyLinesInFile = async (
+  args: ModifyLinesInFileArgs,
+  context: HtmlProjectToolContext,
+): Promise<HtmlProjectToolExecutionResult> => {
+  const project = await requireOwnedProject(args.projectId, context);
+  const path = typeof args.path === 'string' ? args.path.trim() : '';
+  if (!path) {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'invalid-modify-lines-path',
+      message: 'modifyLinesInFile requires a valid path.',
+      guidance: VIRTUAL_PROJECT_PATH_GUIDANCE,
+    });
+  }
+
+  const operation = normalizeModifyOperation(args.operation);
+  if (!operation) {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'invalid-modify-lines-operation',
+      message:
+        'modifyLinesInFile requires operation to be one of replace, insertBefore, insertAfter, or delete.',
+      guidance:
+        'Choose a valid operation and use 1-based line numbers from readFile.numberedContent before retrying.',
+    });
+  }
+
+  const file = await htmlProjectStore.readFile(project.id, path);
+  if (!file) {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'modify-lines-file-not-found',
+      message: `Project file ${path} not found.`,
+      guidance:
+        'Call listFiles or readFile first to confirm the exact project path before retrying modifyLinesInFile.',
+    });
+  }
+
+  if (file.encoding === 'base64') {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'modify-lines-binary-file',
+      message: `modifyLinesInFile only supports text files, but ${file.path} uses ${file.encoding} encoding.`,
+      guidance: 'Use writeFiles to replace the full asset instead of modifyLinesInFile.',
+    });
+  }
+
+  const range = normalizeModifyLinesRange(
+    operation,
+    args.startLine,
+    args.endLine,
+    getTotalLines(file.content),
+  );
+  const replacementContent = normalizeModifyLinesContent(operation, args.content);
+  const { updatedContent, previousContent, totalLinesBefore, totalLinesAfter } =
+    applyLineModification(
+      file.content,
+      operation,
+      range.startLine,
+      range.endLine,
+      replacementContent,
+    );
+
+  validateExpectedOriginal(
+    args.expectedOriginal,
+    previousContent,
+    file.path,
+    range.startLine,
+    range.endLine,
+  );
+
+  const result = await htmlProjectStore.writeFiles(project.id, [
+    {
+      path: file.path,
+      kind: file.kind,
+      content: updatedContent,
+      encoding: file.encoding,
+    },
+  ]);
+  const preview = await htmlPreviewService.resolveProjectForPreview(project.id);
+  const summary = `已修改檔案 ${file.path} 的第 ${range.startLine}${range.endLine !== range.startLine ? `-${range.endLine}` : ''} 行。`;
+
+  return {
+    toolName: 'modifyLinesInFile',
+    summary,
+    result: {
+      projectId: project.id,
+      path: file.path,
+      updated: result.updated,
+      previewVersion: result.previewVersion,
+      modified: true,
+      operation,
+      startLine: range.startLine,
+      endLine: range.endLine,
+      totalLinesBefore,
+      totalLinesAfter,
+    },
+    workspace: createWorkspaceUpdate(project.id, summary, preview),
   };
 };
 
@@ -789,7 +1274,7 @@ export const getHtmlProjectToolDefinitions = (): ToolDefinition[] => [
   {
     name: 'writeFiles',
     description:
-      'Write or overwrite one or more small complete project files in a single tool call. Use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js. Do not use host filesystem paths or URLs. For existing files, prefer readFile plus replaceInFile over sending a large full-file rewrite.',
+      'Write or overwrite one or more small complete project files in a single tool call. Use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js. Do not use host filesystem paths or URLs. For existing files, prefer readFile plus replaceInFile or modifyLinesInFile over sending a large full-file rewrite.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -815,7 +1300,7 @@ export const getHtmlProjectToolDefinitions = (): ToolDefinition[] => [
   {
     name: 'replaceInFile',
     description:
-      'Replace one exact text span inside an existing text file after you inspect it with readFile. Use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js. If the text is ambiguous, read the file again and retry with a longer oldText snippet.',
+      'Replace one exact text span inside an existing text file after you inspect it with readFile. Use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js. Use raw content only: do not copy numberedContent prefixes like "12 | " into oldText or newText. If the text is ambiguous, read the file again and retry with a longer oldText snippet.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -840,15 +1325,36 @@ export const getHtmlProjectToolDefinitions = (): ToolDefinition[] => [
     },
   },
   {
-    name: 'readFile',
+    name: 'modifyLinesInFile',
     description:
-      'Read a single project file and inspect its current content. Use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js.',
+      'Modify specific 1-based lines inside an existing text file after you inspect it with readFile.numberedContent. Use operation replace, insertBefore, insertAfter, or delete. The line prefixes shown in numberedContent like "12 | " are not part of the file and must never be included in content or expectedOriginal.',
     parameters: {
       type: 'object',
       additionalProperties: false,
       properties: {
         projectId: { type: 'string' },
         path: { type: 'string', description: VIRTUAL_PROJECT_PATH_GUIDANCE },
+        operation: { type: 'string', enum: ['replace', 'insertBefore', 'insertAfter', 'delete'] },
+        startLine: { type: 'number' },
+        endLine: { type: 'number' },
+        content: { type: 'string' },
+        expectedOriginal: { type: 'string' },
+      },
+      required: ['path', 'operation', 'startLine'],
+    },
+  },
+  {
+    name: 'readFile',
+    description:
+      'Read a single project file and inspect its current content. Use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js. The result includes raw content plus numberedContent where each displayed line starts with "<line> | "; that prefix is not part of the real file content.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        projectId: { type: 'string' },
+        path: { type: 'string', description: VIRTUAL_PROJECT_PATH_GUIDANCE },
+        startLine: { type: 'number' },
+        endLine: { type: 'number' },
       },
       required: ['path'],
     },
@@ -921,6 +1427,8 @@ export const executeHtmlProjectToolCall = async (
         return await handleWriteFiles(safeArgs as unknown as WriteFilesArgs, context);
       case 'replaceInFile':
         return await handleReplaceInFile(safeArgs as unknown as ReplaceInFileArgs, context);
+      case 'modifyLinesInFile':
+        return await handleModifyLinesInFile(safeArgs as unknown as ModifyLinesInFileArgs, context);
       case 'listFiles':
         return await handleListFiles(safeArgs as { projectId?: string }, context);
       case 'readFile':
