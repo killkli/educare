@@ -221,24 +221,29 @@ describe('htmlProjectImportService', () => {
     expect(importedProject.entryFile).toBe('/demo/index.html');
   });
 
-  it('canonicalizes traversal-like zip paths during zip import', async () => {
+  it('rejects traversal-like zip paths during zip import', async () => {
     const zipBytes = zipSync({
       '../data/ruby.js': strToU8('console.log("ruby")'),
-      './src/app.js': strToU8('console.log("dot")'),
       'src/index.html': strToU8('<!doctype html><html><body>Demo</body></html>'),
     });
     const zipFile = createTestFile([zipBytes], 'unsafe.zip', { type: 'application/zip' });
+
+    await expect(htmlProjectImportService.importZipProject(zipFile)).rejects.toThrow(
+      'Project file path must not use parent-directory traversal: ../data/ruby.js',
+    );
+  });
+
+  it('canonicalizes equivalent non-traversal zip paths during zip import', async () => {
+    const zipBytes = zipSync({
+      './src/app.js': strToU8('console.log("dot")'),
+      'src/index.html': strToU8('<!doctype html><html><body>Demo</body></html>'),
+    });
+    const zipFile = createTestFile([zipBytes], 'safe.zip', { type: 'application/zip' });
 
     const importedProject = await htmlProjectImportService.importZipProject(zipFile);
 
     expect(importedProject.entryFile).toBe('/src/index.html');
     expect(importedProject.files).toEqual([
-      {
-        path: '/data/ruby.js',
-        kind: 'js',
-        content: 'console.log("ruby")',
-        encoding: 'utf-8',
-      },
       {
         path: '/src/app.js',
         kind: 'js',
@@ -271,6 +276,11 @@ describe('htmlProjectImportService', () => {
       'app.js',
       'scripts/app.js\n',
     );
+    const traversalFile = createFileWithRelativePath(
+      ['console.log("bad")'],
+      'app.js',
+      '../data/ruby.js',
+    );
     const rootTraversalFile = createFileWithRelativePath(['console.log("bad")'], 'app.js', '../..');
 
     await expect(
@@ -287,9 +297,10 @@ describe('htmlProjectImportService', () => {
       htmlProjectImportService.prepareFilesForProjectUpload([trailingNewlineFile]),
     ).rejects.toThrow('Project file path contains invalid control characters: scripts/app.js\n');
     await expect(
+      htmlProjectImportService.prepareFilesForProjectUpload([traversalFile]),
+    ).rejects.toThrow('Project file path must not use parent-directory traversal: ../data/ruby.js');
+    await expect(
       htmlProjectImportService.prepareFilesForProjectUpload([rootTraversalFile]),
-    ).rejects.toThrow(
-      'Project file path must include a file inside the virtual project root: ../..',
-    );
+    ).rejects.toThrow('Project file path must not use parent-directory traversal: ../..');
   });
 });

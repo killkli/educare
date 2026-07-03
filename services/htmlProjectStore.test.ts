@@ -123,7 +123,7 @@ describe('htmlProjectStore', () => {
     });
   });
 
-  it('canonicalizes equivalent virtual paths across normalizePath, writeFiles, and readFile', async () => {
+  it('canonicalizes equivalent non-traversal virtual paths across normalizePath, writeFiles, and readFile', async () => {
     const mockDb = createMockDb();
     mockOpenDB.mockResolvedValue(mockDb);
     vi.spyOn(Date, 'now').mockReturnValueOnce(1700000000000).mockReturnValueOnce(1700000001000);
@@ -135,29 +135,28 @@ describe('htmlProjectStore', () => {
       name: 'Canvas MVP',
     });
 
-    expect(normalizePath('../data/ruby.js')).toBe('/data/ruby.js');
     expect(normalizePath('./src/app.js')).toBe('/src/app.js');
     expect(normalizePath('src/app.js')).toBe('/src/app.js');
     expect(normalizePath('/src/app.js')).toBe('/src/app.js');
 
     const writeResult = await htmlProjectStore.writeFiles(project.id, [
       {
-        path: '../data/ruby.js',
+        path: './src/app.js',
         kind: 'js',
-        content: 'console.log("ruby");',
+        content: 'console.log("dot");',
       },
     ]);
 
-    const fileFromRelativePath = await htmlProjectStore.readFile(project.id, '../data/ruby.js');
-    const fileFromCanonicalPath = await htmlProjectStore.readFile(project.id, '/data/ruby.js');
+    const fileFromRelativePath = await htmlProjectStore.readFile(project.id, 'src/app.js');
+    const fileFromCanonicalPath = await htmlProjectStore.readFile(project.id, '/src/app.js');
 
     expect(writeResult).toEqual({
-      updated: ['/data/ruby.js'],
+      updated: ['/src/app.js'],
       previewVersion: 1,
     });
     expect(fileFromRelativePath).toMatchObject({
-      path: '/data/ruby.js',
-      content: 'console.log("ruby");',
+      path: '/src/app.js',
+      content: 'console.log("dot");',
     });
     expect(fileFromCanonicalPath).toEqual(fileFromRelativePath);
   });
@@ -185,8 +184,14 @@ describe('htmlProjectStore', () => {
     expect(() => normalizePath('\tscripts/app.js')).toThrow(
       'Project file path contains invalid control characters: \tscripts/app.js',
     );
+    expect(() => normalizePath('../data/ruby.js')).toThrow(
+      'Project file path must not use parent-directory traversal: ../data/ruby.js',
+    );
+    expect(() => normalizePath('/src/../index.html')).toThrow(
+      'Project file path must not use parent-directory traversal: /src/../index.html',
+    );
     expect(() => normalizePath('../..')).toThrow(
-      'Project file path must include a file inside the virtual project root: ../..',
+      'Project file path must not use parent-directory traversal: ../..',
     );
     expect(() => normalizePath('.')).toThrow(
       'Project file path must include a file inside the virtual project root: .',

@@ -171,8 +171,11 @@ export const normalizePath = (path: string): string => {
       continue;
     }
     if (segment === '..') {
-      resolvedSegments.pop();
-      continue;
+      throw new HtmlProjectPathValidationError(
+        path,
+        'path-parent-traversal',
+        `Project file path must not use parent-directory traversal: ${path}`,
+      );
     }
     resolvedSegments.push(segment);
   }

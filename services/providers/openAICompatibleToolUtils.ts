@@ -209,21 +209,57 @@ const createRecoverableToolCallError = (
   details,
 });
 
+const buildHistorySafeToolCall = (
+  toolCall: OpenAICompatibleToolCall,
+  fallbackId: string,
+): OpenAICompatibleToolCall => ({
+  id: toolCall.id || fallbackId,
+  type: toolCall.type || 'function',
+  function: {
+    name: toolCall.function?.name || '__invalid_tool_call__',
+    arguments:
+      typeof toolCall.function?.arguments === 'string' ? toolCall.function.arguments : '{}',
+  },
+});
+
 const executeToolCalls = async (
   toolCalls: OpenAICompatibleToolCall[],
   executeTool: NonNullable<ChatParams['executeTool']>,
-): Promise<OpenAICompatibleMessage[]> => {
+): Promise<{
+  assistantToolCalls: OpenAICompatibleToolCall[];
+  toolMessages: OpenAICompatibleMessage[];
+}> => {
+  const assistantToolCalls: OpenAICompatibleToolCall[] = [];
   const toolMessages: OpenAICompatibleMessage[] = [];
 
-  for (const toolCall of toolCalls) {
+  for (const [index, toolCall] of toolCalls.entries()) {
+    const fallbackId = `invalid-tool-call-${index + 1}`;
+    const historySafeToolCall = buildHistorySafeToolCall(toolCall, fallbackId);
+    const toolCallId = historySafeToolCall.id as string;
+    assistantToolCalls.push(historySafeToolCall);
+
     if (!toolCall.id) {
+      toolMessages.push(
+        createToolMessage(
+          toolCallId,
+          createRecoverableToolCallError(
+            'tool-call-missing-id',
+            'Tool call is missing a tool_call_id.',
+            'Retry the tool call with a valid tool_call_id, function name, and JSON object arguments.',
+            {
+              toolCallType: toolCall.type ?? null,
+              functionName: toolCall.function?.name ?? null,
+            },
+          ),
+        ),
+      );
       continue;
     }
 
     if (!toolCall.function?.name) {
       toolMessages.push(
         createToolMessage(
-          toolCall.id,
+          toolCallId,
           createRecoverableToolCallError(
             'tool-call-missing-name',
             'Tool call is missing a function name.',
@@ -243,7 +279,7 @@ const executeToolCalls = async (
     }
 
     if (normalizedToolCall.argsError) {
-      toolMessages.push(createToolMessage(toolCall.id, normalizedToolCall.argsError));
+      toolMessages.push(createToolMessage(toolCallId, normalizedToolCall.argsError));
       continue;
     }
 
@@ -252,10 +288,13 @@ const executeToolCalls = async (
       args: normalizedToolCall.args,
     });
 
-    toolMessages.push(createToolMessage(toolCall.id, result));
+    toolMessages.push(createToolMessage(toolCallId, result));
   }
 
-  return toolMessages;
+  return {
+    assistantToolCalls,
+    toolMessages,
+  };
 };
 
 const fetchToolCallResponse = async (
@@ -358,8 +397,18 @@ export async function* streamOpenAICompatibleChat(
         );
       }
 
-      const toolMessages = await executeToolCalls(assistantMessage.tool_calls, params.executeTool);
-      messages = [...messages, assistantMessage, ...toolMessages];
+      const { assistantToolCalls, toolMessages } = await executeToolCalls(
+        assistantMessage.tool_calls,
+        params.executeTool,
+      );
+      messages = [
+        ...messages,
+        {
+          ...assistantMessage,
+          tool_calls: assistantToolCalls,
+        },
+        ...toolMessages,
+      ];
       toolRoundCount += 1;
     }
   }

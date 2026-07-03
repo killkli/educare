@@ -433,6 +433,20 @@ describe('streamOpenAICompatibleChat', () => {
     expect(responses.at(0)).toMatchObject({ text: 'Recovered after missing tool name.' });
 
     const secondRequestBody = JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string);
+    expect(secondRequestBody.messages.at(-2)).toEqual({
+      role: 'assistant',
+      content: null,
+      tool_calls: [
+        {
+          id: 'call-missing-name',
+          type: 'function',
+          function: {
+            name: '__invalid_tool_call__',
+            arguments: JSON.stringify({ query: 'financial aid' }),
+          },
+        },
+      ],
+    });
     expect(secondRequestBody.messages.at(-1)).toEqual({
       role: 'tool',
       tool_call_id: 'call-missing-name',
@@ -444,6 +458,100 @@ describe('streamOpenAICompatibleChat', () => {
         guidance: 'Retry the tool call with a valid function name and JSON object arguments.',
         details: {
           toolCallType: 'function',
+        },
+      }),
+    });
+  });
+
+  it('serializes malformed tool calls without an id as recoverable tool errors', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    const executeTool = vi.fn();
+
+    fetchMock
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: null,
+                tool_calls: [
+                  {
+                    type: 'function',
+                    function: {
+                      name: 'search_docs',
+                      arguments: JSON.stringify({ query: 'financial aid' }),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+          usage: { prompt_tokens: 2, completion_tokens: 1 },
+        }),
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: 'Recovered after missing tool id.',
+              },
+            },
+          ],
+          usage: { prompt_tokens: 3, completion_tokens: 2 },
+        }),
+      );
+
+    const responses = [];
+    for await (const chunk of streamOpenAICompatibleChat({
+      endpoint: 'https://example.com/chat/completions',
+      headers: { Authorization: 'Bearer test' },
+      providerName: 'openai',
+      model: 'gpt-4o',
+      params: {
+        systemPrompt: 'You are helpful.',
+        history: [],
+        message: 'hello',
+        tools: [...TOOL_DEFINITIONS],
+        executeTool,
+      },
+    })) {
+      responses.push(chunk);
+    }
+
+    expect(executeTool).not.toHaveBeenCalled();
+    expect(responses.at(0)).toMatchObject({ text: 'Recovered after missing tool id.' });
+
+    const secondRequestBody = JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string);
+    expect(secondRequestBody.messages.at(-2)).toEqual({
+      role: 'assistant',
+      content: null,
+      tool_calls: [
+        {
+          id: 'invalid-tool-call-1',
+          type: 'function',
+          function: {
+            name: 'search_docs',
+            arguments: JSON.stringify({ query: 'financial aid' }),
+          },
+        },
+      ],
+    });
+    expect(secondRequestBody.messages.at(-1)).toEqual({
+      role: 'tool',
+      tool_call_id: 'invalid-tool-call-1',
+      content: JSON.stringify({
+        ok: false,
+        recoverable: true,
+        code: 'tool-call-missing-id',
+        message: 'Tool call is missing a tool_call_id.',
+        guidance:
+          'Retry the tool call with a valid tool_call_id, function name, and JSON object arguments.',
+        details: {
+          toolCallType: 'function',
+          functionName: 'search_docs',
         },
       }),
     });
