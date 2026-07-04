@@ -72,6 +72,253 @@ const buildMissingReferenceDiagnostics = (
   details: ['Restore the missing file(s) or update the HTML references before retrying preview.'],
 });
 
+/**
+ * G1 — Build the runtime bridge `<script>` injected into preview-ready artifacts.
+ *
+ * The bridge:
+ *   - Reads projectId + previewVersion from a sibling `<script type="application/json" data-harness-meta>`
+ *     element (never from URL parsing — sandboxed blobs have no usable query params).
+ *   - Captures window 'error', 'unhandledrejection', and wraps console.error / console.warn.
+ *   - Deduplicates entries by (kind+message), caps at 50, and truncates messages to ~500 chars.
+ *   - On window 'load', postMessage `{ type:'ready', projectId, previewVersion }` to parent.
+ *   - PostMessage `{ type:'runtime-errors', ... }` to parent — flushed on first error and at
+ *     most every ~250ms, plus a final flush on pagehide/beforeunload.
+ *
+ * The bridge is self-contained (no external references) and idempotent — it guards against
+ * double-install via a `window.__harnessRuntimeBridgeInstalled__` sentinel.
+ */
+const buildHarnessMetaScript = (projectId: string, previewVersion: number): string => {
+  const meta = JSON.stringify({ projectId, previewVersion });
+  return `<script type="application/json" data-harness-meta>${meta}</script>`;
+};
+
+const buildRuntimeBridgeScript = (): string => {
+  // Body is serialized as an IIFE so it cannot collide with project globals. The helper
+  // implementations mirror `dedupeAndCapEntries` / `truncateMessage` in previewRuntimeDiagnostics.ts.
+  const body = `
+    (function () {
+      if (typeof window === 'undefined' || window.__harnessRuntimeBridgeInstalled__) {
+        return;
+      }
+      try {
+        Object.defineProperty(window, '__harnessRuntimeBridgeInstalled__', {
+          value: true,
+          configurable: false,
+          writable: false,
+        });
+      } catch (_) {
+        window.__harnessRuntimeBridgeInstalled__ = true;
+      }
+
+      var MAX_ENTRIES = 50;
+      var MAX_MESSAGE = 500;
+      var FLUSH_THROTTLE = 250;
+
+      function readMeta() {
+        try {
+          var node = document.currentScript
+            ? document.currentScript.previousElementSibling
+            : null;
+          if (!node) {
+            var nodes = document.querySelectorAll('script[data-harness-meta]');
+            node = nodes.length > 0 ? nodes[nodes.length - 1] : null;
+          }
+          if (!node || !node.textContent) {
+            return null;
+          }
+          return JSON.parse(node.textContent);
+        } catch (_) {
+          return null;
+        }
+      }
+
+      var meta = readMeta();
+      if (!meta || typeof meta.projectId !== 'string' || typeof meta.previewVersion !== 'number') {
+        return;
+      }
+
+      var projectId = meta.projectId;
+      var previewVersion = meta.previewVersion;
+      var entries = [];
+      var seen = {};
+      var flushScheduled = false;
+      var pendingFlush = null;
+
+      function truncate(msg, max) {
+        if (typeof msg !== 'string') {
+          msg = String(msg == null ? '' : msg);
+        }
+        var limit = typeof max === 'number' ? max : MAX_MESSAGE;
+        if (msg.length <= limit) {
+          return msg;
+        }
+        return msg.slice(0, limit) + '\\u2026';
+      }
+
+      function addEntry(kind, message, extras) {
+        if (typeof message !== 'string' || message.length === 0) {
+          return;
+        }
+        var signature = kind + '::' + message;
+        if (Object.prototype.hasOwnProperty.call(seen, signature)) {
+          return;
+        }
+        seen[signature] = true;
+        var entry = { kind: kind, message: truncate(message), timestamp: Date.now() };
+        if (extras) {
+          if (extras.stack) { entry.stack = truncate(extras.stack, 1000); }
+          if (extras.source) { entry.source = extras.source; }
+          if (typeof extras.lineno === 'number') { entry.lineno = extras.lineno; }
+          if (typeof extras.colno === 'number') { entry.colno = extras.colno; }
+        }
+        entries.push(entry);
+        if (entries.length > MAX_ENTRIES) {
+          entries = entries.slice(entries.length - MAX_ENTRIES);
+        }
+      }
+
+      function postToParent(type, payload) {
+        try {
+          var msg = Object.assign(
+            { type: type, projectId: projectId, previewVersion: previewVersion },
+            payload || {}
+          );
+          if (window.parent && typeof window.parent.postMessage === 'function') {
+            window.parent.postMessage(msg, '*');
+          }
+        } catch (_) {
+          /* swallow — never let telemetry break the page */
+        }
+      }
+
+      function flushErrors(force) {
+        if (!force && entries.length === 0) {
+          return;
+        }
+        if (!force && flushScheduled) {
+          return;
+        }
+        if (!force && pendingFlush) {
+          return;
+        }
+        if (force) {
+          if (pendingFlush) {
+            clearTimeout(pendingFlush);
+            pendingFlush = null;
+          }
+          flushScheduled = false;
+          postToParent('runtime-errors', { errors: entries.slice() });
+          return;
+        }
+        flushScheduled = true;
+        pendingFlush = setTimeout(function () {
+          pendingFlush = null;
+          flushScheduled = false;
+          postToParent('runtime-errors', { errors: entries.slice() });
+        }, FLUSH_THROTTLE);
+      }
+
+      window.addEventListener('error', function (event) {
+        var message = (event && (event.message || event.error && event.error.message)) || 'error';
+        addEntry('error', message, {
+          stack: event && event.error && event.error.stack,
+          source: event && event.filename,
+          lineno: event && event.lineno,
+          colno: event && event.colno,
+        });
+        flushErrors(false);
+      });
+
+      window.addEventListener('unhandledrejection', function (event) {
+        var reason = event && event.reason;
+        var message = 'object' === typeof reason && reason !== null
+          ? (reason.message || String(reason))
+          : String(reason == null ? '' : reason);
+        addEntry('unhandledrejection', message, {
+          stack: reason && reason.stack,
+        });
+        flushErrors(false);
+      });
+
+      var origConsoleError = console.error ? console.error.bind(console) : null;
+      var origConsoleWarn = console.warn ? console.warn.bind(console) : null;
+      if (typeof console.error === 'function') {
+        console.error = function () {
+          try {
+            var parts = [];
+            for (var i = 0; i < arguments.length; i++) {
+              parts.push(typeof arguments[i] === 'object' ? safeStringify(arguments[i]) : String(arguments[i]));
+            }
+            addEntry('console_error', parts.join(' '));
+            flushErrors(false);
+          } catch (_) { /* ignore */ }
+          if (origConsoleError) {
+            origConsoleError.apply(console, arguments);
+          }
+        };
+      }
+      if (typeof console.warn === 'function') {
+        console.warn = function () {
+          try {
+            var parts = [];
+            for (var i = 0; i < arguments.length; i++) {
+              parts.push(typeof arguments[i] === 'object' ? safeStringify(arguments[i]) : String(arguments[i]));
+            }
+            addEntry('console_warn', parts.join(' '));
+            flushErrors(false);
+          } catch (_) { /* ignore */ }
+          if (origConsoleWarn) {
+            origConsoleWarn.apply(console, arguments);
+          }
+        };
+      }
+
+      function safeStringify(value) {
+        try {
+          return JSON.stringify(value);
+        } catch (_) {
+          return String(value);
+        }
+      }
+
+      window.addEventListener('load', function () {
+        postToParent('ready', {});
+      });
+
+      function finalFlush() {
+        flushErrors(true);
+      }
+      window.addEventListener('pagehide', finalFlush);
+      window.addEventListener('beforeunload', finalFlush);
+    })();
+  `
+    .replace(/\n\s*/g, '\n')
+    .trim();
+
+  return `<script data-harness-bridge>${body}</script>`;
+};
+
+/**
+ * Inject the G1 runtime bridge (meta + bridge script) into the artifact HTML immediately
+ * before `</body>` (or append to the end of the document if no body close tag is present).
+ * No-op when `previewReady` is false.
+ */
+const injectRuntimeBridge = (html: string, projectId: string, previewVersion: number): string => {
+  const meta = buildHarnessMetaScript(projectId, previewVersion);
+  const bridge = buildRuntimeBridgeScript();
+  const injection = `${meta}\n${bridge}`;
+
+  const bodyClose = /<\/body>/i.exec(html);
+  if (bodyClose) {
+    return `${html.slice(0, bodyClose.index)}${injection}\n${html.slice(bodyClose.index)}`;
+  }
+  const htmlClose = /<\/html>/i.exec(html);
+  if (htmlClose) {
+    return `${html.slice(0, htmlClose.index)}${injection}\n${html.slice(htmlClose.index)}`;
+  }
+  return `${html}\n${injection}`;
+};
+
 class HtmlPreviewService {
   private previewUrls = new Map<string, string>();
 
@@ -177,13 +424,15 @@ class HtmlPreviewService {
       };
     }
 
+    const bridgedHtml = injectRuntimeBridge(html, project.id, project.previewVersion);
+
     return {
       projectId: project.id,
       previewVersion: project.previewVersion,
       entryFile: project.entryFile,
       previewReady: true,
       previewUrlType: 'blob',
-      html,
+      html: bridgedHtml,
       warnings,
       error: null,
       diagnostics: buildReadyDiagnostics(warnings),

@@ -1,11 +1,50 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { HtmlProjectPreviewArtifact } from '../../types';
+import {
+  isHarnessMessage,
+  previewRuntimeDiagnostics,
+} from '../../services/previewRuntimeDiagnostics';
 
 interface PreviewFrameProps {
   preview: HtmlProjectPreviewArtifact | null;
 }
 
 export function PreviewFrame({ preview }: PreviewFrameProps): React.JSX.Element {
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+
+  const projectId = preview?.projectId;
+  const previewVersion = preview?.previewVersion;
+  const isMounted = Boolean(preview?.previewReady && preview?.url);
+
+  useEffect(() => {
+    if (!isMounted || projectId === undefined || previewVersion === undefined) {
+      return;
+    }
+
+    const expected = { projectId, previewVersion };
+
+    const handleMessage = (event: MessageEvent) => {
+      const source = iframeRef.current?.contentWindow ?? null;
+      if (event.source !== source) {
+        return;
+      }
+      if (!isHarnessMessage(event.data, expected, { expectedSource: source })) {
+        return;
+      }
+      const data = event.data;
+      if (data.type === 'ready') {
+        previewRuntimeDiagnostics.recordReadyAck(projectId, previewVersion);
+      } else if (data.type === 'runtime-errors') {
+        previewRuntimeDiagnostics.recordRuntimeErrors(projectId, previewVersion, data.errors);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => {
+      window.removeEventListener('message', handleMessage);
+    };
+  }, [isMounted, projectId, previewVersion]);
+
   if (!preview) {
     return (
       <div className='flex h-full items-center justify-center rounded-2xl border border-dashed border-gray-700 bg-gray-900/70 p-6 text-center text-sm text-gray-400'>
@@ -38,6 +77,7 @@ export function PreviewFrame({ preview }: PreviewFrameProps): React.JSX.Element 
         </div>
       )}
       <iframe
+        ref={iframeRef}
         title='HTML project preview'
         src={preview.url}
         sandbox='allow-scripts allow-forms allow-modals'

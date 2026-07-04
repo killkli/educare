@@ -209,4 +209,141 @@ describe('htmlPreviewService', () => {
     expect(artifact.html).toContain('https://cdn.example.com/app.css');
     expect(artifact.html).toContain('https://cdn.example.com/app.js');
   });
+
+  describe('G1 runtime bridge injection', () => {
+    it('injects the harness bridge + JSON meta when preview is ready', async () => {
+      const cssFile: HtmlProjectFile = {
+        projectId: 'project-1',
+        path: '/styles/app.css',
+        kind: 'css',
+        content: 'body { color: red; }',
+        encoding: 'utf-8',
+        dependencies: [],
+        size: 20,
+        updatedAt: 1700000000000,
+      };
+      const jsFile: HtmlProjectFile = {
+        projectId: 'project-1',
+        path: '/scripts/app.js',
+        kind: 'js',
+        content: 'console.log("preview");',
+        encoding: 'utf-8',
+        dependencies: [],
+        size: 24,
+        updatedAt: 1700000000000,
+      };
+
+      mockGetProject.mockResolvedValue(project);
+      mockListFiles.mockResolvedValue([
+        { path: '/index.html' },
+        { path: '/styles/app.css' },
+        { path: '/scripts/app.js' },
+      ]);
+      mockReadFile.mockImplementation(async (_projectId: string, path: string) => {
+        if (path === '/index.html') {
+          return htmlFile;
+        }
+        if (path === '/styles/app.css') {
+          return cssFile;
+        }
+        if (path === '/scripts/app.js') {
+          return jsFile;
+        }
+        return undefined;
+      });
+
+      const { htmlPreviewService } = await import('./htmlPreviewService');
+
+      const artifact = await htmlPreviewService.resolveProjectForPreview('project-1');
+
+      expect(artifact.previewReady).toBe(true);
+      // Bridge meta + script both present, with the artifact's projectId + previewVersion.
+      expect(artifact.html).toContain('data-harness-meta');
+      expect(artifact.html).toContain('"projectId":"project-1"');
+      expect(artifact.html).toContain('"previewVersion":2');
+      expect(artifact.html).toContain('data-harness-bridge');
+      // Bridge is idempotent — installs a sentinel guard.
+      expect(artifact.html).toContain('__harnessRuntimeBridgeInstalled__');
+      // Injection lands before </body>.
+      const bodyCloseIdx = artifact.html.toLowerCase().indexOf('</body>');
+      const bridgeIdx = artifact.html.indexOf('data-harness-bridge');
+      expect(bridgeIdx).toBeGreaterThan(-1);
+      expect(bodyCloseIdx).toBeGreaterThan(bridgeIdx);
+    });
+
+    it('does NOT inject the bridge when the entrypoint is missing', async () => {
+      mockGetProject.mockResolvedValue(project);
+      mockListFiles.mockResolvedValue([{ path: '/styles/app.css' }]);
+      mockReadFile.mockResolvedValue(undefined);
+
+      const { htmlPreviewService } = await import('./htmlPreviewService');
+
+      const artifact = await htmlPreviewService.resolveProjectForPreview('project-1');
+
+      expect(artifact.previewReady).toBe(false);
+      expect(artifact.html).not.toContain('data-harness-bridge');
+      expect(artifact.html).not.toContain('data-harness-meta');
+    });
+
+    it('does NOT inject the bridge when referenced files are missing', async () => {
+      mockGetProject.mockResolvedValue(project);
+      mockListFiles.mockResolvedValue([{ path: '/index.html' }]);
+      mockReadFile.mockResolvedValue(htmlFile);
+
+      const { htmlPreviewService } = await import('./htmlPreviewService');
+
+      const artifact = await htmlPreviewService.resolveProjectForPreview('project-1');
+
+      expect(artifact.previewReady).toBe(false);
+      expect(artifact.html).not.toContain('data-harness-bridge');
+      expect(artifact.html).not.toContain('data-harness-meta');
+    });
+
+    it('injects exactly one bridge per artifact (idempotent within the document)', async () => {
+      const standaloneFile: HtmlProjectFile = {
+        ...htmlFile,
+        content: '<!doctype html><html><head></head><body><p>hi</p></body></html>',
+        dependencies: [],
+      };
+      mockGetProject.mockResolvedValue(project);
+      mockListFiles.mockResolvedValue([{ path: '/index.html' }]);
+      mockReadFile.mockResolvedValue(standaloneFile);
+
+      const { htmlPreviewService } = await import('./htmlPreviewService');
+
+      const artifact = await htmlPreviewService.resolveProjectForPreview('project-1');
+
+      const occurrences = (artifact.html.match(/data-harness-bridge/g) || []).length;
+      expect(occurrences).toBe(1);
+      // Count the actual JSON meta tag (the bridge code references the selector internally
+      // so a plain substring search would double-count).
+      const metaOccurrences = (
+        artifact.html.match(/type="application\/json" data-harness-meta/g) || []
+      ).length;
+      expect(metaOccurrences).toBe(1);
+    });
+
+    it('embeds the bridge correctly even when there is no </body> tag', async () => {
+      const bodylessFile: HtmlProjectFile = {
+        ...htmlFile,
+        content: '<!doctype html><html><head></head><body><p>hi</p></html>',
+        dependencies: [],
+      };
+      mockGetProject.mockResolvedValue(project);
+      mockListFiles.mockResolvedValue([{ path: '/index.html' }]);
+      mockReadFile.mockResolvedValue(bodylessFile);
+
+      const { htmlPreviewService } = await import('./htmlPreviewService');
+
+      const artifact = await htmlPreviewService.resolveProjectForPreview('project-1');
+
+      expect(artifact.previewReady).toBe(true);
+      expect(artifact.html).toContain('data-harness-bridge');
+      expect(artifact.html).toContain('data-harness-meta');
+      // Falls back to injecting before </html>.
+      const htmlCloseIdx = artifact.html.toLowerCase().indexOf('</html>');
+      const bridgeIdx = artifact.html.indexOf('data-harness-bridge');
+      expect(htmlCloseIdx).toBeGreaterThan(bridgeIdx);
+    });
+  });
 });
