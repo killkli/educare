@@ -366,7 +366,10 @@ export class AgentRunController {
         callbacks.onTurnComplete?.(state.turnIndex, loopSummary);
         break;
       }
-      lastFourToolsPrev = lastFour.length > 0 ? lastFour : lastFourToolsPrev;
+      // Update unconditionally so only TRULY consecutive turns are compared (G12).
+      // A zero/short-tool turn resets the chain — otherwise two matching 4-tool
+      // turns separated by a no-op turn could false-positive as a loop.
+      lastFourToolsPrev = lastFour;
       lastTodoCompletedCount = currentTodoCompleted;
 
       // G4: continuation decision — controller-verify has top priority.
