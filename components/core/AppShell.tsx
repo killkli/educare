@@ -4,6 +4,7 @@ import { AssistantEditor, ShareModal } from '../assistant';
 import { ChatContainer } from '../chat';
 import { HtmlProjectWorkspace } from '../canvas';
 import { ChatSession } from '../../types';
+import type { ChatTokenInfo } from '../chat/types';
 import SharedAssistant from '../features/SharedAssistant';
 import ProviderSettings from '../settings/ProviderSettings';
 import ProviderSettingsImportModal from '../settings/ProviderSettingsImportModal';
@@ -27,7 +28,7 @@ function AppContent(): React.JSX.Element {
     session: ChatSession,
     userMessage: string,
     _modelResponse: string,
-    _tokenInfo: { promptTokenCount: number; candidatesTokenCount: number },
+    _tokenInfo: ChatTokenInfo,
   ) => {
     let updatedSession = {
       ...session,
@@ -95,6 +96,19 @@ function AppContent(): React.JSX.Element {
               tokenCount:
                 compressionResult.compactContext.tokenCount +
                 Math.floor(preservedMessages.length * 50), // Rough estimate for preserved messages
+              tokenUsage: updatedSession.tokenUsage
+                ? {
+                    ...updatedSession.tokenUsage,
+                    totals: updatedSession.tokenUsage.totals
+                      ? {
+                          ...updatedSession.tokenUsage.totals,
+                          totalTokens:
+                            compressionResult.compactContext.tokenCount +
+                            Math.floor(preservedMessages.length * 50),
+                        }
+                      : updatedSession.tokenUsage.totals,
+                  }
+                : updatedSession.tokenUsage,
             };
           } else {
             console.warn('❌ [COMPRESSION] Compression failed:', compressionResult.error);

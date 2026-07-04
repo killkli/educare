@@ -352,6 +352,14 @@ describe('streamOpenAICompatibleChat', () => {
           candidatesTokenCount: 6,
           model: 'gpt-4o',
           provider: 'openai',
+          usage: {
+            source: 'api',
+            inputTokens: 12,
+            outputTokens: 6,
+            totalTokens: 18,
+            cachedInputTokens: 0,
+            reasoningTokens: 0,
+          },
           toolRoundCount: 2,
           repeatedRecoverableErrors: [],
         },
@@ -637,6 +645,14 @@ describe('streamOpenAICompatibleChat', () => {
           candidatesTokenCount: 3,
           model: 'gpt-4o',
           provider: 'openai',
+          usage: {
+            source: 'api',
+            inputTokens: 7,
+            outputTokens: 3,
+            totalTokens: 10,
+            cachedInputTokens: 0,
+            reasoningTokens: 0,
+          },
           toolRoundCount: 1,
           repeatedRecoverableErrors: [
             {
@@ -883,6 +899,14 @@ describe('streamOpenAICompatibleChat', () => {
           candidatesTokenCount: 3,
           model: 'gpt-4o',
           provider: 'openai',
+          usage: {
+            source: 'api',
+            inputTokens: 9,
+            outputTokens: 3,
+            totalTokens: 12,
+            cachedInputTokens: 0,
+            reasoningTokens: 0,
+          },
           toolRoundCount: 3,
           repeatedRecoverableErrors: [
             {

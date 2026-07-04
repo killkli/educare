@@ -1,4 +1,9 @@
-import { ChatParams, StreamingResponse, ToolDefinition } from '../llmAdapter';
+import {
+  ChatParams,
+  StreamingResponse,
+  ToolDefinition,
+  type ProviderUsageMetadata,
+} from '../llmAdapter';
 import {
   buildEscalatedToolResult,
   isRecoverableToolErrorResult,
@@ -30,8 +35,46 @@ interface OpenAICompatibleResponse {
   usage?: {
     prompt_tokens?: number;
     completion_tokens?: number;
+    total_tokens?: number;
+    prompt_tokens_details?: {
+      cached_tokens?: number;
+    };
+    completion_tokens_details?: {
+      reasoning_tokens?: number;
+    };
   };
 }
+
+const buildOpenAICompatibleUsageMetadata = (
+  usage:
+    | OpenAICompatibleResponse['usage']
+    | {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        total_tokens?: number;
+        prompt_tokens_details?: { cached_tokens?: number };
+        completion_tokens_details?: { reasoning_tokens?: number };
+      }
+    | undefined,
+): ProviderUsageMetadata | undefined => {
+  if (!usage) {
+    return undefined;
+  }
+
+  const inputTokens = usage.prompt_tokens ?? 0;
+  const outputTokens = usage.completion_tokens ?? 0;
+  const cachedInputTokens = usage.prompt_tokens_details?.cached_tokens ?? 0;
+  const reasoningTokens = usage.completion_tokens_details?.reasoning_tokens ?? 0;
+
+  return {
+    source: 'api',
+    inputTokens,
+    outputTokens,
+    totalTokens: usage.total_tokens ?? inputTokens + outputTokens,
+    cachedInputTokens,
+    reasoningTokens,
+  };
+};
 
 interface StreamOptions {
   endpoint: string;
@@ -400,6 +443,7 @@ export async function* streamOpenAICompatibleChat(
   let messages = buildMessages(params, systemPrompt);
   let promptTokenCount = 0;
   let candidatesTokenCount = 0;
+  let usage: ProviderUsageMetadata | undefined;
   const { visibleTools } = resolveToolPolicy(params);
   const MAX_OPENAI_COMPATIBLE_TOOL_ROUNDS = Math.max(1, Math.round(defaultMaxToolRounds));
 
@@ -414,6 +458,17 @@ export async function* streamOpenAICompatibleChat(
 
       promptTokenCount += toolResponse.usage?.prompt_tokens || 0;
       candidatesTokenCount += toolResponse.usage?.completion_tokens || 0;
+      const latestUsage = buildOpenAICompatibleUsageMetadata(toolResponse.usage);
+      if (latestUsage?.source === 'api') {
+        usage = {
+          source: 'api',
+          inputTokens: (usage?.inputTokens ?? 0) + (latestUsage.inputTokens ?? 0),
+          outputTokens: (usage?.outputTokens ?? 0) + (latestUsage.outputTokens ?? 0),
+          totalTokens: (usage?.totalTokens ?? 0) + (latestUsage.totalTokens ?? 0),
+          cachedInputTokens: (usage?.cachedInputTokens ?? 0) + (latestUsage.cachedInputTokens ?? 0),
+          reasoningTokens: (usage?.reasoningTokens ?? 0) + (latestUsage.reasoningTokens ?? 0),
+        };
+      }
 
       if (!assistantMessage?.tool_calls?.length) {
         if (assistantMessage?.content) {
@@ -435,6 +490,7 @@ export async function* streamOpenAICompatibleChat(
             candidatesTokenCount,
             model,
             provider: providerName,
+            usage,
             toolRoundCount,
             repeatedRecoverableErrors: [...repeatedRecoverableErrors.values()],
           },
@@ -486,6 +542,7 @@ export async function* streamOpenAICompatibleChat(
             candidatesTokenCount,
             model,
             provider: providerName,
+            usage,
             toolRoundCount,
             repeatedRecoverableErrors: [...repeatedRecoverableErrors.values()],
           },
@@ -502,6 +559,9 @@ export async function* streamOpenAICompatibleChat(
       model,
       messages,
       stream: true,
+      stream_options: {
+        include_usage: true,
+      },
       temperature: params.temperature || defaultTemperature,
       max_tokens: params.maxTokens || defaultMaxTokens,
     }),
@@ -527,8 +587,6 @@ export async function* streamOpenAICompatibleChat(
       const deltaContent = parsed.choices?.[0]?.delta?.content;
 
       if (deltaContent) {
-        candidatesTokenCount++;
-
         yield {
           text: deltaContent,
           isComplete: false,
@@ -542,6 +600,7 @@ export async function* streamOpenAICompatibleChat(
       if (parsed.usage) {
         promptTokenCount = parsed.usage.prompt_tokens || promptTokenCount;
         candidatesTokenCount = parsed.usage.completion_tokens || candidatesTokenCount;
+        usage = buildOpenAICompatibleUsageMetadata(parsed.usage);
       }
     } catch {
       continue;
@@ -556,6 +615,7 @@ export async function* streamOpenAICompatibleChat(
       candidatesTokenCount,
       model,
       provider: providerName,
+      usage: usage ?? { source: 'unavailable' },
       toolRoundCount: 0,
       repeatedRecoverableErrors: [],
     },

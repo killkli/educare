@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { SessionManagerProps } from './types';
+import { ChatTokenInfo, SessionManagerProps } from './types';
 import { RagChunk } from '../../types';
 import { streamChat } from '../../services/llmService';
+import { applyTokenUsageToSession } from '../../services/sessionTokenUsage';
 
 const useSessionManager = ({ session, onSessionUpdate }: SessionManagerProps) => {
   const [currentSession, setCurrentSession] = useState(session);
@@ -27,10 +28,7 @@ const useSessionManager = ({ session, onSessionUpdate }: SessionManagerProps) =>
     setStatusText: (text: string) => void,
     setIsThinking: (thinking: boolean) => void,
     onStreamingChunk: (chunk: string) => void,
-    onComplete: (
-      tokenInfo: { promptTokenCount: number; candidatesTokenCount: number },
-      fullResponse: string,
-    ) => void,
+    onComplete: (tokenInfo: ChatTokenInfo, fullResponse: string) => void,
     onError: (error: Error) => void,
   ) => {
     const newUserMessage = { role: 'user' as const, content: userMessage };
@@ -62,14 +60,13 @@ const useSessionManager = ({ session, onSessionUpdate }: SessionManagerProps) =>
           setStatusText('');
 
           const newAiMessage = { role: 'model' as const, content: fullModelResponse };
-          const finalSession = {
-            ...updatedSession,
-            messages: [...updatedSession.messages, newAiMessage],
-            tokenCount:
-              (updatedSession.tokenCount || 0) +
-              tokenInfo.promptTokenCount +
-              tokenInfo.candidatesTokenCount,
-          };
+          const finalSession = applyTokenUsageToSession(
+            {
+              ...updatedSession,
+              messages: [...updatedSession.messages, newAiMessage],
+            },
+            tokenInfo,
+          );
 
           setCurrentSession(finalSession);
           onSessionUpdate(finalSession);

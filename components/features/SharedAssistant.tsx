@@ -61,6 +61,7 @@ const SharedAssistant: React.FC<SharedAssistantProps> = ({ assistantId }) => {
         messages: [],
         createdAt: Date.now(),
         tokenCount: 0,
+        tokenUsage: undefined,
       };
 
       dispatch({

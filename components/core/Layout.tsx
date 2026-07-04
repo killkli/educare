@@ -1,9 +1,9 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAppContext } from './useAppContext';
 import { AssistantList } from '../assistant';
 import { ProjectPicker } from '../canvas';
 import { ChatIcon, TrashIcon, SettingsIcon, PlusIcon } from '../ui/Icons';
-import { ChatSession } from '../../types';
+import { ChatSession, SessionTokenUsage } from '../../types';
 import { useTursoAssistantStatus } from '../../hooks/useTursoAssistantStatus';
 
 interface LayoutProps {
@@ -20,6 +20,7 @@ export function Layout({ children }: LayoutProps): React.JSX.Element {
   // "collapsed" only applies to desktop (the icon-rail mode); mobile/tablet use the drawer.
   const isDesktop = !state.isMobile && !state.isTablet;
   const collapsed = isDesktop && state.isSidebarCollapsed;
+  const [isTokenUsageOpen, setIsTokenUsageOpen] = useState(false);
 
   // Escape closes the mobile/tablet drawer
   useEffect(() => {
@@ -66,6 +67,112 @@ export function Layout({ children }: LayoutProps): React.JSX.Element {
             : state.viewMode === 'provider_settings'
               ? 'AI 服務商'
               : '專業助理';
+
+  const currentSessionUsage = state.currentSession?.tokenUsage;
+  const currentSessionTotals = currentSessionUsage?.totals;
+  const hasLegacyOnlyUsage = Boolean(
+    !currentSessionTotals && state.currentSession && state.currentSession.tokenCount > 0,
+  );
+
+  const formatTokenCount = (value: number | undefined): string => {
+    if (typeof value !== 'number') {
+      return '—';
+    }
+
+    return new Intl.NumberFormat('zh-TW').format(value);
+  };
+
+  const renderTokenUsageDetails = (usage: SessionTokenUsage | undefined): React.JSX.Element => {
+    if (!state.currentSession) {
+      return <p className='text-sm text-gray-400'>目前沒有選中的聊天。</p>;
+    }
+
+    if (usage?.totals) {
+      return (
+        <div className='space-y-3 text-sm text-gray-200'>
+          <div>
+            <div className='text-xs uppercase tracking-wide text-cyan-300'>API 回報總量</div>
+            <div className='mt-1 text-lg font-semibold text-white'>
+              {formatTokenCount(usage.totals.totalTokens)} tokens
+            </div>
+          </div>
+          <div className='grid grid-cols-2 gap-2 text-xs'>
+            <div className='rounded-lg bg-gray-800/70 p-2'>
+              <div className='text-gray-400'>Input</div>
+              <div className='mt-1 font-medium text-white'>
+                {formatTokenCount(usage.totals.inputTokens)}
+              </div>
+            </div>
+            <div className='rounded-lg bg-gray-800/70 p-2'>
+              <div className='text-gray-400'>Output</div>
+              <div className='mt-1 font-medium text-white'>
+                {formatTokenCount(usage.totals.outputTokens)}
+              </div>
+            </div>
+            <div className='rounded-lg bg-gray-800/70 p-2'>
+              <div className='text-gray-400'>Cache Read</div>
+              <div className='mt-1 font-medium text-white'>
+                {formatTokenCount(usage.totals.cacheReadInputTokens)}
+              </div>
+            </div>
+            <div className='rounded-lg bg-gray-800/70 p-2'>
+              <div className='text-gray-400'>Cache Create</div>
+              <div className='mt-1 font-medium text-white'>
+                {formatTokenCount(usage.totals.cacheCreationInputTokens)}
+              </div>
+            </div>
+            <div className='rounded-lg bg-gray-800/70 p-2'>
+              <div className='text-gray-400'>Cached Input</div>
+              <div className='mt-1 font-medium text-white'>
+                {formatTokenCount(usage.totals.cachedInputTokens)}
+              </div>
+            </div>
+            <div className='rounded-lg bg-gray-800/70 p-2'>
+              <div className='text-gray-400'>Reasoning</div>
+              <div className='mt-1 font-medium text-white'>
+                {formatTokenCount(usage.totals.reasoningTokens)}
+              </div>
+            </div>
+            <div className='rounded-lg bg-gray-800/70 p-2 col-span-2'>
+              <div className='text-gray-400'>Tool Use</div>
+              <div className='mt-1 font-medium text-white'>
+                {formatTokenCount(usage.totals.toolUseTokens)}
+              </div>
+            </div>
+          </div>
+          <div className='rounded-lg border border-gray-700/60 bg-gray-800/40 p-3 text-xs text-gray-300'>
+            <div>Provider：{usage.lastProvider || '—'}</div>
+            <div className='mt-1'>Model：{usage.lastModel || '—'}</div>
+            <div className='mt-1'>
+              更新時間：
+              {usage.lastUpdatedAt ? new Date(usage.lastUpdatedAt).toLocaleString('zh-TW') : '—'}
+            </div>
+            <div className='mt-1'>未回傳 usage 次數：{usage.unavailableTurns ?? 0}</div>
+          </div>
+        </div>
+      );
+    }
+
+    if (hasLegacyOnlyUsage) {
+      return (
+        <div className='space-y-2 text-sm text-gray-300'>
+          <p>目前只有舊版累計資料，這不是完整的 API 回報 token 用量。</p>
+          <div className='rounded-lg bg-gray-800/70 p-3 text-white'>
+            Legacy tokenCount：{formatTokenCount(state.currentSession.tokenCount)}
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className='space-y-2 text-sm text-gray-300'>
+        <p>目前尚無 API 回報的 token 用量。</p>
+        {usage?.source === 'unavailable' && (
+          <p className='text-amber-300'>此服務商未回傳 token 用量，未進行本地估算。</p>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className='relative flex h-screen overflow-hidden bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 font-sans'>
@@ -182,6 +289,21 @@ export function Layout({ children }: LayoutProps): React.JSX.Element {
               aria-label='聊天記錄'
             >
               <button
+                type='button'
+                onClick={() => setIsTokenUsageOpen(prev => !prev)}
+                className='flex w-11 h-11 items-center justify-center bg-gray-800/60 hover:bg-gray-700/70 text-gray-200 hover:text-white rounded-xl text-sm font-medium border border-gray-600/30 hover:border-gray-500/50 transition-colors'
+                title='檢視 token 用量'
+                aria-label='檢視 token 用量'
+                aria-expanded={isTokenUsageOpen}
+              >
+                <span className='text-[11px] font-semibold'>TK</span>
+              </button>
+              {isTokenUsageOpen && (
+                <div className='w-full rounded-xl border border-gray-700/60 bg-gray-900/95 p-3 shadow-2xl'>
+                  {renderTokenUsageDetails(currentSessionUsage)}
+                </div>
+              )}
+              <button
                 onClick={() => {
                   actions.createNewSession(state.currentAssistant!.id);
                   actions.setViewMode('chat');
@@ -226,13 +348,28 @@ export function Layout({ children }: LayoutProps): React.JSX.Element {
               role='navigation'
               aria-label='聊天記錄'
             >
-              <h2 className='text-sm font-bold text-gray-300 uppercase tracking-wider mb-3 px-2'>
-                聊天記錄
-              </h2>
+              <div className='mb-3 flex items-center justify-between gap-2 px-2'>
+                <h2 className='text-sm font-bold text-gray-300 uppercase tracking-wider'>
+                  聊天記錄
+                </h2>
+                <button
+                  type='button'
+                  onClick={() => setIsTokenUsageOpen(prev => !prev)}
+                  className='inline-flex items-center rounded-md border border-gray-600/40 bg-gray-800/60 px-2 py-1 text-[11px] font-medium text-gray-200 transition-colors hover:border-gray-500/60 hover:bg-gray-700/70 hover:text-white'
+                  aria-expanded={isTokenUsageOpen}
+                  aria-label='檢視 token 用量'
+                >
+                  Token 用量
+                </button>
+              </div>
+              {isTokenUsageOpen && (
+                <div className='mb-3 rounded-xl border border-gray-700/60 bg-gray-900/95 p-3 shadow-2xl'>
+                  {renderTokenUsageDetails(currentSessionUsage)}
+                </div>
+              )}
               <button
                 onClick={() => {
                   actions.createNewSession(state.currentAssistant!.id);
-                  // 強制切換到聊天模式
                   actions.setViewMode('chat');
                   closeDrawerIfMobile();
                 }}
@@ -259,7 +396,6 @@ export function Layout({ children }: LayoutProps): React.JSX.Element {
                     }`}
                     onClick={() => {
                       dispatch({ type: 'SET_CURRENT_SESSION', payload: sess });
-                      // 強制切換到聊天模式
                       actions.setViewMode('chat');
                       closeDrawerIfMobile();
                     }}

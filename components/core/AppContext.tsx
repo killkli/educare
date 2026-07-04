@@ -212,6 +212,7 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       messages: [],
       createdAt: Date.now(),
       tokenCount: 0,
+      tokenUsage: undefined,
     };
     await db.saveSession(newSession);
     dispatch({ type: 'ADD_SESSION', payload: newSession });

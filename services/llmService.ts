@@ -7,7 +7,7 @@ import {
   type HtmlProjectSummary,
   type HtmlProjectWorkspaceUpdate,
 } from '../types';
-import { ToolCall } from './llmAdapter';
+import { ToolCall, type ProviderUsageMetadata } from './llmAdapter';
 import { providerManager, initializeProviders } from './providerRegistry';
 import {
   buildKnowledgeSearchResponse,
@@ -38,7 +38,13 @@ export interface StreamChatParams {
   onChunk: (text: string) => void;
   onProjectToolActivity?: (update: HtmlProjectWorkspaceUpdate) => void;
   onComplete: (
-    metadata: { promptTokenCount: number; candidatesTokenCount: number },
+    metadata: {
+      promptTokenCount: number;
+      candidatesTokenCount: number;
+      usage?: ProviderUsageMetadata;
+      provider?: string;
+      model?: string;
+    },
     fullText: string,
   ) => void;
 }
@@ -129,6 +135,9 @@ export const streamChat = async (params: StreamChatParams) => {
   let fullResponseText = '';
   let promptTokenCount = 0;
   let candidatesTokenCount = 0;
+  let usage: ProviderUsageMetadata | undefined;
+  let responseProvider = activeProvider.name;
+  let responseModel = activeProvider.supportedModels[0];
   let resolvedActiveProjectId = activeProjectId ?? null;
   let projectSummary: HtmlProjectSummary | null = null;
   let latestPreviewOutcome: HtmlProjectPreviewOutcome | undefined;
@@ -272,6 +281,9 @@ export const streamChat = async (params: StreamChatParams) => {
       if (response.isComplete && response.metadata) {
         promptTokenCount = response.metadata.promptTokenCount || 0;
         candidatesTokenCount = response.metadata.candidatesTokenCount || 0;
+        usage = response.metadata.usage;
+        responseProvider = response.metadata.provider || responseProvider;
+        responseModel = response.metadata.model || responseModel;
         telemetryEvent.toolRounds = response.metadata.toolRoundCount || 0;
         telemetryEvent.repeatedRecoverableErrors =
           response.metadata.repeatedRecoverableErrors || [];
@@ -292,6 +304,9 @@ export const streamChat = async (params: StreamChatParams) => {
       {
         promptTokenCount,
         candidatesTokenCount,
+        usage,
+        provider: responseProvider,
+        model: responseModel,
       },
       fullResponseText,
     );

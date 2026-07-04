@@ -1,7 +1,22 @@
-import { LLMProvider, ProviderConfig, ChatParams, StreamingResponse } from '../llmAdapter';
+import {
+  LLMProvider,
+  ProviderConfig,
+  ChatParams,
+  StreamingResponse,
+  type ProviderUsageMetadata,
+} from '../llmAdapter';
 
 interface OllamaModel {
   name: string;
+}
+
+interface OllamaChatChunk {
+  done?: boolean;
+  message?: {
+    content?: string;
+  };
+  prompt_eval_count?: number;
+  eval_count?: number;
 }
 
 export class OllamaNativeProvider implements LLMProvider {
@@ -119,7 +134,7 @@ export class OllamaNativeProvider implements LLMProvider {
       }
 
       const decoder = new TextDecoder();
-      let tokenCount = 0;
+      let usage: ProviderUsageMetadata | undefined;
 
       try {
         while (true) {
@@ -133,11 +148,10 @@ export class OllamaNativeProvider implements LLMProvider {
 
           for (const line of lines) {
             try {
-              const parsed = JSON.parse(line);
+              const parsed = JSON.parse(line) as OllamaChatChunk;
 
               if (parsed.message?.content) {
                 const content = parsed.message.content;
-                tokenCount++;
 
                 yield {
                   text: content,
@@ -146,6 +160,21 @@ export class OllamaNativeProvider implements LLMProvider {
                     model,
                     provider: this.name,
                   },
+                };
+              }
+
+              if (
+                parsed.done &&
+                (typeof parsed.prompt_eval_count === 'number' ||
+                  typeof parsed.eval_count === 'number')
+              ) {
+                const inputTokens = parsed.prompt_eval_count ?? 0;
+                const outputTokens = parsed.eval_count ?? 0;
+                usage = {
+                  source: 'api',
+                  inputTokens,
+                  outputTokens,
+                  totalTokens: inputTokens + outputTokens,
                 };
               }
 
@@ -168,10 +197,11 @@ export class OllamaNativeProvider implements LLMProvider {
         text: '',
         isComplete: true,
         metadata: {
-          promptTokenCount: tokenCount, // Ollama doesn't provide separate counts
-          candidatesTokenCount: tokenCount,
+          promptTokenCount: usage?.inputTokens ?? 0,
+          candidatesTokenCount: usage?.outputTokens ?? 0,
           model,
           provider: this.name,
+          usage: usage ?? { source: 'unavailable' },
         },
       };
     } catch (error) {

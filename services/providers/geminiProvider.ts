@@ -8,7 +8,13 @@ import {
   GoogleGenAI,
   type Part,
 } from '@google/genai';
-import { LLMProvider, ProviderConfig, ChatParams, StreamingResponse } from '../llmAdapter';
+import {
+  LLMProvider,
+  ProviderConfig,
+  ChatParams,
+  StreamingResponse,
+  type ProviderUsageMetadata,
+} from '../llmAdapter';
 import { ApiKeyManager } from '../apiKeyManager';
 import {
   buildEscalatedToolResult,
@@ -36,7 +42,37 @@ interface RepeatedRecoverableErrorEntry {
   count: number;
 }
 
+interface GeminiUsageMetadata {
+  promptTokenCount?: number;
+  candidatesTokenCount?: number;
+  totalTokenCount?: number;
+  cachedContentTokenCount?: number;
+  thoughtsTokenCount?: number;
+  toolUsePromptTokenCount?: number;
+}
+
 const buildRepeatKey = (toolName: string, code: string): string => `${toolName}::${code}`;
+
+const buildGeminiUsageMetadata = (
+  response: GenerateContentResponse,
+): ProviderUsageMetadata | undefined => {
+  const usageMetadata = response.usageMetadata as GeminiUsageMetadata | undefined;
+  if (!usageMetadata) {
+    return undefined;
+  }
+
+  return {
+    source: 'api',
+    inputTokens: usageMetadata.promptTokenCount ?? 0,
+    outputTokens: usageMetadata.candidatesTokenCount ?? 0,
+    totalTokens:
+      usageMetadata.totalTokenCount ??
+      (usageMetadata.promptTokenCount ?? 0) + (usageMetadata.candidatesTokenCount ?? 0),
+    cachedInputTokens: usageMetadata.cachedContentTokenCount ?? 0,
+    reasoningTokens: usageMetadata.thoughtsTokenCount ?? 0,
+    toolUseTokens: usageMetadata.toolUsePromptTokenCount ?? 0,
+  };
+};
 
 export class GeminiProvider implements LLMProvider {
   readonly name = 'gemini';
@@ -295,6 +331,7 @@ export class GeminiProvider implements LLMProvider {
         candidatesTokenCount: response.usageMetadata?.candidatesTokenCount ?? 0,
         model,
         provider: this.name,
+        usage: buildGeminiUsageMetadata(response),
       },
     };
   }
@@ -320,6 +357,7 @@ export class GeminiProvider implements LLMProvider {
       if (params.tools?.length && params.executeTool) {
         let response = await chat.sendMessage({ message: params.message });
         let toolRoundCount = 0;
+        let usage = buildGeminiUsageMetadata(response);
         const repeatTracker = new Map<string, number>();
         const repeatedRecoverableErrors = new Map<string, RepeatedRecoverableErrorEntry>();
 
@@ -346,6 +384,10 @@ export class GeminiProvider implements LLMProvider {
             const completion = this.buildCompletionChunk(response, model);
             completion.metadata = {
               ...completion.metadata,
+              promptTokenCount: usage?.inputTokens ?? completion.metadata?.promptTokenCount ?? 0,
+              candidatesTokenCount:
+                usage?.outputTokens ?? completion.metadata?.candidatesTokenCount ?? 0,
+              usage,
               toolRoundCount,
               repeatedRecoverableErrors: [...repeatedRecoverableErrors.values()],
             };
@@ -425,10 +467,13 @@ export class GeminiProvider implements LLMProvider {
               text: '',
               isComplete: true,
               metadata: {
-                promptTokenCount: response.usageMetadata?.promptTokenCount ?? 0,
-                candidatesTokenCount: response.usageMetadata?.candidatesTokenCount ?? 0,
+                promptTokenCount:
+                  usage?.inputTokens ?? response.usageMetadata?.promptTokenCount ?? 0,
+                candidatesTokenCount:
+                  usage?.outputTokens ?? response.usageMetadata?.candidatesTokenCount ?? 0,
                 model,
                 provider: this.name,
+                usage: usage ?? { source: 'unavailable' },
                 toolRoundCount,
                 repeatedRecoverableErrors: [...repeatedRecoverableErrors.values()],
               },
@@ -437,6 +482,19 @@ export class GeminiProvider implements LLMProvider {
           }
 
           response = await chat.sendMessage({ message: toolResponses });
+          const latestUsage = buildGeminiUsageMetadata(response);
+          if (latestUsage?.source === 'api') {
+            usage = {
+              source: 'api',
+              inputTokens: (usage?.inputTokens ?? 0) + (latestUsage.inputTokens ?? 0),
+              outputTokens: (usage?.outputTokens ?? 0) + (latestUsage.outputTokens ?? 0),
+              totalTokens: (usage?.totalTokens ?? 0) + (latestUsage.totalTokens ?? 0),
+              cachedInputTokens:
+                (usage?.cachedInputTokens ?? 0) + (latestUsage.cachedInputTokens ?? 0),
+              reasoningTokens: (usage?.reasoningTokens ?? 0) + (latestUsage.reasoningTokens ?? 0),
+              toolUseTokens: (usage?.toolUseTokens ?? 0) + (latestUsage.toolUseTokens ?? 0),
+            };
+          }
         }
       }
 

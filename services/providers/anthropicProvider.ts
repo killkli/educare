@@ -1,4 +1,10 @@
-import { ChatParams, LLMProvider, ProviderConfig, StreamingResponse } from '../llmAdapter';
+import {
+  ChatParams,
+  LLMProvider,
+  ProviderConfig,
+  StreamingResponse,
+  type ProviderUsageMetadata,
+} from '../llmAdapter';
 import {
   buildEscalatedToolResult,
   isRecoverableToolErrorResult,
@@ -21,6 +27,8 @@ interface AnthropicToolUseBlock {
 interface AnthropicUsage {
   input_tokens?: number;
   output_tokens?: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
 }
 
 interface AnthropicMessageResponse {
@@ -47,6 +55,28 @@ interface RepeatedRecoverableErrorEntry {
 }
 
 const buildRepeatKey = (toolName: string, code: string): string => `${toolName}::${code}`;
+
+const buildAnthropicUsageMetadata = (
+  usage: AnthropicUsage | undefined,
+): ProviderUsageMetadata | undefined => {
+  if (!usage) {
+    return undefined;
+  }
+
+  const inputTokens = usage.input_tokens ?? 0;
+  const outputTokens = usage.output_tokens ?? 0;
+  const cacheCreationInputTokens = usage.cache_creation_input_tokens ?? 0;
+  const cacheReadInputTokens = usage.cache_read_input_tokens ?? 0;
+
+  return {
+    source: 'api',
+    inputTokens,
+    outputTokens,
+    totalTokens: inputTokens + outputTokens + cacheCreationInputTokens + cacheReadInputTokens,
+    cacheCreationInputTokens,
+    cacheReadInputTokens,
+  };
+};
 
 export class AnthropicProvider implements LLMProvider {
   readonly name = 'anthropic';
@@ -174,6 +204,7 @@ export class AnthropicProvider implements LLMProvider {
       let response = await this.createMessage(requestBody);
       let promptTokenCount = response.usage?.input_tokens || 0;
       let candidatesTokenCount = response.usage?.output_tokens || 0;
+      let usage = buildAnthropicUsageMetadata(response.usage);
       const maxToolRounds = Math.max(1, Math.round(Number(this.config.maxToolRounds ?? 20)));
       let toolRoundCount = 0;
       let conversationMessages = [...messages];
@@ -277,6 +308,15 @@ export class AnthropicProvider implements LLMProvider {
 
         promptTokenCount += response.usage?.input_tokens || 0;
         candidatesTokenCount += response.usage?.output_tokens || 0;
+        usage = buildAnthropicUsageMetadata({
+          input_tokens: promptTokenCount,
+          output_tokens: candidatesTokenCount,
+          cache_creation_input_tokens:
+            (usage?.cacheCreationInputTokens ?? 0) +
+            (response.usage?.cache_creation_input_tokens ?? 0),
+          cache_read_input_tokens:
+            (usage?.cacheReadInputTokens ?? 0) + (response.usage?.cache_read_input_tokens ?? 0),
+        });
         toolRoundCount += 1;
 
         if (stopRoute) {
@@ -299,6 +339,7 @@ export class AnthropicProvider implements LLMProvider {
               candidatesTokenCount,
               model,
               provider: this.name,
+              usage,
               toolRoundCount,
               repeatedRecoverableErrors: [...repeatedRecoverableErrors.values()],
             },

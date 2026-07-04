@@ -1,5 +1,17 @@
 import { ChatMessage } from '../types';
 
+export interface ProviderUsageMetadata {
+  source: 'api' | 'unavailable';
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  cacheCreationInputTokens?: number;
+  cacheReadInputTokens?: number;
+  cachedInputTokens?: number;
+  reasoningTokens?: number;
+  toolUseTokens?: number;
+}
+
 export interface StreamingResponse {
   text: string;
   isComplete: boolean;
@@ -9,6 +21,7 @@ export interface StreamingResponse {
     candidatesTokenCount?: number;
     model?: string;
     provider?: string;
+    usage?: ProviderUsageMetadata;
     toolRoundCount?: number;
     repeatedRecoverableErrors?: Array<{
       toolName: string;

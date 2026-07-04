@@ -8,6 +8,7 @@ import ThinkingIndicator from './ThinkingIndicator';
 import StreamingResponse from './StreamingResponse';
 import { streamChat } from '../../services/llmService';
 import { ChatMessage, HtmlProjectWorkspaceUpdate } from '../../types';
+import { applyTokenUsageToSession } from '../../services/sessionTokenUsage';
 
 const ChatContainer: React.FC<ChatContainerProps> = ({
   session,
@@ -138,14 +139,13 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
 
           const baseSession = sessionRef.current;
           const newAiMessage = { role: 'model' as const, content: fullModelResponse };
-          const finalSession = {
-            ...baseSession,
-            messages: [...baseSession.messages, newAiMessage],
-            tokenCount:
-              (baseSession.tokenCount || 0) +
-              tokenInfo.promptTokenCount +
-              tokenInfo.candidatesTokenCount,
-          };
+          const finalSession = applyTokenUsageToSession(
+            {
+              ...baseSession,
+              messages: [...baseSession.messages, newAiMessage],
+            },
+            tokenInfo,
+          );
 
           sessionRef.current = finalSession;
           setCurrentSession(finalSession);
@@ -182,6 +182,7 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
                       ...currentSession,
                       messages: [],
                       tokenCount: 0,
+                      tokenUsage: undefined,
                       activeProjectId: null,
                     };
                     setCurrentSession(resetSession);

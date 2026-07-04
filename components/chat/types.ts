@@ -1,5 +1,14 @@
 import type { ReactNode } from 'react';
 import { ChatMessage, ChatSession, RagChunk } from '../../types';
+import type { ProviderUsageMetadata } from '../../services/llmAdapter';
+
+export interface ChatTokenInfo {
+  promptTokenCount: number;
+  candidatesTokenCount: number;
+  usage?: ProviderUsageMetadata;
+  provider?: string;
+  model?: string;
+}
 
 export interface MessageBubbleProps {
   message: ChatMessage;
@@ -32,7 +41,7 @@ export interface ChatContainerProps {
     session: ChatSession,
     userMessage: string,
     modelResponse: string,
-    tokenInfo: { promptTokenCount: number; candidatesTokenCount: number },
+    tokenInfo: ChatTokenInfo,
   ) => Promise<void>;
   hideHeader?: boolean;
   sharedMode?: boolean;

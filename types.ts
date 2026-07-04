@@ -53,6 +53,26 @@ export interface ConversationRound {
   roundNumber: number;
 }
 
+export interface TokenUsageTotals {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  cacheCreationInputTokens?: number;
+  cacheReadInputTokens?: number;
+  cachedInputTokens?: number;
+  reasoningTokens?: number;
+  toolUseTokens?: number;
+}
+
+export interface SessionTokenUsage {
+  source: 'api' | 'unavailable';
+  totals?: TokenUsageTotals;
+  lastProvider?: string;
+  lastModel?: string;
+  lastUpdatedAt?: number;
+  unavailableTurns?: number;
+}
+
 export interface ChatSession {
   id: string;
   assistantId: string;
@@ -61,6 +81,7 @@ export interface ChatSession {
   createdAt: number;
   updatedAt?: number;
   tokenCount: number;
+  tokenUsage?: SessionTokenUsage;
   activeProjectId?: string | null;
   // 壓縮相關欄位
   compactContext?: CompactContext; // 壓縮的對話上下文

@@ -560,10 +560,19 @@ describe('GeminiProvider', () => {
         text: '',
         isComplete: true,
         metadata: {
-          promptTokenCount: 4,
-          candidatesTokenCount: 1,
+          promptTokenCount: 9,
+          candidatesTokenCount: 3,
           model: 'gemini-2.5-flash',
           provider: 'gemini',
+          usage: {
+            source: 'api',
+            inputTokens: 9,
+            outputTokens: 3,
+            totalTokens: 12,
+            cachedInputTokens: 0,
+            reasoningTokens: 0,
+            toolUseTokens: 0,
+          },
           toolRoundCount: 3,
           repeatedRecoverableErrors: [
             {
