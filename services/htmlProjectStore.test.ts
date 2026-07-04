@@ -1012,3 +1012,192 @@ describe('htmlProjectStore', () => {
     ).toEqual(['/index.html']);
   });
 });
+
+// ============================================================================
+// T4 Harness store tests (G11): listSnapshots, revertToSnapshot, retention
+// ============================================================================
+
+describe('htmlProjectStore snapshots (G11)', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+  });
+
+  it('listSnapshots returns snapshots sorted newest-first with retainedLimit', async () => {
+    const mockDb = createMockDb();
+    mockOpenDB.mockResolvedValue(mockDb);
+    const nowBase = 1700000000000;
+    vi.spyOn(Date, 'now').mockReturnValue(nowBase);
+
+    const { htmlProjectStore } = await import('./htmlProjectStore');
+
+    const project = await htmlProjectStore.createProject({
+      assistantId: 'assistant-1',
+      name: 'Snapshots',
+    });
+
+    // Create 3 snapshots at different previewVersions
+    await htmlProjectStore.writeFiles(project.id, [
+      { path: '/index.html', kind: 'html', content: '<div>v1</div>' },
+    ]);
+    await htmlProjectStore.createSnapshot(project.id, 'first');
+
+    await htmlProjectStore.writeFiles(project.id, [
+      { path: '/index.html', kind: 'html', content: '<div>v2</div>' },
+    ]);
+    await htmlProjectStore.createSnapshot(project.id, 'second');
+
+    await htmlProjectStore.writeFiles(project.id, [
+      { path: '/index.html', kind: 'html', content: '<div>v3</div>' },
+    ]);
+    await htmlProjectStore.createSnapshot(project.id, 'third');
+
+    const result = await htmlProjectStore.listSnapshots(project.id);
+
+    expect(result.projectId).toBe(project.id);
+    expect(result.retainedLimit).toBe(20);
+    expect(result.snapshots).toHaveLength(3);
+    // Newest-first: third (version 3), second (2), first (1)
+    expect(result.snapshots.map(s => s.version)).toEqual([3, 2, 1]);
+    expect(result.snapshots.map(s => s.note)).toEqual(['third', 'second', 'first']);
+  });
+
+  it('revertToSnapshot restores files and monotonically increments previewVersion', async () => {
+    const mockDb = createMockDb();
+    mockOpenDB.mockResolvedValue(mockDb);
+    vi.spyOn(Date, 'now').mockReturnValue(1700000000000);
+
+    const { htmlProjectStore } = await import('./htmlProjectStore');
+
+    const project = await htmlProjectStore.createProject({
+      assistantId: 'assistant-1',
+      name: 'Revert',
+    });
+
+    // v1: index.html + app.js
+    await htmlProjectStore.writeFiles(project.id, [
+      { path: '/index.html', kind: 'html', content: '<div>v1</div>' },
+      { path: '/app.js', kind: 'js', content: 'console.log("v1");' },
+    ]);
+    await htmlProjectStore.createSnapshot(project.id, 'v1');
+
+    // v2: index.html changed, app.js deleted, styles.css added
+    await htmlProjectStore.writeFiles(project.id, [
+      { path: '/index.html', kind: 'html', content: '<div>v2</div>' },
+      { path: '/styles.css', kind: 'css', content: 'body { color: red; }' },
+    ]);
+    await htmlProjectStore.deleteFile(project.id, '/app.js');
+    const afterV2 = await htmlProjectStore.assertProjectOwnership(project.id, 'assistant-1');
+    expect(afterV2.previewVersion).toBe(3); // 2 writes + 1 delete
+
+    // Revert to v1 (snapshot version 1)
+    const result = await htmlProjectStore.revertToSnapshot(project.id, 1);
+
+    expect(result.projectId).toBe(project.id);
+    expect(result.revertedToVersion).toBe(1);
+    expect(result.previewVersion).toBe(afterV2.previewVersion + 1);
+    expect(result.runtimeDiagnosticsCleared).toBe(true);
+    expect(result.filesRestored).toBe(2); // index.html + app.js
+
+    // Verify files are actually restored
+    const filesAfter = await htmlProjectStore.listProjectFiles(project.id);
+    const paths = filesAfter.map(f => f.path).sort();
+    expect(paths).toEqual(['/app.js', '/index.html']);
+
+    const indexFile = filesAfter.find(f => f.path === '/index.html');
+    expect(indexFile?.content).toBe('<div>v1</div>'); // reverted to v1 content
+
+    const appFile = filesAfter.find(f => f.path === '/app.js');
+    expect(appFile?.content).toBe('console.log("v1");');
+
+    // styles.css should be gone (not in snapshot)
+    expect(filesAfter.find(f => f.path === '/styles.css')).toBeUndefined();
+
+    // previewVersion should be monotonic (current + 1, not reset to 2)
+    const afterRevert = await htmlProjectStore.assertProjectOwnership(project.id, 'assistant-1');
+    expect(afterRevert.previewVersion).toBe(afterV2.previewVersion + 1);
+  });
+
+  it('revertToSnapshot throws for missing snapshot version', async () => {
+    const mockDb = createMockDb();
+    mockOpenDB.mockResolvedValue(mockDb);
+    vi.spyOn(Date, 'now').mockReturnValue(1700000000000);
+
+    const { htmlProjectStore } = await import('./htmlProjectStore');
+    const project = await htmlProjectStore.createProject({
+      assistantId: 'assistant-1',
+      name: 'Missing',
+    });
+
+    await expect(htmlProjectStore.revertToSnapshot(project.id, 99)).rejects.toThrow(
+      'Project snapshot version 99 not found.',
+    );
+  });
+
+  it('retention evicts oldest snapshots beyond limit of 20', async () => {
+    const mockDb = createMockDb();
+    mockOpenDB.mockResolvedValue(mockDb);
+    vi.spyOn(Date, 'now').mockReturnValue(1700000000000);
+
+    const { htmlProjectStore, SNAPSHOT_RETENTION_LIMIT } = await import('./htmlProjectStore');
+    expect(SNAPSHOT_RETENTION_LIMIT).toBe(20);
+
+    const project = await htmlProjectStore.createProject({
+      assistantId: 'assistant-1',
+      name: 'Retention',
+    });
+
+    // Create 23 snapshots (each needs a previewVersion bump)
+    for (let i = 0; i < 23; i += 1) {
+      await htmlProjectStore.writeFiles(project.id, [
+        { path: '/index.html', kind: 'html', content: `<div>v${i}</div>` },
+      ]);
+      await htmlProjectStore.createSnapshot(project.id, `snap-${i}`);
+    }
+
+    const result = await htmlProjectStore.listSnapshots(project.id);
+    expect(result.snapshots).toHaveLength(20);
+
+    // Should keep versions 4..23 (newest 20), evict versions 1..3
+    const versions = result.snapshots.map(s => s.version);
+    expect(Math.min(...versions)).toBe(4);
+    expect(Math.max(...versions)).toBe(23);
+
+    // Oldest snapshots should have been deleted via db.delete
+    expect(mockDb.delete).toHaveBeenCalledWith('htmlProjectSnapshots', [project.id, 1]);
+    expect(mockDb.delete).toHaveBeenCalledWith('htmlProjectSnapshots', [project.id, 2]);
+    expect(mockDb.delete).toHaveBeenCalledWith('htmlProjectSnapshots', [project.id, 3]);
+  });
+
+  it('createSnapshot persists file contents for revert', async () => {
+    const mockDb = createMockDb();
+    mockOpenDB.mockResolvedValue(mockDb);
+    vi.spyOn(Date, 'now').mockReturnValue(1700000000000);
+
+    const { htmlProjectStore } = await import('./htmlProjectStore');
+
+    const project = await htmlProjectStore.createProject({
+      assistantId: 'assistant-1',
+      name: 'Contents',
+    });
+
+    await htmlProjectStore.writeFiles(project.id, [
+      { path: '/index.html', kind: 'html', content: '<div>snapshot content</div>' },
+    ]);
+
+    const snapshot = await htmlProjectStore.createSnapshot(project.id, 'with-content');
+
+    // Public snapshot type only has paths
+    expect(snapshot.files).toEqual(['/index.html']);
+    expect(snapshot.version).toBe(1);
+
+    // But internal record (stored in mock DB) should have fileEntries
+    const stored = await mockDb.get('htmlProjectSnapshots', [project.id, snapshot.version]);
+    expect(stored).toBeDefined();
+    expect((stored as { fileEntries?: unknown }).fileEntries).toBeDefined();
+    const entries = (stored as { fileEntries: Array<{ path: string; content: string }> })
+      .fileEntries;
+    expect(entries[0].path).toBe('/index.html');
+    expect(entries[0].content).toBe('<div>snapshot content</div>');
+  });
+});

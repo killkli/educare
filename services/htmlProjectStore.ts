@@ -4,6 +4,8 @@ import {
   HtmlProjectFile,
   HtmlProjectFileDescriptor,
   HtmlProjectFileKind,
+  HtmlProjectListSnapshotsResult,
+  HtmlProjectRevertToSnapshotResult,
   HtmlProjectSnapshot,
   HtmlProjectTodo,
   HtmlProjectTodoStatus,
@@ -28,6 +30,10 @@ const DEFAULT_SEARCH_RESULT_LIMIT = 20;
 const MAX_SEARCH_RESULTS_PER_FILE = 5;
 const MAX_SEARCHABLE_FILE_SIZE = 250 * 1024;
 const SEARCH_SNIPPET_RADIUS = 120;
+/**
+ * G11 快照保留上限。每專案最多保留最近 20 份快照,超出按最舊淘汰。
+ */
+export const SNAPSHOT_RETENTION_LIMIT = 20;
 
 interface HtmlProjectDB extends DBSchema {
   [PROJECTS_STORE]: {
@@ -98,6 +104,23 @@ export interface HtmlProjectSearchMatch {
 export interface HtmlProjectSkippedFile {
   path: string;
   reason: 'unsupported-kind' | 'binary-encoding' | 'file-too-large';
+}
+
+/**
+ * 內部快照檔案條目 (G11)。對應 HtmlProjectFile 的快照版本,用於還原。
+ * 外部 API 回傳 HtmlProjectSnapshot (只含檔案路徑),但內部儲存含完整內容以支援還原。
+ */
+interface HtmlProjectSnapshotFileEntry {
+  path: string;
+  kind: HtmlProjectFileKind;
+  content: string;
+  encoding: 'utf-8' | 'base64';
+  dependencies?: string[];
+}
+
+interface HtmlProjectSnapshotRecord extends HtmlProjectSnapshot {
+  /** 內部欄位:完整檔案內容,用於 revertToSnapshot 還原。 */
+  fileEntries?: HtmlProjectSnapshotFileEntry[];
 }
 
 export interface SearchHtmlProjectFilesInput {
@@ -786,17 +809,152 @@ class HtmlProjectStore {
   async createSnapshot(projectId: string, note?: string): Promise<HtmlProjectSnapshot> {
     const db = await getDb();
     const project = await requireProject(db, projectId);
-    const files = await this.listFiles(projectId);
-    const snapshot: HtmlProjectSnapshot = {
+    const files = await this.listProjectFiles(projectId);
+    const fileEntries: HtmlProjectSnapshotFileEntry[] = files.map(file => ({
+      path: file.path,
+      kind: file.kind,
+      content: file.content,
+      encoding: file.encoding || 'utf-8',
+      dependencies: file.dependencies,
+    }));
+    const snapshot: HtmlProjectSnapshotRecord = {
       projectId,
       version: project.previewVersion,
       files: files.map(file => file.path),
       createdAt: now(),
       note,
+      fileEntries,
     };
 
     await db.put(PROJECT_SNAPSHOTS_STORE, snapshot);
-    return snapshot;
+    await this.enforceSnapshotRetention(db, projectId);
+    return {
+      projectId: snapshot.projectId,
+      version: snapshot.version,
+      files: snapshot.files,
+      createdAt: snapshot.createdAt,
+      note: snapshot.note,
+    };
+  }
+
+  /**
+   * G11:每專案保留最近 SNAPSHOT_RETENTION_LIMIT 份快照,超出按 version 升序淘汰最舊。
+   */
+  private async enforceSnapshotRetention(
+    db: IDBPDatabase<HtmlProjectDB>,
+    projectId: string,
+  ): Promise<void> {
+    const snapshots = (await db.getAllFromIndex(
+      PROJECT_SNAPSHOTS_STORE,
+      'by-project',
+      projectId,
+    )) as HtmlProjectSnapshotRecord[];
+    if (snapshots.length <= SNAPSHOT_RETENTION_LIMIT) {
+      return;
+    }
+
+    snapshots.sort((a, b) => a.version - b.version);
+    const evictCount = snapshots.length - SNAPSHOT_RETENTION_LIMIT;
+    for (let i = 0; i < evictCount; i += 1) {
+      const target = snapshots[i];
+      await db.delete(PROJECT_SNAPSHOTS_STORE, [projectId, target.version]);
+    }
+  }
+
+  /**
+   * G11:列出專案快照,依 version 降序 (最新在前),上限 SNAPSHOT_RETENTION_LIMIT。
+   */
+  async listSnapshots(projectId: string): Promise<HtmlProjectListSnapshotsResult> {
+    const db = await getDb();
+    await requireProject(db, projectId);
+    const records = (await db.getAllFromIndex(
+      PROJECT_SNAPSHOTS_STORE,
+      'by-project',
+      projectId,
+    )) as HtmlProjectSnapshotRecord[];
+    const sorted = records.sort((a, b) => b.version - a.version);
+    const capped = sorted.slice(0, SNAPSHOT_RETENTION_LIMIT);
+    const snapshots: HtmlProjectSnapshot[] = capped.map(record => ({
+      projectId: record.projectId,
+      version: record.version,
+      files: record.files,
+      createdAt: record.createdAt,
+      note: record.note,
+    }));
+    return {
+      projectId,
+      snapshots,
+      retainedLimit: SNAPSHOT_RETENTION_LIMIT,
+    };
+  }
+
+  /**
+   * G11:還原專案檔案至指定快照版本。還原後 previewVersion +1 (維持單調遞增)。
+   * runtime 診斷清理由呼叫端 (T4 工具) 透過 previewRuntimeDiagnostics.clear() 處理。
+   */
+  async revertToSnapshot(
+    projectId: string,
+    version: number,
+  ): Promise<HtmlProjectRevertToSnapshotResult> {
+    const db = await getDb();
+    const project = await requireProject(db, projectId);
+    const record = (await db.get(PROJECT_SNAPSHOTS_STORE, [projectId, version])) as
+      | HtmlProjectSnapshotRecord
+      | undefined;
+
+    if (!record) {
+      throw new Error(`Project snapshot version ${version} not found.`);
+    }
+
+    const entries = record.fileEntries ?? [];
+    const snapshotPaths = new Set(entries.map(entry => entry.path));
+
+    // 刪除快照中不存在的現有檔案
+    const currentFiles = await db.getAllFromIndex(PROJECT_FILES_STORE, 'by-project', projectId);
+    for (const file of currentFiles) {
+      if (!snapshotPaths.has(file.path)) {
+        await db.delete(PROJECT_FILES_STORE, [projectId, file.path]);
+      }
+    }
+
+    // 還原快照中的檔案內容
+    const timestamp = now();
+    for (const entry of entries) {
+      const restoredFile: HtmlProjectFile = {
+        projectId,
+        path: entry.path,
+        kind: entry.kind,
+        content: entry.content,
+        encoding: entry.encoding,
+        dependencies: entry.dependencies,
+        size: entry.content.length,
+        updatedAt: timestamp,
+      };
+      await db.put(PROJECT_FILES_STORE, restoredFile);
+    }
+
+    const snapshotAssetPaths = entries
+      .filter(entry => entry.kind === 'asset')
+      .map(entry => entry.path);
+
+    const nextProject: HtmlProject = {
+      ...project,
+      assetPaths: Array.from(new Set(snapshotAssetPaths)).sort(),
+      updatedAt: timestamp,
+      previewVersion: project.previewVersion + 1,
+      status: 'draft',
+      lastBuildError: null,
+    };
+
+    await updateProjectRecord(db, nextProject);
+
+    return {
+      projectId,
+      revertedToVersion: version,
+      previewVersion: nextProject.previewVersion,
+      runtimeDiagnosticsCleared: true,
+      filesRestored: entries.length,
+    };
   }
 
   async listTodos(projectId: string): Promise<HtmlProjectTodo[]> {

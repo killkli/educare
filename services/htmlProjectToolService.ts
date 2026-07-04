@@ -1,12 +1,19 @@
 import {
   HtmlProject,
   HtmlProjectFileKind,
+  HtmlProjectHarnessToolName,
+  HtmlProjectListSnapshotsResult,
   HtmlProjectPreviewArtifact,
+  HtmlProjectRevertToSnapshotResult,
+  HtmlProjectRuntimeDiagnosticResult,
+  HtmlProjectRuntimeDiagnosticStatus,
   HtmlProjectSummary,
   HtmlProjectTodoStatus,
   HtmlProjectToolExecutionResult,
   HtmlProjectToolPackName,
   HtmlProjectWorkspaceUpdate,
+  ReportTurnOutcome,
+  ReportTurnOutcomeResult,
 } from '../types';
 import type { ToolCall, ToolDefinition } from './llmAdapter';
 import { htmlPreviewService } from './htmlPreviewService';
@@ -16,6 +23,7 @@ import {
   type WriteHtmlProjectFileInput,
 } from './htmlProjectStore';
 import { getTemplateFiles, type HtmlProjectTemplate } from './htmlProjectTemplates';
+import { previewRuntimeDiagnostics } from './previewRuntimeDiagnostics';
 
 const HTML_PROJECT_TOOL_NAMES = [
   'createProject',
@@ -38,9 +46,24 @@ const HTML_PROJECT_TOOL_NAMES = [
   'renameFile',
   'setEntrypoint',
   'renderPreview',
+  // G2/G1/G11 harness-resident tools (auto-attached for any non-empty HTML pack set)
+  'reportTurnOutcome',
+  'getPreviewRuntimeErrors',
+  'listSnapshots',
+  'revertToSnapshot',
 ] as const;
 
 type HtmlProjectToolName = (typeof HTML_PROJECT_TOOL_NAMES)[number];
+
+/**
+ * G2:Harness 常駐工具。任一 HTML pack 曝光即自動附加 (不綁定單一 pack)。
+ */
+const HARNESS_RESIDENT_TOOL_NAMES: HtmlProjectHarnessToolName[] = [
+  'reportTurnOutcome',
+  'getPreviewRuntimeErrors',
+  'listSnapshots',
+  'revertToSnapshot',
+];
 
 const HTML_PROJECT_TOOL_PACKS: Record<HtmlProjectToolPackName, HtmlProjectToolName[]> = {
   bootstrap: ['createProject', 'listProjects', 'openProject'],
@@ -185,6 +208,26 @@ interface CheckProjectTodosArgs {
   projectId?: string;
 }
 
+interface ReportTurnOutcomeArgs {
+  projectId?: string;
+  outcome: ReportTurnOutcome;
+  notes?: string;
+}
+
+interface GetPreviewRuntimeErrorsArgs {
+  projectId?: string;
+  waitMs?: number;
+}
+
+interface ListSnapshotsArgs {
+  projectId?: string;
+}
+
+interface RevertToSnapshotArgs {
+  projectId?: string;
+  version: number;
+}
+
 const createWorkspaceUpdate = (
   activeProjectId: string | null,
   activityMessage: string,
@@ -229,6 +272,33 @@ const summarizeSearchResult = (result: {
 };
 
 const summarizeFileList = (paths: string[]): string => paths.join(', ');
+
+/**
+ * G11 防禦性檢查:偵測寫入內容是否包含動態程式碼模式 (new Function / DOMParser eval)。
+ * - ESM (含 import/export) 跳過檢查,回傳 moduleSyntaxSkipped:true。
+ * - 非阻塞警告,僅作為提示。
+ */
+const DYNAMIC_CODE_WARNING_MESSAGE =
+  'Detected dynamic code pattern (new Function/DOMParser); ensure this is intended.';
+
+interface DynamicCodeWarningResult {
+  warnings?: string[];
+  moduleSyntaxSkipped?: boolean;
+}
+
+const evaluateDynamicCodeWarning = (content: string): DynamicCodeWarningResult => {
+  if (!content) {
+    return {};
+  }
+  // ESM module syntax — skip warning to avoid false positives on import/export
+  if (/\bimport\b|\bexport\b/.test(content)) {
+    return { moduleSyntaxSkipped: true };
+  }
+  if (/new\s+Function\s*\(|\bDOMParser\b/.test(content)) {
+    return { warnings: [DYNAMIC_CODE_WARNING_MESSAGE] };
+  }
+  return {};
+};
 
 const summarizeTodoSummary = ({
   total,
@@ -1156,6 +1226,19 @@ const handleWriteFiles = async (
   const preview = await htmlPreviewService.resolveProjectForPreview(project.id);
   const summary = `已更新檔案：${summarizeFileList(result.updated)}。`;
 
+  // G11 防禦性檢查:對寫入的 JS/HTML 內容偵測動態程式碼模式 (非阻塞)
+  const warnings: string[] = [];
+  let moduleSyntaxSkipped = false;
+  for (const file of files) {
+    const warningResult = evaluateDynamicCodeWarning(file.content);
+    if (warningResult.warnings) {
+      warnings.push(...warningResult.warnings);
+    }
+    if (warningResult.moduleSyntaxSkipped) {
+      moduleSyntaxSkipped = true;
+    }
+  }
+
   return {
     toolName: 'writeFiles',
     summary,
@@ -1163,6 +1246,8 @@ const handleWriteFiles = async (
       projectId: project.id,
       updated: result.updated,
       previewVersion: result.previewVersion,
+      ...(warnings.length > 0 ? { warnings } : {}),
+      ...(moduleSyntaxSkipped ? { moduleSyntaxSkipped: true } : {}),
     },
     workspace: createWorkspaceUpdate(project.id, summary, preview),
   };
@@ -1288,6 +1373,9 @@ const handleReplaceInFile = async (
   const preview = await htmlPreviewService.resolveProjectForPreview(project.id);
   const summary = `已更新檔案 ${file.path} 的指定內容。`;
 
+  // G11 防禦性檢查
+  const warningResult = evaluateDynamicCodeWarning(updatedContent);
+
   return {
     toolName: 'replaceInFile',
     summary,
@@ -1298,6 +1386,8 @@ const handleReplaceInFile = async (
       previewVersion: result.previewVersion,
       replaced: true,
       matchCount,
+      ...(warningResult.warnings ? { warnings: warningResult.warnings } : {}),
+      ...(warningResult.moduleSyntaxSkipped ? { moduleSyntaxSkipped: true } : {}),
     },
     workspace: createWorkspaceUpdate(project.id, summary, preview),
   };
@@ -1473,6 +1563,9 @@ const handleModifyLinesInFile = async (
   const preview = await htmlPreviewService.resolveProjectForPreview(project.id);
   const summary = `已修改檔案 ${file.path} 的第 ${range.startLine}${range.endLine !== range.startLine ? `-${range.endLine}` : ''} 行。`;
 
+  // G11 防禦性檢查
+  const warningResult = evaluateDynamicCodeWarning(updatedContent);
+
   return {
     toolName: 'modifyLinesInFile',
     summary,
@@ -1487,6 +1580,8 @@ const handleModifyLinesInFile = async (
       endLine: range.endLine,
       totalLinesBefore,
       totalLinesAfter,
+      ...(warningResult.warnings ? { warnings: warningResult.warnings } : {}),
+      ...(warningResult.moduleSyntaxSkipped ? { moduleSyntaxSkipped: true } : {}),
     },
     workspace: createWorkspaceUpdate(project.id, summary, preview),
   };
@@ -1921,6 +2016,140 @@ const handleRenderPreview = async (
   };
 };
 
+// ============================================================================
+// Harness 工具 (G2/G1/G11) — 常駐工具,任何 HTML pack 曝光即自動附加。
+// ============================================================================
+
+const handleReportTurnOutcome = async (
+  args: ReportTurnOutcomeArgs,
+  context: HtmlProjectToolContext,
+): Promise<HtmlProjectToolExecutionResult> => {
+  const outcome: ReportTurnOutcome =
+    args.outcome === 'continue_needed' ? 'continue_needed' : 'complete';
+
+  // 嘗試取得當前 todoSummary (若無 active project 則省略)
+  let todoSummary: ReportTurnOutcomeResult['todoSummary'];
+  let previewDiagnosticState: HtmlProjectRuntimeDiagnosticStatus | undefined;
+  let projectId: string | null = null;
+
+  const explicitProjectId = args.projectId;
+  if (explicitProjectId || context.activeProjectId) {
+    try {
+      const project = await requireOwnedProject(explicitProjectId, context);
+      projectId = project.id;
+      todoSummary = await htmlProjectStore.getTodoSummary(project.id);
+      // 便宜地取得當前 runtime 診斷狀態 (waitMs=0,不阻塞)
+      const diagnostics = await previewRuntimeDiagnostics.waitForRuntimeDiagnostics(
+        project.id,
+        project.previewVersion,
+        0,
+      );
+      previewDiagnosticState = diagnostics.status;
+    } catch {
+      // 若無法取得專案,僅回報模型宣告的 outcome + notes
+    }
+  }
+
+  const notes = typeof args.notes === 'string' ? args.notes : undefined;
+  const summary =
+    outcome === 'complete'
+      ? '回合已完成 (model 回報 complete)。'
+      : '回合需要繼續 (model 回報 continue_needed)。';
+
+  const result: ReportTurnOutcomeResult = {
+    outcome,
+    ...(todoSummary ? { todoSummary } : {}),
+    ...(previewDiagnosticState ? { previewDiagnosticState } : {}),
+    ...(notes ? { notes } : {}),
+  };
+
+  return {
+    toolName: 'reportTurnOutcome',
+    summary,
+    result: result as unknown as Record<string, unknown>,
+    workspace: createWorkspaceUpdate(projectId, summary),
+  };
+};
+
+const handleGetPreviewRuntimeErrors = async (
+  args: GetPreviewRuntimeErrorsArgs,
+  context: HtmlProjectToolContext,
+): Promise<HtmlProjectToolExecutionResult> => {
+  const project = await requireOwnedProject(args.projectId, context);
+  // 預設 1500ms,clamp 至 [0, 5000]
+  const rawWait = typeof args.waitMs === 'number' ? args.waitMs : 1500;
+  const clampedWait = Math.max(0, Math.min(5000, rawWait));
+
+  const diagnostics: HtmlProjectRuntimeDiagnosticResult =
+    await previewRuntimeDiagnostics.waitForRuntimeDiagnostics(
+      project.id,
+      project.previewVersion,
+      clampedWait,
+    );
+
+  const summary =
+    diagnostics.status === 'has_errors'
+      ? `預覽 runtime 捕獲 ${diagnostics.errors.length} 項錯誤。`
+      : diagnostics.status === 'clean'
+        ? '預覽 runtime 無錯誤。'
+        : '預覽 runtime 尚未執行 (未收到 ready ack)。';
+
+  return {
+    toolName: 'getPreviewRuntimeErrors',
+    summary,
+    result: diagnostics as unknown as Record<string, unknown>,
+    workspace: createWorkspaceUpdate(project.id, summary),
+  };
+};
+
+const handleListSnapshots = async (
+  args: ListSnapshotsArgs,
+  context: HtmlProjectToolContext,
+): Promise<HtmlProjectToolExecutionResult> => {
+  const project = await requireOwnedProject(args.projectId, context);
+  const result: HtmlProjectListSnapshotsResult = await htmlProjectStore.listSnapshots(project.id);
+  const summary = `專案共有 ${result.snapshots.length} 份快照 (保留上限 ${result.retainedLimit})。`;
+
+  return {
+    toolName: 'listSnapshots',
+    summary,
+    result: result as unknown as Record<string, unknown>,
+    workspace: createWorkspaceUpdate(project.id, summary),
+  };
+};
+
+const handleRevertToSnapshot = async (
+  args: RevertToSnapshotArgs,
+  context: HtmlProjectToolContext,
+): Promise<HtmlProjectToolExecutionResult> => {
+  const project = await requireOwnedProject(args.projectId, context);
+  if (typeof args.version !== 'number' || !Number.isFinite(args.version)) {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'invalid-revert-version',
+      message: 'revertToSnapshot requires a numeric version.',
+      guidance: 'Call listSnapshots first and pass the version field of the target snapshot.',
+    });
+  }
+
+  const result: HtmlProjectRevertToSnapshotResult = await htmlProjectStore.revertToSnapshot(
+    project.id,
+    args.version,
+  );
+  // G11:還原後清空 runtime 診斷 (避免舊預覽的錯誤殘留)
+  previewRuntimeDiagnostics.clear(project.id);
+
+  const summary = `已還原專案至快照版本 ${result.revertedToVersion} (新預覽版本 ${result.previewVersion},還原 ${result.filesRestored} 個檔案)。`;
+
+  return {
+    toolName: 'revertToSnapshot',
+    summary,
+    result: result as unknown as Record<string, unknown>,
+    workspace: createWorkspaceUpdate(project.id, summary),
+  };
+};
+
 export const getHtmlProjectToolDefinitions = (): ToolDefinition[] => [
   {
     name: 'createProject',
@@ -2224,6 +2453,77 @@ export const getHtmlProjectToolDefinitions = (): ToolDefinition[] => [
       required: [],
     },
   },
+  // ===== Harness 常駐工具 (G2/G1/G11) =====
+  {
+    name: 'reportTurnOutcome',
+    description:
+      'Harness-resident tool (G2). Report whether the current turn is complete or needs continuation. Call this at the end of each turn with outcome "complete" or "continue_needed". The harness controller performs authoritative verification; this tool packages the model-reported outcome plus current todo summary and preview diagnostic state.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        projectId: { type: 'string' },
+        outcome: {
+          type: 'string',
+          enum: ['complete', 'continue_needed'],
+          description: 'Whether this turn is complete or needs another continuation round.',
+        },
+        notes: {
+          type: 'string',
+          description: 'Optional short notes explaining the outcome.',
+        },
+      },
+      required: ['outcome'],
+    },
+  },
+  {
+    name: 'getPreviewRuntimeErrors',
+    description:
+      'Harness-resident tool (G1). Query runtime diagnostics (onerror/unhandledrejection/console) captured from the preview iframe for the current previewVersion. Returns status not_executed/clean/has_errors. Use to verify whether recent edits introduced runtime errors.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        projectId: { type: 'string' },
+        waitMs: {
+          type: 'number',
+          description:
+            'Maximum time to wait for a ready ack for the current previewVersion before returning. Default 1500, clamped to [0, 5000].',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'listSnapshots',
+    description:
+      'Harness-resident tool (G11). List recent project snapshots (newest-first, capped at 20). Use before revertToSnapshot to find the target version.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        projectId: { type: 'string' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'revertToSnapshot',
+    description:
+      'Harness-resident tool (G11). Revert project files to a previous snapshot version. previewVersion is incremented by +1 (monotonic) after revert, and runtime diagnostics are cleared. Use when a bad edit sequence should be rolled back.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        projectId: { type: 'string' },
+        version: {
+          type: 'number',
+          description: 'The snapshot version to revert to (from listSnapshots).',
+        },
+      },
+      required: ['version'],
+    },
+  },
 ];
 
 export const getHtmlProjectToolNamesForPacks = (
@@ -2238,6 +2538,11 @@ export const getHtmlProjectToolNamesForPacks = (
     for (const toolName of HTML_PROJECT_TOOL_PACKS[packName]) {
       allowedNames.add(toolName);
     }
+  }
+
+  // G2/G1/G11:任何非空 pack 曝光時,自動附加 harness 常駐工具 (去重)。
+  for (const toolName of HARNESS_RESIDENT_TOOL_NAMES) {
+    allowedNames.add(toolName);
   }
 
   return [...allowedNames];
@@ -2318,6 +2623,17 @@ export const executeHtmlProjectToolCall = async (
         return await handleSetEntrypoint(safeArgs as unknown as SetEntrypointArgs, context);
       case 'renderPreview':
         return await handleRenderPreview(safeArgs as unknown as RenderPreviewArgs, context);
+      case 'reportTurnOutcome':
+        return await handleReportTurnOutcome(safeArgs as unknown as ReportTurnOutcomeArgs, context);
+      case 'getPreviewRuntimeErrors':
+        return await handleGetPreviewRuntimeErrors(
+          safeArgs as unknown as GetPreviewRuntimeErrorsArgs,
+          context,
+        );
+      case 'listSnapshots':
+        return await handleListSnapshots(safeArgs as unknown as ListSnapshotsArgs, context);
+      case 'revertToSnapshot':
+        return await handleRevertToSnapshot(safeArgs as unknown as RevertToSnapshotArgs, context);
       default:
         throw new Error(`Unsupported HTML project tool: ${call.name}`);
     }

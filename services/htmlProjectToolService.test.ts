@@ -19,6 +19,10 @@ const {
   mockSetEntrypoint,
   mockUpdateTodo,
   mockWriteFiles,
+  mockListSnapshots,
+  mockRevertToSnapshot,
+  mockWaitForRuntimeDiagnostics,
+  mockClearRuntimeDiagnostics,
 } = vi.hoisted(() => ({
   mockAssertProjectOwnership: vi.fn(),
   mockCopyFile: vi.fn(),
@@ -37,6 +41,10 @@ const {
   mockSetEntrypoint: vi.fn(),
   mockUpdateTodo: vi.fn(),
   mockWriteFiles: vi.fn(),
+  mockListSnapshots: vi.fn(),
+  mockRevertToSnapshot: vi.fn(),
+  mockWaitForRuntimeDiagnostics: vi.fn(),
+  mockClearRuntimeDiagnostics: vi.fn(),
 }));
 
 vi.mock('./htmlProjectStore', async importOriginal => {
@@ -60,6 +68,8 @@ vi.mock('./htmlProjectStore', async importOriginal => {
       setEntrypoint: mockSetEntrypoint,
       updateTodo: mockUpdateTodo,
       writeFiles: mockWriteFiles,
+      listSnapshots: mockListSnapshots,
+      revertToSnapshot: mockRevertToSnapshot,
     },
   };
 });
@@ -68,6 +78,13 @@ vi.mock('./htmlPreviewService', () => ({
   htmlPreviewService: {
     resolveProjectForPreview: mockResolveProjectForPreview,
     buildPreviewArtifact: mockBuildPreviewArtifact,
+  },
+}));
+
+vi.mock('./previewRuntimeDiagnostics', () => ({
+  previewRuntimeDiagnostics: {
+    waitForRuntimeDiagnostics: mockWaitForRuntimeDiagnostics,
+    clear: mockClearRuntimeDiagnostics,
   },
 }));
 
@@ -138,6 +155,28 @@ describe('executeHtmlProjectToolCall', () => {
       id: 'project-1',
       entryFile: '/index.html',
       previewVersion: 4,
+    });
+    mockWaitForRuntimeDiagnostics.mockResolvedValue({
+      projectId: 'project-1',
+      previewVersion: 3,
+      status: 'clean',
+      errors: [],
+      readyAckReceived: true,
+      waitedForReadyAck: false,
+      waitMs: 0,
+    });
+    mockClearRuntimeDiagnostics.mockReturnValue(undefined);
+    mockListSnapshots.mockResolvedValue({
+      projectId: 'project-1',
+      snapshots: [],
+      retainedLimit: 20,
+    });
+    mockRevertToSnapshot.mockResolvedValue({
+      projectId: 'project-1',
+      revertedToVersion: 2,
+      previewVersion: 4,
+      runtimeDiagnosticsCleared: true,
+      filesRestored: 3,
     });
   });
 
@@ -1952,5 +1991,292 @@ describe('getHtmlProjectToolDefinitions', () => {
     expect(renderPreviewDefinition?.description).toContain(
       'repair diagnostics require revalidation',
     );
+  });
+});
+
+// ============================================================================
+// T4 Harness tool tests (G2/G1/G11)
+// ============================================================================
+
+describe('getHtmlProjectToolNamesForPacks (harness-resident tools)', () => {
+  it('auto-attaches all 4 harness-resident tools for any non-empty HTML pack set', async () => {
+    const { getHtmlProjectToolNamesForPacks } = await import('./htmlProjectToolService');
+
+    const residentTools = [
+      'reportTurnOutcome',
+      'getPreviewRuntimeErrors',
+      'listSnapshots',
+      'revertToSnapshot',
+    ];
+
+    for (const pack of [
+      'bootstrap',
+      'inspect',
+      'edit',
+      'todo_finalize',
+      'preview_recheck',
+    ] as const) {
+      const names = getHtmlProjectToolNamesForPacks([pack]);
+      for (const tool of residentTools) {
+        expect(names).toContain(tool);
+      }
+    }
+  });
+
+  it('returns empty array (no resident tools) when pack set is empty', async () => {
+    const { getHtmlProjectToolNamesForPacks } = await import('./htmlProjectToolService');
+    expect(getHtmlProjectToolNamesForPacks([])).toEqual([]);
+  });
+
+  it('dedupes resident tools when multiple packs are selected', async () => {
+    const { getHtmlProjectToolNamesForPacks } = await import('./htmlProjectToolService');
+    const names = getHtmlProjectToolNamesForPacks(['inspect', 'edit']);
+    const reportCount = names.filter(n => n === 'reportTurnOutcome').length;
+    expect(reportCount).toBe(1);
+  });
+});
+
+describe('executeHtmlProjectToolCall — harness tools', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('reportTurnOutcome returns outcome + todoSummary + previewDiagnosticState', async () => {
+    mockGetTodoSummary.mockResolvedValueOnce({
+      projectId: 'project-1',
+      total: 4,
+      pending: 1,
+      inProgress: 1,
+      completed: 2,
+      allComplete: false,
+    });
+    mockWaitForRuntimeDiagnostics.mockResolvedValueOnce({
+      projectId: 'project-1',
+      previewVersion: 3,
+      status: 'clean',
+      errors: [],
+      readyAckReceived: true,
+      waitedForReadyAck: false,
+      waitMs: 0,
+    });
+
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'reportTurnOutcome',
+        args: { outcome: 'continue_needed', notes: 'still fixing preview' },
+      },
+      { assistantId: 'assistant-1', sessionId: 'session-1', activeProjectId: 'project-1' },
+    );
+
+    expect(result.toolName).toBe('reportTurnOutcome');
+    expect(result.result.outcome).toBe('continue_needed');
+    expect(result.result.notes).toBe('still fixing preview');
+    expect(result.result.todoSummary).toMatchObject({ total: 4, completed: 2 });
+    expect(result.result.previewDiagnosticState).toBe('clean');
+  });
+
+  it('reportTurnOutcome defaults invalid outcome to complete', async () => {
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+    const result = await executeHtmlProjectToolCall(
+      { name: 'reportTurnOutcome', args: { outcome: 'unknown-value' } },
+      { assistantId: 'assistant-1', activeProjectId: 'project-1' },
+    );
+    expect(result.result.outcome).toBe('complete');
+  });
+
+  it('getPreviewRuntimeErrors clamps waitMs to [0, 5000] and defaults to 1500', async () => {
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    // Default 1500
+    await executeHtmlProjectToolCall(
+      { name: 'getPreviewRuntimeErrors', args: {} },
+      { assistantId: 'assistant-1', activeProjectId: 'project-1' },
+    );
+    expect(mockWaitForRuntimeDiagnostics).toHaveBeenLastCalledWith('project-1', 3, 1500);
+
+    // Clamp high
+    await executeHtmlProjectToolCall(
+      { name: 'getPreviewRuntimeErrors', args: { waitMs: 99999 } },
+      { assistantId: 'assistant-1', activeProjectId: 'project-1' },
+    );
+    expect(mockWaitForRuntimeDiagnostics).toHaveBeenLastCalledWith('project-1', 3, 5000);
+
+    // Clamp negative
+    await executeHtmlProjectToolCall(
+      { name: 'getPreviewRuntimeErrors', args: { waitMs: -100 } },
+      { assistantId: 'assistant-1', activeProjectId: 'project-1' },
+    );
+    expect(mockWaitForRuntimeDiagnostics).toHaveBeenLastCalledWith('project-1', 3, 0);
+  });
+
+  it('listSnapshots returns the store result', async () => {
+    mockListSnapshots.mockResolvedValueOnce({
+      projectId: 'project-1',
+      snapshots: [
+        { projectId: 'project-1', version: 3, files: ['/index.html'], createdAt: 1 },
+        { projectId: 'project-1', version: 2, files: ['/index.html'], createdAt: 2 },
+      ],
+      retainedLimit: 20,
+    });
+
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+    const result = await executeHtmlProjectToolCall(
+      { name: 'listSnapshots', args: {} },
+      { assistantId: 'assistant-1', activeProjectId: 'project-1' },
+    );
+
+    expect(result.toolName).toBe('listSnapshots');
+    expect(result.result.snapshots).toHaveLength(2);
+    expect(result.result.retainedLimit).toBe(20);
+  });
+
+  it('revertToSnapshot calls store + clears runtime diagnostics', async () => {
+    mockRevertToSnapshot.mockResolvedValueOnce({
+      projectId: 'project-1',
+      revertedToVersion: 2,
+      previewVersion: 4,
+      runtimeDiagnosticsCleared: true,
+      filesRestored: 3,
+    });
+
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+    const result = await executeHtmlProjectToolCall(
+      { name: 'revertToSnapshot', args: { version: 2 } },
+      { assistantId: 'assistant-1', activeProjectId: 'project-1' },
+    );
+
+    expect(mockRevertToSnapshot).toHaveBeenCalledWith('project-1', 2);
+    expect(mockClearRuntimeDiagnostics).toHaveBeenCalledWith('project-1');
+    expect(result.toolName).toBe('revertToSnapshot');
+    expect(result.result).toMatchObject({
+      revertedToVersion: 2,
+      previewVersion: 4,
+      runtimeDiagnosticsCleared: true,
+      filesRestored: 3,
+    });
+  });
+
+  it('revertToSnapshot returns recoverable error for non-numeric version', async () => {
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+    const result = await executeHtmlProjectToolCall(
+      { name: 'revertToSnapshot', args: { version: 'abc' } },
+      { assistantId: 'assistant-1', activeProjectId: 'project-1' },
+    );
+
+    expect(result.result).toMatchObject({
+      ok: false,
+      recoverable: true,
+      code: 'invalid-revert-version',
+    });
+    expect(mockRevertToSnapshot).not.toHaveBeenCalled();
+  });
+});
+
+describe('write-tool dynamic-code syntax warnings (G11)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('flags new Function( in writeFiles content', async () => {
+    mockWriteFiles.mockResolvedValueOnce({ updated: ['/evil.js'], previewVersion: 4 });
+
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'writeFiles',
+        args: {
+          files: [{ path: '/evil.js', content: 'var x = new Function("return 1")' }],
+        },
+      },
+      { assistantId: 'assistant-1', activeProjectId: 'project-1' },
+    );
+
+    expect(result.result.warnings).toEqual([
+      'Detected dynamic code pattern (new Function/DOMParser); ensure this is intended.',
+    ]);
+    expect(result.result.moduleSyntaxSkipped).toBeUndefined();
+  });
+
+  it('skips warning and sets moduleSyntaxSkipped for ESM content', async () => {
+    mockWriteFiles.mockResolvedValueOnce({ updated: ['/mod.js'], previewVersion: 4 });
+
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'writeFiles',
+        args: {
+          files: [
+            {
+              path: '/mod.js',
+              content: 'import { foo } from "./bar";\nexport const x = new Function("return 1");',
+            },
+          ],
+        },
+      },
+      { assistantId: 'assistant-1', activeProjectId: 'project-1' },
+    );
+
+    expect(result.result.warnings).toBeUndefined();
+    expect(result.result.moduleSyntaxSkipped).toBe(true);
+  });
+
+  it('does not flag benign content', async () => {
+    mockWriteFiles.mockResolvedValueOnce({ updated: ['/index.html'], previewVersion: 4 });
+
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'writeFiles',
+        args: {
+          files: [{ path: '/index.html', content: '<div>hello world</div>' }],
+        },
+      },
+      { assistantId: 'assistant-1', activeProjectId: 'project-1' },
+    );
+
+    expect(result.result.warnings).toBeUndefined();
+    expect(result.result.moduleSyntaxSkipped).toBeUndefined();
+  });
+
+  it('flags DOMParser usage in replaceInFile', async () => {
+    mockReadFile.mockResolvedValueOnce({
+      projectId: 'project-1',
+      path: '/parse.js',
+      kind: 'js',
+      content: 'var old;',
+      encoding: 'utf-8',
+      size: 8,
+      updatedAt: 1,
+    });
+    mockWriteFiles.mockResolvedValueOnce({ updated: ['/parse.js'], previewVersion: 4 });
+
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'replaceInFile',
+        args: {
+          path: '/parse.js',
+          oldText: 'old',
+          newText: 'new DOMParser().parseFromString(html, "text/html")',
+        },
+      },
+      { assistantId: 'assistant-1', activeProjectId: 'project-1' },
+    );
+
+    expect(result.result.warnings).toEqual([
+      'Detected dynamic code pattern (new Function/DOMParser); ensure this is intended.',
+    ]);
+  });
+});
+
+describe('harness tool definitions', () => {
+  it('exposes all 4 resident tool definitions', async () => {
+    const { getHtmlProjectToolDefinitions } = await import('./htmlProjectToolService');
+    const names = getHtmlProjectToolDefinitions().map(d => d.name);
+    expect(names).toContain('reportTurnOutcome');
+    expect(names).toContain('getPreviewRuntimeErrors');
+    expect(names).toContain('listSnapshots');
+    expect(names).toContain('revertToSnapshot');
   });
 });
