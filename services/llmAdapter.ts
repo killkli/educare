@@ -125,7 +125,7 @@ export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
         model: 'gemini-2.5-flash',
         temperature: 0.7,
         maxTokens: 4096,
-        maxToolRounds: 20,
+        maxToolRounds: 50,
       },
     },
     openai: {
@@ -134,7 +134,7 @@ export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
         model: 'gpt-4o',
         temperature: 0.7,
         maxTokens: 4096,
-        maxToolRounds: 20,
+        maxToolRounds: 50,
       },
     },
     anthropic: {
@@ -143,7 +143,7 @@ export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
         model: 'claude-opus-4-8',
         temperature: 0.7,
         maxTokens: 4096,
-        maxToolRounds: 20,
+        maxToolRounds: 50,
       },
     },
     ollama: {
@@ -153,7 +153,7 @@ export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
         model: 'llama3.2:latest',
         temperature: 0.7,
         maxTokens: 4096,
-        maxToolRounds: 20,
+        maxToolRounds: 50,
       },
     },
     groq: {
@@ -162,7 +162,7 @@ export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
         model: 'llama-3.1-70b-versatile',
         temperature: 0.7,
         maxTokens: 4096,
-        maxToolRounds: 20,
+        maxToolRounds: 50,
       },
     },
     openrouter: {
@@ -171,7 +171,7 @@ export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
         model: 'openai/gpt-4o',
         temperature: 0.7,
         maxTokens: 4096,
-        maxToolRounds: 20,
+        maxToolRounds: 50,
       },
     },
     lmstudio: {
@@ -181,7 +181,7 @@ export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
         model: 'local-model',
         temperature: 0.7,
         maxTokens: 4096,
-        maxToolRounds: 20,
+        maxToolRounds: 50,
       },
     },
   },
@@ -217,9 +217,9 @@ const sanitizeProviderConfig = (
     min: 100,
     max: 32000,
   }),
-  maxToolRounds: sanitizeNumber(savedConfig?.maxToolRounds, defaultConfig.maxToolRounds ?? 20, {
+  maxToolRounds: sanitizeNumber(savedConfig?.maxToolRounds, defaultConfig.maxToolRounds ?? 50, {
     min: 1,
-    max: 50,
+    max: 200,
   }),
 });
 
