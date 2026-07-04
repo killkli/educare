@@ -41,7 +41,9 @@ export default [
         Response: 'readonly',
         Request: 'readonly',
         Headers: 'readonly',
-        Blob: 'readonly',
+        // Blob intentionally NOT declared here: components/assistant/__tests__/test-utils.ts
+        // declares it via an inline `/* global Blob */` and a global-level entry would trigger
+        // no-redeclare. Code that needs Blob uses globalThis.Blob.
         // Runtime/preview harness globals
         performance: 'readonly',
         Window: 'readonly',

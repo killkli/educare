@@ -112,6 +112,11 @@ describe('streamChat', () => {
           'listProjectTodos',
           'checkProjectTodos',
           'renderPreview',
+          // harness-resident tools auto-attach to any non-empty HTML pack set (T4/G2)
+          'reportTurnOutcome',
+          'getPreviewRuntimeErrors',
+          'listSnapshots',
+          'revertToSnapshot',
         ]);
 
         yield {
@@ -165,7 +170,9 @@ describe('streamChat', () => {
       },
     );
     expect(provider.streamChat).toHaveBeenCalledTimes(1);
-    expect(observedChatParams[0]?.tools).toHaveLength(7);
+    // 7 pack tools + 4 harness-resident tools (reportTurnOutcome,
+    // getPreviewRuntimeErrors, listSnapshots, revertToSnapshot) auto-attached (T4/G2)
+    expect(observedChatParams[0]?.tools).toHaveLength(11);
     expect(observedChatParams[0]?.tools).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: 'getProjectSummary' }),
@@ -175,6 +182,10 @@ describe('streamChat', () => {
         expect.objectContaining({ name: 'listProjectTodos' }),
         expect.objectContaining({ name: 'checkProjectTodos' }),
         expect.objectContaining({ name: 'renderPreview' }),
+        expect.objectContaining({ name: 'reportTurnOutcome' }),
+        expect.objectContaining({ name: 'getPreviewRuntimeErrors' }),
+        expect.objectContaining({ name: 'listSnapshots' }),
+        expect.objectContaining({ name: 'revertToSnapshot' }),
       ]),
     );
     expect(observedChatParams[0]?.tools).not.toEqual(
