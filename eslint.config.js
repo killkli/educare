@@ -34,6 +34,9 @@ export default [
         localStorage: 'readonly',
         sessionStorage: 'readonly',
         fetch: 'readonly',
+        // Abort API (agentic harness AbortSignal / AbortController)
+        AbortSignal: 'readonly',
+        AbortController: 'readonly',
         HTMLElement: 'readonly',
         Event: 'readonly',
         CustomEvent: 'readonly',

@@ -24,11 +24,26 @@ export interface Assistant {
   ragChunks?: RagChunk[];
   createdAt: number;
   isShared?: boolean;
+  /**
+   * Agentic harness 開關 (G9)。預設 true:啟用跨回合自主續跑。
+   * 關閉時退回現行單回合行為。shared mode 預設續跑預算 = 1。
+   */
+  agentHarnessEnabled?: boolean;
 }
 
 export interface ChatMessage {
   role: 'user' | 'model';
   content: string;
+  /**
+   * Agent 回合摘要軌跡 (G6)。序列化上限 200 字元,用於活動面板顯示與偵錯。
+   * 由 conversationUtils 在每回合結束時填入。
+   */
+  agentTurnLog?: string;
+  /**
+   * 合成訊息標記 (G6)。續跑回合由 controller 產生的歷史銜接訊息標記為 true,
+   * 在 UI 中摺疊顯示,且為 compaction 時最優先丟棄的對象。
+   */
+  synthetic?: boolean;
 }
 
 /**
@@ -151,6 +166,24 @@ export interface HtmlProjectSnapshot {
   note?: string;
 }
 
+/**
+ * 快照還原規格 (G11)。每專案保留最近 20 份,超出淘汰最舊。
+ * revertToSnapshot 還原檔案後 previewVersion +1 (維持單調遞增) 並清空 runtime 診斷。
+ */
+export interface HtmlProjectListSnapshotsResult {
+  projectId: string;
+  snapshots: HtmlProjectSnapshot[];
+  retainedLimit: number;
+}
+
+export interface HtmlProjectRevertToSnapshotResult {
+  projectId: string;
+  revertedToVersion: number;
+  previewVersion: number;
+  runtimeDiagnosticsCleared: boolean;
+  filesRestored: number;
+}
+
 export interface HtmlProjectFileDescriptor {
   path: string;
   kind: HtmlProjectFileKind;
@@ -182,9 +215,18 @@ export type HtmlProjectPreviewDiagnosticCategory =
   | 'missing_reference'
   | 'build_error'
   | 'external_dependency_warning'
+  | 'runtime_error' // G1:iframe 內 JS 執行期錯誤 (onerror/unhandledrejection/console)
   | 'unknown';
 
 export type HtmlProjectPreviewOutcome = 'ready' | 'repairable_error' | 'non_repairable_error';
+
+/**
+ * Runtime 診斷三態 (G1)。
+ * - not_executed:尚未執行 (未收到 ready ack 或無法掛載 iframe)
+ * - clean:已執行且無錯誤
+ * - has_errors:已執行且捕獲 runtime 錯誤
+ */
+export type HtmlProjectRuntimeDiagnosticStatus = 'not_executed' | 'clean' | 'has_errors';
 
 export interface HtmlProjectPreviewDiagnostics {
   category: HtmlProjectPreviewDiagnosticCategory;
@@ -194,6 +236,34 @@ export interface HtmlProjectPreviewDiagnostics {
   missingPaths?: string[];
   warnings?: string[];
   details?: string[];
+}
+
+/**
+ * Runtime 錯誤条目 (G1)。由預覽 iframe 內的 bridge 捕獲並經 postMessage 回傳。
+ * bridge 會去重、上限 50 筆、訊息截斷。
+ */
+export interface HtmlProjectRuntimeErrorEntry {
+  kind: 'error' | 'unhandledrejection' | 'console_error' | 'console_warn';
+  message: string;
+  stack?: string;
+  source?: string;
+  lineno?: number;
+  colno?: number;
+  timestamp: number;
+}
+
+/**
+ * Runtime 診斷查詢結果 (G1/G8)。getPreviewRuntimeErrors 工具回傳值。
+ * waitMs 預設 1500、上限 5000;在 ready ack 版本相符前查詢回傳 not_executed。
+ */
+export interface HtmlProjectRuntimeDiagnosticResult {
+  projectId: string;
+  previewVersion: number;
+  status: HtmlProjectRuntimeDiagnosticStatus;
+  errors: HtmlProjectRuntimeErrorEntry[];
+  readyAckReceived: boolean;
+  waitedForReadyAck: boolean;
+  waitMs: number;
 }
 
 export interface HtmlProjectPreviewArtifact {
@@ -255,6 +325,13 @@ export interface HtmlProjectAgentTelemetryEvent {
   previewOutcome?: HtmlProjectPreviewOutcome;
   toolRounds: number;
   durationMs?: number;
+  /** Harness 欄位 (G14):寫入 IndexedDB ring buffer (200 筆) 供成功率評估。*/
+  runId?: string;
+  turnIndex?: number;
+  finishReason?: FinishReason;
+  autoContinued?: boolean;
+  abortReason?: string;
+  runtimeDiagnosticState?: HtmlProjectRuntimeDiagnosticStatus;
 }
 
 export interface HtmlProjectWorkspaceUpdate {
@@ -268,6 +345,70 @@ export interface HtmlProjectToolExecutionResult {
   summary: string;
   result: Record<string, unknown>;
   workspace: HtmlProjectWorkspaceUpdate;
+}
+
+// ============================================================================
+// Agentic Harness Contracts (Wave 0 / T0)
+// 跨回合自主續跑、runtime 驗證、完成覆核、AbortSignal、loop 偵測。
+// 詳見 .omc/plans/web-agentic-harness-html-projects-plan.md
+// ============================================================================
+
+/**
+ * 單一回合/串流的結束原因。
+ * - complete:模型自然結束 (純文字路徑或工具迴圈正常完成)
+ * - tool-budget-exhausted:達到單回合工具輪上限 (不再 throw,G13)
+ * - stop-route:recoverable error 升級到 stop-route (loopAction)
+ * - aborted:AbortSignal 觸發 (G17)
+ */
+export type FinishReason = 'complete' | 'tool-budget-exhausted' | 'stop-route' | 'aborted';
+
+/**
+ * Harness 常駐工具名稱 (G2)。不綁 pack,任一 HTML pack 曝光即自動附加。
+ * 工具實作在 htmlProjectToolService.ts (T4);名稱在 types.ts 統一定義供匯入。
+ */
+export type HtmlProjectHarnessToolName =
+  | 'reportTurnOutcome'
+  | 'getPreviewRuntimeErrors'
+  | 'listSnapshots'
+  | 'revertToSnapshot';
+
+/** reportTurnOutcome 工具的回報結果 (G2/G4)。*/
+export type ReportTurnOutcome = 'complete' | 'continue_needed';
+
+export interface ReportTurnOutcomeResult {
+  outcome: ReportTurnOutcome;
+  todoSummary?: HtmlProjectTodoSummary;
+  previewDiagnosticState?: HtmlProjectRuntimeDiagnosticStatus;
+  notes?: string;
+}
+
+/** Agent run 狀態機 (T6)。*/
+export type AgentRunStatus = 'running' | 'complete' | 'stopped' | 'failed' | 'aborted';
+
+export interface AgentRunState {
+  runId: string;
+  projectId: string;
+  sessionId?: string | null;
+  assistantId?: string | null;
+  status: AgentRunStatus;
+  /** 當前續跑回合索引 (0-based)。*/
+  turnIndex: number;
+  /** 續跑預算上限;預設 5,shared mode 預設 1 (G9)。*/
+  maxTurns: number;
+  finishReason?: FinishReason;
+  /** run 起始快照 version (G11)。*/
+  snapshotVersion?: number;
+  todoSummary?: HtmlProjectTodoSummary;
+  previewDiagnosticState: HtmlProjectRuntimeDiagnosticStatus;
+  abortReason?: string;
+  /** 是否曾發生自動續跑 (供 telemetry)。*/
+  autoContinued: boolean;
+  /** 跨回合工具軌跡 (最近 N 個工具名稱,供 loop 偵測 G12)。*/
+  toolTrace: string[];
+  /** 上一次 loop 偵測是否觸發。*/
+  loopDetected?: boolean;
+  startedAt: number;
+  updatedAt: number;
 }
 
 /**

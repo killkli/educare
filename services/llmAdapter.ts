@@ -1,4 +1,4 @@
-import { ChatMessage } from '../types';
+import { ChatMessage, FinishReason } from '../types';
 
 export interface ProviderUsageMetadata {
   source: 'api' | 'unavailable';
@@ -28,6 +28,8 @@ export interface StreamingResponse {
       code: string;
       count: number;
     }>;
+    /** Agentic harness 結束原因 (G13/T1)。預算耗盡不再 throw。*/
+    finishReason?: FinishReason;
   };
 }
 
@@ -69,6 +71,16 @@ export interface ChatParams {
   allowedToolNames?: string[];
   toolChoice?: ToolChoicePolicy;
   executeTool?: (call: ToolCall) => Promise<unknown> | unknown;
+  /**
+   * 續跑回合直接指定的 pack 集合 (G2)。由 controller 在續跑回合傳入,
+   * 繞過 intent 分類器,避免續跑被重路由。
+   */
+  packSetOverride?: string[];
+  /**
+   * AbortSignal (G4/G17)。串流與所有 fetch 應接收並轉發;
+   * 每輪迴圈開頭檢查 aborted 以便在 ~1 輪內中止,保證不產生半個 turn。
+   */
+  signal?: AbortSignal;
 }
 
 export interface LLMProvider {
