@@ -3,6 +3,7 @@ import type {
   HtmlProjectSummary,
   HtmlProjectToolPackName,
 } from '../types';
+import { getHtmlProjectToolNamesForPacks } from './htmlProjectToolService';
 
 const HTML_PROJECT_KEYWORDS = [
   'landing page',
@@ -325,6 +326,68 @@ const buildProjectSummaryPrompt = (projectSummary?: HtmlProjectSummary | null): 
   return `The system already injected a current project summary for this turn: ${JSON.stringify(compactSummary)}. Do not start with redundant listFiles or listProjectTodos unless you need deeper detail than this summary provides.`;
 };
 
+const buildVisibleToolPrompt = (packSet: HtmlProjectToolPackName[]): string => {
+  const visibleToolNames = getHtmlProjectToolNamesForPacks(packSet);
+
+  if (visibleToolNames.length === 0) {
+    return '';
+  }
+
+  return `Only use tools that are visible for this turn. Visible HTML project tools: ${visibleToolNames.join(', ')}.`;
+};
+
+const buildPackSpecificGuidance = (packSet: HtmlProjectToolPackName[]): string[] => {
+  const guidance: string[] = [];
+  const packSetLookup = new Set(packSet);
+
+  if (packSetLookup.has('bootstrap')) {
+    guidance.push(
+      'When no active project exists and the user wants to continue earlier canvas work, use listProjects first, then openProject. Use createProject only when the user clearly wants a brand new webpage or prototype.',
+    );
+  }
+
+  if (packSetLookup.has('inspect')) {
+    guidance.push(
+      'For inspection routes, use getProjectSummary, searchFiles, listFiles, readFile, and listProjectTodos to understand the current project before deciding on edits.',
+    );
+  }
+
+  if (packSetLookup.has('edit')) {
+    guidance.push(
+      'When edit tools are visible and the user asks to create, edit, copy, rename, or delete project contents, you must use the visible project tools to perform those changes instead of only describing edits in chat.',
+    );
+    guidance.push(
+      'For targeted edits, inspect existing work first: use getProjectSummary when available, use searchFiles to locate relevant code, use listFiles to inspect structure, then use readFile before writeFiles, replaceInFile, or modifyLinesInFile.',
+    );
+    guidance.push(
+      'Use writeFiles only for small complete-file writes. For edits inside an existing text file, prefer modifyLinesInFile after readFile.numberedContent when line-based edits are clearer, or use replaceInFile with raw content when you have one exact unique snippet.',
+    );
+    guidance.push(
+      'For path-level duplication or moves, prefer copyFile and renameFile instead of manually simulating those operations with readFile plus writeFiles plus deleteFile.',
+    );
+  }
+
+  if (packSetLookup.has('todo_finalize')) {
+    guidance.push(
+      'Before resuming project execution, inspect the current checklist or injected summary. Before saying all work is complete, call checkProjectTodos and confirm allComplete is true.',
+    );
+
+    if (packSetLookup.has('edit')) {
+      guidance.push(
+        'When checklist edit tools are visible, maintain the project-scoped checklist using listProjectTodos, setProjectTodos, updateProjectTodo, and deleteProjectTodo.',
+      );
+    }
+  }
+
+  if (packSetLookup.has('preview_recheck')) {
+    guidance.push(
+      'Successful mutating tools already refresh preview/workspace state automatically. Use renderPreview only when the user explicitly asks to rebuild, reopen, refresh, or recheck preview state, or when preview diagnostics indicate that a repair flow needs revalidation.',
+    );
+  }
+
+  return guidance;
+};
+
 export const buildHtmlProjectSystemPrompt = (
   options?: string | null | BuildHtmlProjectSystemPromptOptions,
 ): string => {
@@ -338,30 +401,28 @@ export const buildHtmlProjectSystemPrompt = (
         };
 
   const activeProjectId = normalizedOptions?.activeProjectId ?? null;
+  const selectedPackSet = normalizedOptions?.intentDecision?.selectedPackSet ?? [];
   const continuationPrompt = activeProjectId
     ? `Current active HTML project id: ${activeProjectId}. Reuse it for incremental edits unless the user explicitly asks for a fresh project.`
-    : 'No active HTML project exists yet. If the user wants to continue or reopen earlier canvas work, call listProjects first, then openProject before editing files. Only createProject when the user wants a brand new webpage or prototype.';
-  const routingPrompt = normalizedOptions?.intentDecision?.selectedPackSet?.length
-    ? `Current routing intent: ${normalizedOptions.intentDecision.intent} (${normalizedOptions.intentDecision.confidence} confidence). HTML tool packs exposed for this turn: ${normalizedOptions.intentDecision.selectedPackSet.join(', ')}.`
+    : 'No active HTML project exists yet.';
+  const routingPrompt = selectedPackSet.length
+    ? `Current routing intent: ${normalizedOptions?.intentDecision?.intent} (${normalizedOptions?.intentDecision?.confidence} confidence). HTML tool packs exposed for this turn: ${selectedPackSet.join(', ')}.`
     : '';
   const summaryPrompt = buildProjectSummaryPrompt(normalizedOptions?.projectSummary);
+  const visibleToolPrompt = buildVisibleToolPrompt(selectedPackSet);
+  const packSpecificGuidance = buildPackSpecificGuidance(selectedPackSet);
 
   return [
     'You can maintain browser-only HTML projects for the user using dedicated project tools.',
     continuationPrompt,
     routingPrompt,
+    visibleToolPrompt,
     summaryPrompt,
-    'When building or editing UI, prefer createProject, listProjects, openProject, getProjectSummary, searchFiles, listFiles, readFile, writeFiles, replaceInFile, modifyLinesInFile, listProjectTodos, setProjectTodos, updateProjectTodo, deleteProjectTodo, checkProjectTodos, deleteFile, copyFile, renameFile, setEntrypoint, and renderPreview over dumping large HTML directly into the chat response.',
-    'When HTML project tools are enabled and the user asks to create, edit, copy, rename, or delete project contents, you must use the project tools to perform those changes. Do not answer a modification request only by proposing code or describing edits in chat unless the user explicitly asks for planning or explanation without execution.',
     'Always use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js. Never use host filesystem paths or URLs.',
-    'For targeted edits, inspect existing work first: use getProjectSummary when available, use searchFiles to locate relevant code, use listFiles to inspect structure, then use readFile before writeFiles, replaceInFile, or modifyLinesInFile.',
-    'Use writeFiles only for small complete-file writes. For edits inside an existing text file, prefer modifyLinesInFile after readFile.numberedContent when line-based edits are clearer, or use replaceInFile with raw content when you have one exact unique snippet.',
-    'For path-level duplication or moves, prefer copyFile and renameFile instead of manually simulating those operations with readFile plus writeFiles plus deleteFile.',
-    'For multi-step project work, maintain a project-scoped checklist using listProjectTodos, setProjectTodos, updateProjectTodo, deleteProjectTodo, and checkProjectTodos. Before resuming project execution, inspect the current checklist or injected summary. Before saying all work is complete, call checkProjectTodos and confirm allComplete is true.',
+    ...packSpecificGuidance,
     'Each displayed line in readFile.numberedContent starts with "<line> | ". That line-number prefix is only for display and must never be copied into replaceInFile.oldText, replaceInFile.newText, modifyLinesInFile.content, or modifyLinesInFile.expectedOriginal.',
     'If a tool returns a recoverable validation error, retry once with corrected arguments or a smaller payload. If the same recoverable error repeats with stronger fallback guidance, follow that fallback instead of repeating the exact same failing call.',
     'After opening an existing project, continue editing that same project unless the user explicitly asks to fork or replace it.',
-    'Successful mutating tools already refresh preview/workspace state automatically. Use renderPreview only when the user explicitly asks to rebuild, reopen, refresh, or recheck preview state, or when preview diagnostics indicate that a repair flow needs revalidation.',
     'Keep final chat responses concise and summarize the project changes rather than pasting the full source code.',
   ]
     .filter(Boolean)

@@ -2226,9 +2226,9 @@ export const getHtmlProjectToolDefinitions = (): ToolDefinition[] => [
   },
 ];
 
-export const getHtmlProjectToolDefinitionsForPacks = (
+export const getHtmlProjectToolNamesForPacks = (
   packSet: HtmlProjectToolPackName[],
-): ToolDefinition[] => {
+): HtmlProjectToolName[] => {
   if (packSet.length === 0) {
     return [];
   }
@@ -2238,6 +2238,18 @@ export const getHtmlProjectToolDefinitionsForPacks = (
     for (const toolName of HTML_PROJECT_TOOL_PACKS[packName]) {
       allowedNames.add(toolName);
     }
+  }
+
+  return [...allowedNames];
+};
+
+export const getHtmlProjectToolDefinitionsForPacks = (
+  packSet: HtmlProjectToolPackName[],
+): ToolDefinition[] => {
+  const allowedNames = new Set(getHtmlProjectToolNamesForPacks(packSet));
+
+  if (allowedNames.size === 0) {
+    return [];
   }
 
   return getHtmlProjectToolDefinitions().filter(tool =>

@@ -21,6 +21,7 @@ import {
 import {
   executeHtmlProjectToolCall,
   getHtmlProjectToolDefinitionsForPacks,
+  getHtmlProjectToolNamesForPacks,
   isHtmlProjectToolName,
 } from './htmlProjectToolService';
 import { buildHtmlProjectSystemPrompt, classifyHtmlProjectIntent } from './htmlProjectPrompting';
@@ -104,6 +105,29 @@ const appendUniquePack = (
 ): HtmlProjectIntentDecision['selectedPackSet'] => {
   return packSet.includes(packName) ? packSet : [...packSet, packName];
 };
+
+interface RecoverableToolErrorResult {
+  ok: false;
+  recoverable: true;
+  code: string;
+  message: string;
+  guidance: string;
+  details?: Record<string, unknown>;
+}
+
+const createRoutingRecoverableToolError = (
+  code: string,
+  message: string,
+  guidance: string,
+  details?: Record<string, unknown>,
+): RecoverableToolErrorResult => ({
+  ok: false,
+  recoverable: true,
+  code,
+  message,
+  guidance,
+  details,
+});
 
 export const streamChat = async (params: StreamChatParams) => {
   const {
@@ -204,6 +228,13 @@ export const streamChat = async (params: StreamChatParams) => {
     };
     telemetryEvent.selectedPackSet = [...selectedPackSet];
 
+    const htmlProjectToolDefinitions = htmlProjectToolEnabled
+      ? getHtmlProjectToolDefinitionsForPacks(selectedPackSet)
+      : [];
+    const visibleHtmlProjectToolNames = new Set(
+      htmlProjectToolEnabled ? getHtmlProjectToolNamesForPacks(selectedPackSet) : [],
+    );
+
     const finalSystemPrompt = [
       systemPrompt,
       knowledgeToolEnabled ? KNOWLEDGE_SEARCH_SYSTEM_PROMPT : '',
@@ -228,7 +259,12 @@ export const streamChat = async (params: StreamChatParams) => {
         );
       }
 
-      if (htmlProjectToolEnabled && isHtmlProjectToolName(call.name)) {
+      if (
+        htmlProjectToolEnabled &&
+        visibleHtmlProjectToolNames.has(
+          call.name as ReturnType<typeof getHtmlProjectToolNamesForPacks>[number],
+        )
+      ) {
         const toolResult = await executeHtmlProjectToolCall(call, {
           assistantId,
           sessionId,
@@ -247,7 +283,34 @@ export const streamChat = async (params: StreamChatParams) => {
         };
       }
 
-      return { error: `Unsupported tool: ${call.name}` };
+      if (isHtmlProjectToolName(call.name)) {
+        return createRoutingRecoverableToolError(
+          'tool-not-visible-for-turn',
+          `Tool ${call.name} is not visible for the current HTML project route.`,
+          'Retry using only the currently visible HTML project tools for this turn.',
+          {
+            requestedTool: call.name,
+            visibleToolNames: [...visibleHtmlProjectToolNames],
+            selectedPackSet: [...selectedPackSet],
+            intent: effectiveIntentDecision.intent,
+          },
+        );
+      }
+
+      return createRoutingRecoverableToolError(
+        'tool-unsupported',
+        `Unsupported tool: ${call.name}`,
+        'Retry using only tools that are explicitly exposed for this turn.',
+        {
+          requestedTool: call.name,
+          visibleToolNames: [
+            ...(knowledgeToolEnabled ? [KNOWLEDGE_SEARCH_TOOL_NAME] : []),
+            ...htmlProjectToolDefinitions.map(tool => tool.name),
+          ],
+          selectedPackSet: [...selectedPackSet],
+          intent: effectiveIntentDecision.intent,
+        },
+      );
     };
 
     const tools = [
@@ -260,7 +323,7 @@ export const streamChat = async (params: StreamChatParams) => {
             },
           ]
         : []),
-      ...(htmlProjectToolEnabled ? getHtmlProjectToolDefinitionsForPacks(selectedPackSet) : []),
+      ...htmlProjectToolDefinitions,
     ];
 
     const chatParams = {
