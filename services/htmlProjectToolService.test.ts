@@ -3,19 +3,29 @@ import type { ToolCall } from './llmAdapter';
 
 const {
   mockAssertProjectOwnership,
+  mockDeleteTodo,
+  mockGetTodoSummary,
   mockListFiles,
   mockListProjectsByAssistant,
+  mockListTodos,
   mockReadFile,
+  mockReplaceTodos,
   mockResolveProjectForPreview,
   mockSearchFiles,
+  mockUpdateTodo,
   mockWriteFiles,
 } = vi.hoisted(() => ({
   mockAssertProjectOwnership: vi.fn(),
+  mockDeleteTodo: vi.fn(),
+  mockGetTodoSummary: vi.fn(),
   mockListFiles: vi.fn(),
   mockListProjectsByAssistant: vi.fn(),
+  mockListTodos: vi.fn(),
   mockReadFile: vi.fn(),
+  mockReplaceTodos: vi.fn(),
   mockResolveProjectForPreview: vi.fn(),
   mockSearchFiles: vi.fn(),
+  mockUpdateTodo: vi.fn(),
   mockWriteFiles: vi.fn(),
 }));
 
@@ -26,10 +36,15 @@ vi.mock('./htmlProjectStore', async importOriginal => {
     ...actual,
     htmlProjectStore: {
       assertProjectOwnership: mockAssertProjectOwnership,
+      deleteTodo: mockDeleteTodo,
+      getTodoSummary: mockGetTodoSummary,
       listFiles: mockListFiles,
       listProjectsByAssistant: mockListProjectsByAssistant,
+      listTodos: mockListTodos,
       readFile: mockReadFile,
+      replaceTodos: mockReplaceTodos,
       searchFiles: mockSearchFiles,
+      updateTodo: mockUpdateTodo,
       writeFiles: mockWriteFiles,
     },
   };
@@ -64,6 +79,15 @@ describe('executeHtmlProjectToolCall', () => {
       html: '<html></html>',
       error: null,
     });
+    mockGetTodoSummary.mockResolvedValue({
+      projectId: 'project-1',
+      total: 0,
+      pending: 0,
+      inProgress: 0,
+      completed: 0,
+      allComplete: false,
+    });
+    mockListTodos.mockResolvedValue([]);
   });
 
   it('accepts a single file object, infers kind from path, and forwards normalized files', async () => {
@@ -880,6 +904,260 @@ describe('executeHtmlProjectToolCall', () => {
     });
   });
 
+  it('lists project todos for the owned project', async () => {
+    mockListTodos.mockResolvedValue([
+      {
+        projectId: 'project-1',
+        id: 'todo-1',
+        title: 'Plan work',
+        status: 'pending',
+        order: 0,
+        createdAt: 1700000001000,
+        updatedAt: 1700000001000,
+        completedAt: null,
+      },
+    ]);
+    mockGetTodoSummary.mockResolvedValue({
+      projectId: 'project-1',
+      total: 1,
+      pending: 1,
+      inProgress: 0,
+      completed: 0,
+      allComplete: false,
+    });
+
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'listProjectTodos',
+        args: {
+          projectId: 'project-1',
+        },
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-1',
+      },
+    );
+
+    expect(result).toMatchObject({
+      toolName: 'listProjectTodos',
+      summary: '目前專案共有 1 項待辦。',
+      result: {
+        projectId: 'project-1',
+        todos: [
+          {
+            id: 'todo-1',
+            title: 'Plan work',
+          },
+        ],
+        summary: {
+          total: 1,
+          pending: 1,
+        },
+      },
+    });
+  });
+
+  it('sets project todos with normalized summary', async () => {
+    mockReplaceTodos.mockResolvedValue({
+      todos: [
+        {
+          projectId: 'project-1',
+          id: 'todo-1',
+          title: 'Plan work',
+          status: 'pending',
+          order: 0,
+          createdAt: 1700000001000,
+          updatedAt: 1700000001000,
+          completedAt: null,
+        },
+      ],
+      summary: {
+        projectId: 'project-1',
+        total: 1,
+        pending: 1,
+        inProgress: 0,
+        completed: 0,
+        allComplete: false,
+      },
+    });
+
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'setProjectTodos',
+        args: {
+          projectId: 'project-1',
+          todos: [{ title: 'Plan work' }],
+        },
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-1',
+      },
+    );
+
+    expect(mockReplaceTodos).toHaveBeenCalledWith('project-1', [
+      {
+        title: 'Plan work',
+        description: undefined,
+        status: 'pending',
+        order: 0,
+        id: undefined,
+      },
+    ]);
+    expect(result).toMatchObject({
+      toolName: 'setProjectTodos',
+      summary: '已更新專案待辦清單。共 1 項待辦，未開始 1 項、進行中 0 項、已完成 0 項。',
+    });
+  });
+
+  it('updates a project todo status', async () => {
+    mockUpdateTodo.mockResolvedValue({
+      todo: {
+        projectId: 'project-1',
+        id: 'todo-1',
+        title: 'Plan work',
+        status: 'completed',
+        order: 0,
+        createdAt: 1700000001000,
+        updatedAt: 1700000002000,
+        completedAt: 1700000002000,
+      },
+      summary: {
+        projectId: 'project-1',
+        total: 1,
+        pending: 0,
+        inProgress: 0,
+        completed: 1,
+        allComplete: true,
+      },
+    });
+
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'updateProjectTodo',
+        args: {
+          projectId: 'project-1',
+          todoId: 'todo-1',
+          status: 'completed',
+        },
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-1',
+      },
+    );
+
+    expect(mockUpdateTodo).toHaveBeenCalledWith('project-1', 'todo-1', {
+      status: 'completed',
+    });
+    expect(result).toMatchObject({
+      toolName: 'updateProjectTodo',
+      result: {
+        todo: {
+          id: 'todo-1',
+          status: 'completed',
+        },
+        summary: {
+          allComplete: true,
+        },
+      },
+    });
+  });
+
+  it('deletes a project todo item', async () => {
+    mockDeleteTodo.mockResolvedValue({
+      deleted: 'todo-1',
+      summary: {
+        projectId: 'project-1',
+        total: 0,
+        pending: 0,
+        inProgress: 0,
+        completed: 0,
+        allComplete: false,
+      },
+    });
+
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'deleteProjectTodo',
+        args: {
+          projectId: 'project-1',
+          todoId: 'todo-1',
+        },
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-1',
+      },
+    );
+
+    expect(result).toMatchObject({
+      toolName: 'deleteProjectTodo',
+      result: {
+        deleted: 'todo-1',
+        summary: {
+          total: 0,
+        },
+      },
+    });
+  });
+
+  it('checks whether all project todos are complete', async () => {
+    mockListTodos.mockResolvedValue([
+      {
+        projectId: 'project-1',
+        id: 'todo-1',
+        title: 'Plan work',
+        status: 'completed',
+        order: 0,
+        createdAt: 1700000001000,
+        updatedAt: 1700000001000,
+        completedAt: 1700000001000,
+      },
+    ]);
+    mockGetTodoSummary.mockResolvedValue({
+      projectId: 'project-1',
+      total: 1,
+      pending: 0,
+      inProgress: 0,
+      completed: 1,
+      allComplete: true,
+    });
+
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'checkProjectTodos',
+        args: {
+          projectId: 'project-1',
+        },
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-1',
+      },
+    );
+
+    expect(result).toMatchObject({
+      toolName: 'checkProjectTodos',
+      summary: '所有專案待辦都已完成。',
+      result: {
+        allComplete: true,
+        incompleteTodos: [],
+      },
+    });
+  });
+
   it('returns a structured recoverable result when readFile path is missing or invalid', async () => {
     const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
 
@@ -1206,7 +1484,7 @@ describe('executeHtmlProjectToolCall', () => {
 });
 
 describe('getHtmlProjectToolDefinitions', () => {
-  it('includes modifyLinesInFile and describes numbered readFile guidance', async () => {
+  it('includes project todo tools and describes numbered readFile guidance', async () => {
     const { getHtmlProjectToolDefinitions } = await import('./htmlProjectToolService');
 
     const definitions = getHtmlProjectToolDefinitions();
@@ -1215,6 +1493,8 @@ describe('getHtmlProjectToolDefinitions', () => {
     const modifyLinesInFileDefinition = definitions.find(
       ({ name }) => name === 'modifyLinesInFile',
     );
+    const listProjectTodosDefinition = definitions.find(({ name }) => name === 'listProjectTodos');
+    const setProjectTodosDefinition = definitions.find(({ name }) => name === 'setProjectTodos');
     const readFileDefinition = definitions.find(({ name }) => name === 'readFile');
 
     expect(replaceInFileDefinition).toMatchObject({
@@ -1227,6 +1507,15 @@ describe('getHtmlProjectToolDefinitions', () => {
       name: 'modifyLinesInFile',
       parameters: {
         required: ['path', 'operation', 'startLine'],
+      },
+    });
+    expect(listProjectTodosDefinition).toMatchObject({
+      name: 'listProjectTodos',
+    });
+    expect(setProjectTodosDefinition).toMatchObject({
+      name: 'setProjectTodos',
+      parameters: {
+        required: ['todos'],
       },
     });
     expect(writeFilesDefinition?.description).toContain(

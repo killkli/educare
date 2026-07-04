@@ -1,6 +1,7 @@
 import {
   HtmlProject,
   HtmlProjectFileKind,
+  HtmlProjectTodoStatus,
   HtmlProjectToolExecutionResult,
   HtmlProjectWorkspaceUpdate,
 } from '../types';
@@ -23,6 +24,11 @@ const HTML_PROJECT_TOOL_NAMES = [
   'modifyLinesInFile',
   'listFiles',
   'readFile',
+  'listProjectTodos',
+  'setProjectTodos',
+  'updateProjectTodo',
+  'deleteProjectTodo',
+  'checkProjectTodos',
   'deleteFile',
   'setEntrypoint',
   'renderPreview',
@@ -103,6 +109,39 @@ interface RenderPreviewArgs {
   projectId?: string;
 }
 
+interface ListProjectTodosArgs {
+  projectId?: string;
+}
+
+interface SetProjectTodosArgs {
+  projectId?: string;
+  todos: Array<{
+    id?: string;
+    title: string;
+    description?: string;
+    status?: HtmlProjectTodoStatus;
+    order?: number;
+  }>;
+}
+
+interface UpdateProjectTodoArgs {
+  projectId?: string;
+  todoId: string;
+  title?: string;
+  description?: string;
+  status?: HtmlProjectTodoStatus;
+  order?: number;
+}
+
+interface DeleteProjectTodoArgs {
+  projectId?: string;
+  todoId: string;
+}
+
+interface CheckProjectTodosArgs {
+  projectId?: string;
+}
+
 const createWorkspaceUpdate = (
   activeProjectId: string | null,
   activityMessage: string,
@@ -147,6 +186,19 @@ const summarizeSearchResult = (result: {
 };
 
 const summarizeFileList = (paths: string[]): string => paths.join(', ');
+
+const summarizeTodoSummary = ({
+  total,
+  pending,
+  inProgress,
+  completed,
+}: {
+  total: number;
+  pending: number;
+  inProgress: number;
+  completed: number;
+}): string =>
+  `共 ${total} 項待辦，未開始 ${pending} 項、進行中 ${inProgress} 項、已完成 ${completed} 項。`;
 
 const VIRTUAL_PROJECT_PATH_GUIDANCE =
   'Use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js. Do not use host filesystem paths or URLs.';
@@ -465,6 +517,165 @@ const normalizeModifyLinesContent = (
   }
 
   return content;
+};
+
+const normalizeTodoStatus = (status: unknown): HtmlProjectTodoStatus | null => {
+  switch (status) {
+    case 'pending':
+    case 'in_progress':
+    case 'completed':
+      return status;
+    case undefined:
+      return 'pending';
+    default:
+      return null;
+  }
+};
+
+const normalizeProjectTodoItems = (items: unknown): SetProjectTodosArgs['todos'] => {
+  if (!Array.isArray(items)) {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'invalid-project-todos',
+      message: 'setProjectTodos requires a todos array.',
+      guidance:
+        'Pass todos as an array of items with title, optional description, and optional status.',
+    });
+  }
+
+  return items.map((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new HtmlProjectToolRecoverableError({
+        ok: false,
+        recoverable: true,
+        code: 'invalid-project-todo-item',
+        message: `setProjectTodos.todos[${index}] must be an object.`,
+        guidance:
+          'Each todo item must include a title and optional description, status, and order.',
+      });
+    }
+
+    const title = typeof item.title === 'string' ? item.title.trim() : '';
+    if (!title) {
+      throw new HtmlProjectToolRecoverableError({
+        ok: false,
+        recoverable: true,
+        code: 'invalid-project-todo-title',
+        message: `setProjectTodos.todos[${index}] requires a non-empty title.`,
+        guidance: 'Provide concise human-readable todo titles describing each project task.',
+      });
+    }
+
+    const normalizedStatus = normalizeTodoStatus(item.status);
+    if (!normalizedStatus) {
+      throw new HtmlProjectToolRecoverableError({
+        ok: false,
+        recoverable: true,
+        code: 'invalid-project-todo-status',
+        message: `setProjectTodos.todos[${index}] has an invalid status.`,
+        guidance: 'Use one of pending, in_progress, or completed.',
+      });
+    }
+
+    return {
+      id: typeof item.id === 'string' ? item.id.trim() || undefined : undefined,
+      title,
+      description: typeof item.description === 'string' ? item.description : undefined,
+      status: normalizedStatus,
+      order: typeof item.order === 'number' ? item.order : index,
+    };
+  });
+};
+
+const normalizeTodoId = (todoId: unknown, toolName: string): string => {
+  const normalized = typeof todoId === 'string' ? todoId.trim() : '';
+  if (!normalized) {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'invalid-project-todo-id',
+      message: `${toolName} requires a valid todoId.`,
+      guidance: 'Call listProjectTodos first and retry with an existing todoId.',
+    });
+  }
+
+  return normalized;
+};
+
+const normalizeTodoUpdatePatch = (args: UpdateProjectTodoArgs) => {
+  const patch: {
+    title?: string;
+    description?: string;
+    status?: HtmlProjectTodoStatus;
+    order?: number;
+  } = {};
+
+  if (typeof args.title !== 'undefined') {
+    const title = typeof args.title === 'string' ? args.title.trim() : '';
+    if (!title) {
+      throw new HtmlProjectToolRecoverableError({
+        ok: false,
+        recoverable: true,
+        code: 'invalid-project-todo-title',
+        message: 'updateProjectTodo title must be a non-empty string when provided.',
+        guidance: 'Provide a concise title or omit title when you do not need to rename the todo.',
+      });
+    }
+    patch.title = title;
+  }
+
+  if (typeof args.description !== 'undefined') {
+    if (typeof args.description !== 'string') {
+      throw new HtmlProjectToolRecoverableError({
+        ok: false,
+        recoverable: true,
+        code: 'invalid-project-todo-description',
+        message: 'updateProjectTodo description must be a string when provided.',
+        guidance: 'Provide plain-text description content or omit description.',
+      });
+    }
+    patch.description = args.description;
+  }
+
+  if (typeof args.status !== 'undefined') {
+    const status = normalizeTodoStatus(args.status);
+    if (!status) {
+      throw new HtmlProjectToolRecoverableError({
+        ok: false,
+        recoverable: true,
+        code: 'invalid-project-todo-status',
+        message: 'updateProjectTodo status must be one of pending, in_progress, or completed.',
+        guidance: 'Retry with a valid status value.',
+      });
+    }
+    patch.status = status;
+  }
+
+  if (typeof args.order !== 'undefined') {
+    if (!Number.isInteger(args.order)) {
+      throw new HtmlProjectToolRecoverableError({
+        ok: false,
+        recoverable: true,
+        code: 'invalid-project-todo-order',
+        message: 'updateProjectTodo order must be an integer when provided.',
+        guidance: 'Use integer order values such as 0, 1, 2, and so on.',
+      });
+    }
+    patch.order = args.order;
+  }
+
+  if (Object.keys(patch).length === 0) {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'invalid-project-todo-update',
+      message: 'updateProjectTodo requires at least one field to update.',
+      guidance: 'Provide one or more of title, description, status, or order.',
+    });
+  }
+
+  return patch;
 };
 
 const validateExpectedOriginal = (
@@ -1154,6 +1365,157 @@ const handleModifyLinesInFile = async (
   };
 };
 
+const handleListProjectTodos = async (
+  args: ListProjectTodosArgs,
+  context: HtmlProjectToolContext,
+): Promise<HtmlProjectToolExecutionResult> => {
+  const project = await requireOwnedProject(args.projectId, context);
+  const todos = await htmlProjectStore.listTodos(project.id);
+  const summary =
+    todos.length === 0 ? '目前專案尚未建立待辦清單。' : `目前專案共有 ${todos.length} 項待辦。`;
+
+  return {
+    toolName: 'listProjectTodos',
+    summary,
+    result: {
+      projectId: project.id,
+      todos,
+      summary: await htmlProjectStore.getTodoSummary(project.id),
+    },
+    workspace: createWorkspaceUpdate(project.id, summary),
+  };
+};
+
+const handleSetProjectTodos = async (
+  args: SetProjectTodosArgs,
+  context: HtmlProjectToolContext,
+): Promise<HtmlProjectToolExecutionResult> => {
+  const project = await requireOwnedProject(args.projectId, context);
+  const todos = normalizeProjectTodoItems(args.todos);
+  const result = await htmlProjectStore.replaceTodos(project.id, todos);
+  const summary =
+    result.summary.total === 0
+      ? '已清空專案待辦清單。'
+      : `已更新專案待辦清單。${summarizeTodoSummary(result.summary)}`;
+
+  return {
+    toolName: 'setProjectTodos',
+    summary,
+    result: {
+      projectId: project.id,
+      todos: result.todos,
+      summary: result.summary,
+    },
+    workspace: createWorkspaceUpdate(project.id, summary),
+  };
+};
+
+const handleUpdateProjectTodo = async (
+  args: UpdateProjectTodoArgs,
+  context: HtmlProjectToolContext,
+): Promise<HtmlProjectToolExecutionResult> => {
+  const project = await requireOwnedProject(args.projectId, context);
+  const todoId = normalizeTodoId(args.todoId, 'updateProjectTodo');
+  const patch = normalizeTodoUpdatePatch(args);
+
+  try {
+    const result = await htmlProjectStore.updateTodo(project.id, todoId, patch);
+    const summary = `已更新待辦「${result.todo.title}」。${summarizeTodoSummary(result.summary)}`;
+
+    return {
+      toolName: 'updateProjectTodo',
+      summary,
+      result: {
+        projectId: project.id,
+        todo: result.todo,
+        summary: result.summary,
+      },
+      workspace: createWorkspaceUpdate(project.id, summary),
+    };
+  } catch (error) {
+    if (error instanceof Error && error.message === `Project todo ${todoId} not found.`) {
+      throw new HtmlProjectToolRecoverableError({
+        ok: false,
+        recoverable: true,
+        code: 'project-todo-not-found',
+        message: error.message,
+        guidance: 'Call listProjectTodos first and retry with an existing todoId.',
+        details: {
+          todoId,
+        },
+      });
+    }
+
+    throw error;
+  }
+};
+
+const handleDeleteProjectTodo = async (
+  args: DeleteProjectTodoArgs,
+  context: HtmlProjectToolContext,
+): Promise<HtmlProjectToolExecutionResult> => {
+  const project = await requireOwnedProject(args.projectId, context);
+  const todoId = normalizeTodoId(args.todoId, 'deleteProjectTodo');
+
+  try {
+    const result = await htmlProjectStore.deleteTodo(project.id, todoId);
+    const summary = `已刪除待辦 ${todoId}。${summarizeTodoSummary(result.summary)}`;
+
+    return {
+      toolName: 'deleteProjectTodo',
+      summary,
+      result: {
+        projectId: project.id,
+        deleted: result.deleted,
+        summary: result.summary,
+      },
+      workspace: createWorkspaceUpdate(project.id, summary),
+    };
+  } catch (error) {
+    if (error instanceof Error && error.message === `Project todo ${todoId} not found.`) {
+      throw new HtmlProjectToolRecoverableError({
+        ok: false,
+        recoverable: true,
+        code: 'project-todo-not-found',
+        message: error.message,
+        guidance: 'Call listProjectTodos first and retry with an existing todoId.',
+        details: {
+          todoId,
+        },
+      });
+    }
+
+    throw error;
+  }
+};
+
+const handleCheckProjectTodos = async (
+  args: CheckProjectTodosArgs,
+  context: HtmlProjectToolContext,
+): Promise<HtmlProjectToolExecutionResult> => {
+  const project = await requireOwnedProject(args.projectId, context);
+  const todos = await htmlProjectStore.listTodos(project.id);
+  const todoSummary = await htmlProjectStore.getTodoSummary(project.id);
+  const incompleteTodos = todos.filter(todo => todo.status !== 'completed');
+  const summary = todoSummary.allComplete
+    ? '所有專案待辦都已完成。'
+    : todoSummary.total === 0
+      ? '目前尚未建立任何專案待辦。'
+      : `目前仍有 ${incompleteTodos.length} 項待辦未完成。`;
+
+  return {
+    toolName: 'checkProjectTodos',
+    summary,
+    result: {
+      projectId: project.id,
+      summary: todoSummary,
+      incompleteTodos,
+      allComplete: todoSummary.allComplete,
+    },
+    workspace: createWorkspaceUpdate(project.id, summary),
+  };
+};
+
 const handleDeleteFile = async (
   args: DeleteFileArgs,
   context: HtmlProjectToolContext,
@@ -1360,6 +1722,91 @@ export const getHtmlProjectToolDefinitions = (): ToolDefinition[] => [
     },
   },
   {
+    name: 'listProjectTodos',
+    description:
+      'List the current project todo checklist and completion summary before resuming work.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        projectId: { type: 'string' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'setProjectTodos',
+    description:
+      'Create or replace the project-scoped checklist for a multi-step task. Use concise titles and statuses such as pending, in_progress, or completed.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        projectId: { type: 'string' },
+        todos: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              id: { type: 'string' },
+              title: { type: 'string' },
+              description: { type: 'string' },
+              status: { type: 'string', enum: ['pending', 'in_progress', 'completed'] },
+              order: { type: 'number' },
+            },
+            required: ['title'],
+          },
+        },
+      },
+      required: ['todos'],
+    },
+  },
+  {
+    name: 'updateProjectTodo',
+    description:
+      'Update one existing project todo item after inspecting the current checklist. Use todoId from listProjectTodos.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        projectId: { type: 'string' },
+        todoId: { type: 'string' },
+        title: { type: 'string' },
+        description: { type: 'string' },
+        status: { type: 'string', enum: ['pending', 'in_progress', 'completed'] },
+        order: { type: 'number' },
+      },
+      required: ['todoId'],
+    },
+  },
+  {
+    name: 'deleteProjectTodo',
+    description: 'Delete one project todo item using its todoId from listProjectTodos.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        projectId: { type: 'string' },
+        todoId: { type: 'string' },
+      },
+      required: ['todoId'],
+    },
+  },
+  {
+    name: 'checkProjectTodos',
+    description:
+      'Check whether the current project checklist is fully completed before claiming all work is done.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        projectId: { type: 'string' },
+      },
+      required: [],
+    },
+  },
+  {
     name: 'deleteFile',
     description:
       'Delete a single project file from the active HTML project. Use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js.',
@@ -1433,6 +1880,16 @@ export const executeHtmlProjectToolCall = async (
         return await handleListFiles(safeArgs as { projectId?: string }, context);
       case 'readFile':
         return await handleReadFile(safeArgs as unknown as ReadFileArgs, context);
+      case 'listProjectTodos':
+        return await handleListProjectTodos(safeArgs as unknown as ListProjectTodosArgs, context);
+      case 'setProjectTodos':
+        return await handleSetProjectTodos(safeArgs as unknown as SetProjectTodosArgs, context);
+      case 'updateProjectTodo':
+        return await handleUpdateProjectTodo(safeArgs as unknown as UpdateProjectTodoArgs, context);
+      case 'deleteProjectTodo':
+        return await handleDeleteProjectTodo(safeArgs as unknown as DeleteProjectTodoArgs, context);
+      case 'checkProjectTodos':
+        return await handleCheckProjectTodos(safeArgs as unknown as CheckProjectTodosArgs, context);
       case 'deleteFile':
         return await handleDeleteFile(safeArgs as unknown as DeleteFileArgs, context);
       case 'setEntrypoint':

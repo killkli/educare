@@ -5,13 +5,17 @@ import {
   HtmlProjectFileDescriptor,
   HtmlProjectFileKind,
   HtmlProjectSnapshot,
+  HtmlProjectTodo,
+  HtmlProjectTodoStatus,
+  HtmlProjectTodoSummary,
 } from '../types';
 
 const HTML_PROJECT_DB_NAME = 'educare-html-projects';
-const HTML_PROJECT_DB_VERSION = 1;
+const HTML_PROJECT_DB_VERSION = 2;
 const PROJECTS_STORE = 'htmlProjects';
 const PROJECT_FILES_STORE = 'htmlProjectFiles';
 const PROJECT_SNAPSHOTS_STORE = 'htmlProjectSnapshots';
+const PROJECT_TODOS_STORE = 'htmlProjectTodos';
 const SEARCHABLE_FILE_KINDS = new Set<HtmlProjectFileKind>([
   'html',
   'css',
@@ -48,6 +52,14 @@ interface HtmlProjectDB extends DBSchema {
     value: HtmlProjectSnapshot;
     indexes: {
       'by-project': string;
+    };
+  };
+  [PROJECT_TODOS_STORE]: {
+    key: [string, string];
+    value: HtmlProjectTodo;
+    indexes: {
+      'by-project': string;
+      'by-project-order': [string, number];
     };
   };
 }
@@ -103,6 +115,21 @@ export interface SearchHtmlProjectFilesResult {
   matches: HtmlProjectSearchMatch[];
   skippedFiles: HtmlProjectSkippedFile[];
   truncated: boolean;
+}
+
+export interface ReplaceHtmlProjectTodosInput {
+  id?: string;
+  title: string;
+  description?: string;
+  status?: HtmlProjectTodoStatus;
+  order?: number;
+}
+
+export interface UpdateHtmlProjectTodoInput {
+  title?: string;
+  description?: string;
+  status?: HtmlProjectTodoStatus;
+  order?: number;
 }
 
 let dbPromise: Promise<IDBPDatabase<HtmlProjectDB>> | null = null;
@@ -254,6 +281,14 @@ const getDb = () => {
           });
           snapshotStore.createIndex('by-project', 'projectId');
         }
+
+        if (!db.objectStoreNames.contains(PROJECT_TODOS_STORE)) {
+          const todoStore = db.createObjectStore(PROJECT_TODOS_STORE, {
+            keyPath: ['projectId', 'id'],
+          });
+          todoStore.createIndex('by-project', 'projectId');
+          todoStore.createIndex('by-project-order', ['projectId', 'order']);
+        }
       },
     });
   }
@@ -278,6 +313,36 @@ const updateProjectRecord = async (
 ): Promise<HtmlProject> => {
   await db.put(PROJECTS_STORE, project);
   return project;
+};
+
+const normalizeTodoStatus = (status?: HtmlProjectTodoStatus): HtmlProjectTodoStatus => {
+  return status ?? 'pending';
+};
+
+const buildTodoSummary = (projectId: string, todos: HtmlProjectTodo[]): HtmlProjectTodoSummary => {
+  const summary = todos.reduce(
+    (accumulator, todo) => {
+      if (todo.status === 'completed') {
+        accumulator.completed += 1;
+      } else if (todo.status === 'in_progress') {
+        accumulator.inProgress += 1;
+      } else {
+        accumulator.pending += 1;
+      }
+      return accumulator;
+    },
+    {
+      projectId,
+      total: todos.length,
+      pending: 0,
+      inProgress: 0,
+      completed: 0,
+      allComplete: false,
+    },
+  );
+
+  summary.allComplete = summary.total > 0 && summary.completed === summary.total;
+  return summary;
 };
 
 const buildFileDescriptor = (file: HtmlProjectFile): HtmlProjectFileDescriptor => ({
@@ -608,6 +673,107 @@ class HtmlProjectStore {
     return snapshot;
   }
 
+  async listTodos(projectId: string): Promise<HtmlProjectTodo[]> {
+    const db = await getDb();
+    await requireProject(db, projectId);
+    const todos = await db.getAllFromIndex(PROJECT_TODOS_STORE, 'by-project', projectId);
+    return todos.sort((a, b) => a.order - b.order || a.createdAt - b.createdAt);
+  }
+
+  async getTodoSummary(projectId: string): Promise<HtmlProjectTodoSummary> {
+    return buildTodoSummary(projectId, await this.listTodos(projectId));
+  }
+
+  async replaceTodos(
+    projectId: string,
+    items: ReplaceHtmlProjectTodosInput[],
+  ): Promise<{ todos: HtmlProjectTodo[]; summary: HtmlProjectTodoSummary }> {
+    const db = await getDb();
+    await requireProject(db, projectId);
+    const existingTodos = await db.getAllFromIndex(PROJECT_TODOS_STORE, 'by-project', projectId);
+    for (const todo of existingTodos) {
+      await db.delete(PROJECT_TODOS_STORE, [projectId, todo.id]);
+    }
+
+    const timestamp = now();
+    const todos: HtmlProjectTodo[] = [];
+    for (const [index, item] of items.entries()) {
+      const todo: HtmlProjectTodo = {
+        projectId,
+        id: item.id?.trim() || `todo-${timestamp}-${index}`,
+        title: item.title,
+        description: item.description,
+        status: normalizeTodoStatus(item.status),
+        order: item.order ?? index,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        completedAt: normalizeTodoStatus(item.status) === 'completed' ? timestamp : null,
+      };
+      await db.put(PROJECT_TODOS_STORE, todo);
+      todos.push(todo);
+    }
+
+    const normalizedTodos = todos.sort((a, b) => a.order - b.order || a.createdAt - b.createdAt);
+    return {
+      todos: normalizedTodos,
+      summary: buildTodoSummary(projectId, normalizedTodos),
+    };
+  }
+
+  async updateTodo(
+    projectId: string,
+    todoId: string,
+    patch: UpdateHtmlProjectTodoInput,
+  ): Promise<{ todo: HtmlProjectTodo; summary: HtmlProjectTodoSummary }> {
+    const db = await getDb();
+    await requireProject(db, projectId);
+    const todo = await db.get(PROJECT_TODOS_STORE, [projectId, todoId]);
+    if (!todo) {
+      throw new Error(`Project todo ${todoId} not found.`);
+    }
+
+    const timestamp = now();
+    const nextStatus = patch.status ?? todo.status;
+    const nextTodo: HtmlProjectTodo = {
+      ...todo,
+      title: typeof patch.title === 'undefined' ? todo.title : patch.title,
+      description: typeof patch.description === 'undefined' ? todo.description : patch.description,
+      status: nextStatus,
+      order: typeof patch.order === 'undefined' ? todo.order : patch.order,
+      updatedAt: timestamp,
+      completedAt:
+        nextStatus === 'completed'
+          ? todo.status === 'completed' && todo.completedAt
+            ? todo.completedAt
+            : timestamp
+          : null,
+    };
+
+    await db.put(PROJECT_TODOS_STORE, nextTodo);
+    return {
+      todo: nextTodo,
+      summary: await this.getTodoSummary(projectId),
+    };
+  }
+
+  async deleteTodo(
+    projectId: string,
+    todoId: string,
+  ): Promise<{ deleted: string; summary: HtmlProjectTodoSummary }> {
+    const db = await getDb();
+    await requireProject(db, projectId);
+    const todo = await db.get(PROJECT_TODOS_STORE, [projectId, todoId]);
+    if (!todo) {
+      throw new Error(`Project todo ${todoId} not found.`);
+    }
+
+    await db.delete(PROJECT_TODOS_STORE, [projectId, todoId]);
+    return {
+      deleted: todoId,
+      summary: await this.getTodoSummary(projectId),
+    };
+  }
+
   private async deleteProjectRecords(projectId: string): Promise<void> {
     const db = await getDb();
     const files = await db.getAllFromIndex(PROJECT_FILES_STORE, 'by-project', projectId);
@@ -618,6 +784,11 @@ class HtmlProjectStore {
     const snapshots = await db.getAllFromIndex(PROJECT_SNAPSHOTS_STORE, 'by-project', projectId);
     for (const snapshot of snapshots) {
       await db.delete(PROJECT_SNAPSHOTS_STORE, [projectId, snapshot.version]);
+    }
+
+    const todos = await db.getAllFromIndex(PROJECT_TODOS_STORE, 'by-project', projectId);
+    for (const todo of todos) {
+      await db.delete(PROJECT_TODOS_STORE, [projectId, todo.id]);
     }
 
     await db.delete(PROJECTS_STORE, projectId);

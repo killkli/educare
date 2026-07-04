@@ -88,6 +88,29 @@ export interface HtmlProject {
   tags?: string[];
 }
 
+export type HtmlProjectTodoStatus = 'pending' | 'in_progress' | 'completed';
+
+export interface HtmlProjectTodo {
+  projectId: string;
+  id: string;
+  title: string;
+  description?: string;
+  status: HtmlProjectTodoStatus;
+  order: number;
+  createdAt: number;
+  updatedAt: number;
+  completedAt?: number | null;
+}
+
+export interface HtmlProjectTodoSummary {
+  projectId: string;
+  total: number;
+  pending: number;
+  inProgress: number;
+  completed: number;
+  allComplete: boolean;
+}
+
 export interface HtmlProjectFile {
   projectId: string;
   path: string;

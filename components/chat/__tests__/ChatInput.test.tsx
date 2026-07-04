@@ -2,7 +2,7 @@ import { render, screen, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import ChatInput from '../ChatInput';
-import { setupTestEnvironment, TEST_SESSIONS, createMockChatSession } from './test-utils';
+import { setupTestEnvironment } from './test-utils';
 
 describe('ChatInput', () => {
   let testEnv: ReturnType<typeof setupTestEnvironment>;
@@ -12,7 +12,6 @@ describe('ChatInput', () => {
     onSend: vi.fn(),
     isLoading: false,
     statusText: '',
-    currentSession: TEST_SESSIONS.emptySession,
     disabled: false,
   };
 
@@ -177,30 +176,7 @@ describe('ChatInput', () => {
     });
   });
 
-  describe('Token Counter Display', () => {
-    it('should show token counter when session has tokens', () => {
-      // Arrange
-      const sessionWithTokens = createMockChatSession({ tokenCount: 150 });
-
-      // Act
-      render(<ChatInput {...mockProps} currentSession={sessionWithTokens} />);
-
-      // Assert
-      expect(screen.getByText('150')).toBeInTheDocument();
-    });
-
-    it('should not show token counter when session has no tokens', () => {
-      // Arrange
-      const sessionWithoutTokens = createMockChatSession({ tokenCount: 0 });
-
-      // Act
-      render(<ChatInput {...mockProps} currentSession={sessionWithoutTokens} />);
-
-      // Assert
-      const tokenCounter = screen.queryByText('0');
-      expect(tokenCounter).not.toBeInTheDocument();
-    });
-
+  describe('Character Counter Display', () => {
     it('should show character counter for long messages', () => {
       // Arrange
       const longValue = 'a'.repeat(150);

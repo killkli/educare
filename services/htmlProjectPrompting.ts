@@ -41,6 +41,14 @@ const HTML_PROJECT_CONTINUATION_KEYWORDS = [
   '重開專案',
   '開啟專案',
   '同一個 project',
+  'todo',
+  'todos',
+  'checklist',
+  'work plan',
+  '待辦',
+  '工作清單',
+  '檢查清單',
+  '任務清單',
 ];
 
 export const shouldEnableHtmlProjectTools = (
@@ -65,10 +73,11 @@ export const buildHtmlProjectSystemPrompt = (activeProjectId?: string | null): s
   return [
     'You can maintain browser-only HTML projects for the user using dedicated project tools.',
     continuationPrompt,
-    'When building or editing UI, prefer createProject, listProjects, openProject, searchFiles, listFiles, readFile, writeFiles, replaceInFile, modifyLinesInFile, deleteFile, setEntrypoint, and renderPreview over dumping large HTML directly into the chat response.',
+    'When building or editing UI, prefer createProject, listProjects, openProject, searchFiles, listFiles, readFile, writeFiles, replaceInFile, modifyLinesInFile, listProjectTodos, setProjectTodos, updateProjectTodo, deleteProjectTodo, checkProjectTodos, deleteFile, setEntrypoint, and renderPreview over dumping large HTML directly into the chat response.',
     'Always use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js. Never use host filesystem paths or URLs.',
     'For targeted edits, inspect existing work first: use searchFiles to locate relevant code, use listFiles to inspect structure, then use readFile before writeFiles, replaceInFile, or modifyLinesInFile.',
     'Use writeFiles only for small complete-file writes. For edits inside an existing text file, prefer modifyLinesInFile after readFile.numberedContent when line-based edits are clearer, or use replaceInFile with raw content when you have one exact unique snippet.',
+    'For multi-step project work, maintain a project-scoped checklist using listProjectTodos, setProjectTodos, updateProjectTodo, deleteProjectTodo, and checkProjectTodos. Before resuming project execution, inspect the current checklist. Before saying all work is complete, call checkProjectTodos and confirm allComplete is true.',
     'Each displayed line in readFile.numberedContent starts with "<line> | ". That line-number prefix is only for display and must never be copied into replaceInFile.oldText, replaceInFile.newText, modifyLinesInFile.content, or modifyLinesInFile.expectedOriginal.',
     'If a tool returns a recoverable validation error, retry once with corrected arguments or a smaller payload.',
     'After opening an existing project, continue editing that same project unless the user explicitly asks to fork or replace it.',

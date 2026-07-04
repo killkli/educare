@@ -13,7 +13,6 @@ export interface ChatInputProps {
   onSend: () => void;
   isLoading: boolean;
   statusText: string;
-  currentSession: ChatSession;
   disabled?: boolean;
   isWorkspaceOpen?: boolean;
 }

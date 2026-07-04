@@ -15,6 +15,13 @@ describe('shouldEnableHtmlProjectTools', () => {
   it('returns true when an active project already exists', () => {
     expect(shouldEnableHtmlProjectTools('Help me tweak the copy.', 'project-123')).toBe(true);
   });
+
+  it('returns true for project todo and checklist requests without an active project', () => {
+    expect(shouldEnableHtmlProjectTools('Please create a project todo checklist.', null)).toBe(
+      true,
+    );
+    expect(shouldEnableHtmlProjectTools('幫我建立專案工作清單', null)).toBe(true);
+  });
 });
 
 describe('buildHtmlProjectSystemPrompt', () => {
@@ -36,7 +43,7 @@ describe('buildHtmlProjectSystemPrompt', () => {
       'Reuse it for incremental edits unless the user explicitly asks for a fresh project.',
     );
     expect(prompt).toContain(
-      'prefer createProject, listProjects, openProject, searchFiles, listFiles, readFile, writeFiles, replaceInFile, modifyLinesInFile, deleteFile, setEntrypoint, and renderPreview',
+      'prefer createProject, listProjects, openProject, searchFiles, listFiles, readFile, writeFiles, replaceInFile, modifyLinesInFile, listProjectTodos, setProjectTodos, updateProjectTodo, deleteProjectTodo, checkProjectTodos, deleteFile, setEntrypoint, and renderPreview',
     );
     expect(prompt).toContain(
       'Always use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js. Never use host filesystem paths or URLs.',
@@ -46,6 +53,9 @@ describe('buildHtmlProjectSystemPrompt', () => {
     );
     expect(prompt).toContain(
       'Use writeFiles only for small complete-file writes. For edits inside an existing text file, prefer modifyLinesInFile after readFile.numberedContent when line-based edits are clearer, or use replaceInFile with raw content when you have one exact unique snippet.',
+    );
+    expect(prompt).toContain(
+      'For multi-step project work, maintain a project-scoped checklist using listProjectTodos, setProjectTodos, updateProjectTodo, deleteProjectTodo, and checkProjectTodos. Before resuming project execution, inspect the current checklist. Before saying all work is complete, call checkProjectTodos and confirm allComplete is true.',
     );
     expect(prompt).toContain(
       'Each displayed line in readFile.numberedContent starts with "<line> | ". That line-number prefix is only for display and must never be copied into replaceInFile.oldText, replaceInFile.newText, modifyLinesInFile.content, or modifyLinesInFile.expectedOriginal.',

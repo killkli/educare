@@ -250,7 +250,6 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
         onSend={handleSend}
         isLoading={isLoading}
         statusText={statusText}
-        currentSession={currentSession}
         disabled={false}
         isWorkspaceOpen={isWorkspaceOpen}
       />

@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { HtmlProject, HtmlProjectFile, HtmlProjectSnapshot } from '../types';
+import type { HtmlProject, HtmlProjectFile, HtmlProjectSnapshot, HtmlProjectTodo } from '../types';
 
 type ProjectRecord = HtmlProject;
 type FileRecord = HtmlProjectFile;
 type SnapshotRecord = HtmlProjectSnapshot;
+type TodoRecord = HtmlProjectTodo;
 
 type MockDb = {
   put: ReturnType<typeof vi.fn>;
@@ -24,25 +25,37 @@ const createMockDb = (): MockDb => {
   const projects = new Map<string, ProjectRecord>();
   const files = new Map<string, FileRecord>();
   const snapshots = new Map<string, SnapshotRecord>();
+  const todos = new Map<string, TodoRecord>();
 
   return {
-    put: vi.fn(async (storeName: string, value: ProjectRecord | FileRecord | SnapshotRecord) => {
-      if (storeName === 'htmlProjects') {
-        projects.set((value as ProjectRecord).id, value as ProjectRecord);
-        return;
-      }
+    put: vi.fn(
+      async (
+        storeName: string,
+        value: ProjectRecord | FileRecord | SnapshotRecord | TodoRecord,
+      ) => {
+        if (storeName === 'htmlProjects') {
+          projects.set((value as ProjectRecord).id, value as ProjectRecord);
+          return;
+        }
 
-      if (storeName === 'htmlProjectFiles') {
-        const file = value as FileRecord;
-        files.set(`${file.projectId}:${file.path}`, file);
-        return;
-      }
+        if (storeName === 'htmlProjectFiles') {
+          const file = value as FileRecord;
+          files.set(`${file.projectId}:${file.path}`, file);
+          return;
+        }
 
-      if (storeName === 'htmlProjectSnapshots') {
-        const snapshot = value as SnapshotRecord;
-        snapshots.set(`${snapshot.projectId}:${snapshot.version}`, snapshot);
-      }
-    }),
+        if (storeName === 'htmlProjectSnapshots') {
+          const snapshot = value as SnapshotRecord;
+          snapshots.set(`${snapshot.projectId}:${snapshot.version}`, snapshot);
+          return;
+        }
+
+        if (storeName === 'htmlProjectTodos') {
+          const todo = value as TodoRecord;
+          todos.set(`${todo.projectId}:${todo.id}`, todo);
+        }
+      },
+    ),
     get: vi.fn(async (storeName: string, key: string | [string, string]) => {
       if (storeName === 'htmlProjects') {
         return projects.get(key as string);
@@ -57,6 +70,11 @@ const createMockDb = (): MockDb => {
         const [projectId, version] = key as unknown as [string, number];
         return snapshots.get(`${projectId}:${version}`);
       }
+
+      if (storeName === 'htmlProjectTodos') {
+        const [projectId, todoId] = key as [string, string];
+        return todos.get(`${projectId}:${todoId}`);
+      }
     }),
     getAllFromIndex: vi.fn(async (storeName: string, indexName: string, query: string) => {
       if (storeName === 'htmlProjects' && indexName === 'by-assistant') {
@@ -69,6 +87,10 @@ const createMockDb = (): MockDb => {
 
       if (storeName === 'htmlProjectSnapshots' && indexName === 'by-project') {
         return Array.from(snapshots.values()).filter(snapshot => snapshot.projectId === query);
+      }
+
+      if (storeName === 'htmlProjectTodos' && indexName === 'by-project') {
+        return Array.from(todos.values()).filter(todo => todo.projectId === query);
       }
 
       return [];
@@ -88,6 +110,12 @@ const createMockDb = (): MockDb => {
       if (storeName === 'htmlProjectSnapshots') {
         const [projectId, version] = key as [string, number];
         snapshots.delete(`${projectId}:${version}`);
+        return;
+      }
+
+      if (storeName === 'htmlProjectTodos') {
+        const [projectId, todoId] = key as [string, string];
+        todos.delete(`${projectId}:${todoId}`);
       }
     }),
   };
@@ -524,7 +552,81 @@ describe('htmlProjectStore', () => {
     expect(entrypointProject.previewVersion).toBe(3);
   });
 
-  it('deletes a single project record, files, and snapshots without touching other assistants', async () => {
+  it('replaces, lists, updates, and deletes project todos', async () => {
+    const mockDb = createMockDb();
+    mockOpenDB.mockResolvedValue(mockDb);
+    vi.spyOn(Date, 'now')
+      .mockReturnValueOnce(1700000000000)
+      .mockReturnValueOnce(1700000001000)
+      .mockReturnValueOnce(1700000002000)
+      .mockReturnValueOnce(1700000003000);
+
+    const { htmlProjectStore } = await import('./htmlProjectStore');
+
+    const project = await htmlProjectStore.createProject({
+      assistantId: 'assistant-1',
+      name: 'Todo Project',
+    });
+
+    const replaced = await htmlProjectStore.replaceTodos(project.id, [
+      {
+        title: 'Plan changes',
+        status: 'pending',
+      },
+      {
+        title: 'Implement feature',
+        status: 'in_progress',
+      },
+    ]);
+
+    expect(replaced.todos).toHaveLength(2);
+    expect(replaced.summary).toMatchObject({
+      projectId: project.id,
+      total: 2,
+      pending: 1,
+      inProgress: 1,
+      completed: 0,
+      allComplete: false,
+    });
+
+    const firstTodoId = replaced.todos[0].id;
+    const updated = await htmlProjectStore.updateTodo(project.id, firstTodoId, {
+      status: 'completed',
+    });
+
+    expect(updated.todo).toMatchObject({
+      id: firstTodoId,
+      status: 'completed',
+    });
+    expect(updated.todo.completedAt).toBe(1700000002000);
+
+    const summaryAfterUpdate = await htmlProjectStore.getTodoSummary(project.id);
+    expect(summaryAfterUpdate).toMatchObject({
+      total: 2,
+      pending: 0,
+      inProgress: 1,
+      completed: 1,
+      allComplete: false,
+    });
+
+    const deleted = await htmlProjectStore.deleteTodo(project.id, firstTodoId);
+    expect(deleted).toMatchObject({
+      deleted: firstTodoId,
+      summary: {
+        total: 1,
+        pending: 0,
+        inProgress: 1,
+        completed: 0,
+        allComplete: false,
+      },
+    });
+
+    const remainingTodos = await htmlProjectStore.listTodos(project.id);
+    expect(remainingTodos).toHaveLength(1);
+    expect(remainingTodos[0].title).toBe('Implement feature');
+  });
+
+  it('deletes a single project record, files, snapshots, and todos without touching other assistants', async () => {
     const mockDb = createMockDb();
     mockOpenDB.mockResolvedValue(mockDb);
     vi.spyOn(Date, 'now')
@@ -560,6 +662,11 @@ describe('htmlProjectStore', () => {
         content: '<main>keep me</main>',
       },
     ]);
+    await htmlProjectStore.replaceTodos(targetProject.id, [
+      {
+        title: 'Delete todo',
+      },
+    ]);
     const snapshot = await htmlProjectStore.createSnapshot(targetProject.id, 'delete snapshot');
 
     const deletedProject = await htmlProjectStore.deleteProject(targetProject.id, 'assistant-1');
@@ -580,6 +687,10 @@ describe('htmlProjectStore', () => {
     expect(mockDb.delete).toHaveBeenCalledWith('htmlProjectSnapshots', [
       targetProject.id,
       snapshot.version,
+    ]);
+    expect(mockDb.delete).toHaveBeenCalledWith('htmlProjectTodos', [
+      targetProject.id,
+      'todo-1700000003000-0',
     ]);
     expect(mockDb.delete).toHaveBeenCalledWith('htmlProjects', targetProject.id);
     await expect(
@@ -628,7 +739,9 @@ describe('htmlProjectStore', () => {
       .mockReturnValueOnce(1700000004000)
       .mockReturnValueOnce(1700000005000)
       .mockReturnValueOnce(1700000006000)
-      .mockReturnValueOnce(1700000007000);
+      .mockReturnValueOnce(1700000007000)
+      .mockReturnValueOnce(1700000008000)
+      .mockReturnValueOnce(1700000009000);
 
     const { htmlProjectStore } = await import('./htmlProjectStore');
 
@@ -666,6 +779,8 @@ describe('htmlProjectStore', () => {
         content: '<main>other</main>',
       },
     ]);
+    await htmlProjectStore.replaceTodos(firstProject.id, [{ title: 'First todo' }]);
+    await htmlProjectStore.replaceTodos(secondProject.id, [{ title: 'Second todo' }]);
     await htmlProjectStore.createSnapshot(firstProject.id, 'first snapshot');
     await htmlProjectStore.createSnapshot(secondProject.id, 'second snapshot');
 
