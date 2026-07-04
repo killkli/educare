@@ -355,13 +355,35 @@ export class GeminiProvider implements LLMProvider {
       const chat = await this.createChat(params, finalSystemPrompt, model);
 
       if (params.tools?.length && params.executeTool) {
-        let response = await chat.sendMessage({ message: params.message });
+        let response = await chat.sendMessage({
+          message: params.message,
+          config: params.signal ? { abortSignal: params.signal } : undefined,
+        });
         let toolRoundCount = 0;
         let usage = buildGeminiUsageMetadata(response);
         const repeatTracker = new Map<string, number>();
         const repeatedRecoverableErrors = new Map<string, RepeatedRecoverableErrorEntry>();
 
         while (true) {
+          // ④ AbortSignal (G17): check at loop top so abort never produces a half turn.
+          if (params.signal?.aborted) {
+            yield {
+              text: '',
+              isComplete: true,
+              metadata: {
+                promptTokenCount: usage?.inputTokens ?? 0,
+                candidatesTokenCount: usage?.outputTokens ?? 0,
+                model,
+                provider: this.name,
+                usage,
+                toolRoundCount,
+                repeatedRecoverableErrors: [...repeatedRecoverableErrors.values()],
+                finishReason: 'aborted',
+              },
+            };
+            return;
+          }
+
           const functionCalls = this.getFunctionCalls(response);
 
           if (functionCalls.length === 0) {
@@ -390,13 +412,44 @@ export class GeminiProvider implements LLMProvider {
               usage,
               toolRoundCount,
               repeatedRecoverableErrors: [...repeatedRecoverableErrors.values()],
+              finishReason: 'complete',
             };
             yield completion;
             return;
           }
 
+          // ⑤ Incremental tool-round content yield: surface any visible text
+          // that arrived alongside the function call before the round blocks.
+          const incrementalText = this.extractVisibleText(response);
+          if (incrementalText) {
+            yield {
+              text: incrementalText,
+              isComplete: false,
+              metadata: {
+                model,
+                provider: this.name,
+              },
+            };
+          }
+
+          // ① Budget exhaustion (G13): no longer throws; yields a final
+          // tool-budget-exhausted frame so callers can surface a clean stop.
           if (toolRoundCount >= MAX_GEMINI_TOOL_ROUNDS) {
-            throw new Error(`Gemini exceeded maximum tool rounds (${MAX_GEMINI_TOOL_ROUNDS}).`);
+            yield {
+              text: '',
+              isComplete: true,
+              metadata: {
+                promptTokenCount: usage?.inputTokens ?? 0,
+                candidatesTokenCount: usage?.outputTokens ?? 0,
+                model,
+                provider: this.name,
+                usage,
+                toolRoundCount,
+                repeatedRecoverableErrors: [...repeatedRecoverableErrors.values()],
+                finishReason: 'tool-budget-exhausted',
+              },
+            };
+            return;
           }
 
           const toolResponses = [];
@@ -476,12 +529,16 @@ export class GeminiProvider implements LLMProvider {
                 usage: usage ?? { source: 'unavailable' },
                 toolRoundCount,
                 repeatedRecoverableErrors: [...repeatedRecoverableErrors.values()],
+                finishReason: 'stop-route',
               },
             };
             return;
           }
 
-          response = await chat.sendMessage({ message: toolResponses });
+          response = await chat.sendMessage({
+            message: toolResponses,
+            config: params.signal ? { abortSignal: params.signal } : undefined,
+          });
           const latestUsage = buildGeminiUsageMetadata(response);
           if (latestUsage?.source === 'api') {
             usage = {
@@ -498,7 +555,10 @@ export class GeminiProvider implements LLMProvider {
         }
       }
 
-      const stream = await chat.sendMessageStream({ message: params.message });
+      const stream = await chat.sendMessageStream({
+        message: params.message,
+        config: params.signal ? { abortSignal: params.signal } : undefined,
+      });
       let aggregatedResponse: GenerateContentResponse | null = null;
 
       for await (const chunk of stream) {
@@ -524,6 +584,7 @@ export class GeminiProvider implements LLMProvider {
         ...completion.metadata,
         toolRoundCount: 0,
         repeatedRecoverableErrors: [],
+        finishReason: 'complete',
       };
       yield completion;
     } catch (error) {

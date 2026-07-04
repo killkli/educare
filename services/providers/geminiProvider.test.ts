@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FunctionCallingConfigMode } from '@google/genai';
 import { GeminiProvider } from './geminiProvider';
 import { ApiKeyManager } from '../apiKeyManager';
+import { TOOL_LOOP_CONTRACT_CASES } from './toolLoopContract.cases';
 
 const TOOL_DEFINITIONS = [
   {
@@ -581,6 +582,7 @@ describe('GeminiProvider', () => {
               count: 3,
             },
           ],
+          finishReason: 'stop-route',
         },
       },
     ]);
@@ -631,10 +633,10 @@ describe('GeminiProvider', () => {
     ).rejects.toThrow('Gemini tool result could not be serialized.');
   });
 
-  it('throws when Gemini exceeds the maximum number of tool rounds', async () => {
+  it('yields finishReason=tool-budget-exhausted instead of throwing when the round budget is exceeded', async () => {
     const provider = new GeminiProvider();
     await setupProvider(provider, {
-      sendMessageResponses: Array.from({ length: 21 }, (_, index) => ({
+      sendMessageResponses: Array.from({ length: 22 }, (_, index) => ({
         functionCalls: [
           {
             id: `call-${index + 1}`,
@@ -647,12 +649,110 @@ describe('GeminiProvider', () => {
 
     const executeTool = vi.fn().mockResolvedValue({ ok: true });
 
-    await expect(
-      collectResponses(provider, {
-        tools: [...TOOL_DEFINITIONS],
-        executeTool,
-      }),
-    ).rejects.toThrow(/max(imum)? tool round/i);
+    const responses = await collectResponses(provider, {
+      tools: [...TOOL_DEFINITIONS],
+      executeTool,
+    });
+
+    // G13: budget exhaustion must NOT throw; it yields a final frame with
+    // finishReason='tool-budget-exhausted'.
+    const final = responses.at(-1);
+    expect(final).toMatchObject({ text: '', isComplete: true });
+    expect(final?.metadata?.finishReason).toBe('tool-budget-exhausted');
+    expect(final?.metadata?.toolRoundCount).toBe(20);
+  });
+
+  it('forwards params.signal via sendMessage config and yields finishReason=aborted on abort', async () => {
+    const provider = new GeminiProvider();
+    const { sendMessage } = await setupProvider(provider, {
+      sendMessageResponses: [
+        {
+          functionCalls: [{ id: 'call-1', name: 'search_docs', args: { query: 'q' } }],
+        },
+        {
+          functionCalls: [{ id: 'call-2', name: 'search_docs', args: { query: 'q' } }],
+        },
+      ],
+    });
+
+    const controller = new AbortController();
+    const executeTool = vi.fn().mockImplementation(async () => {
+      // Abort mid-round (after the first tool execution); the next loop-top
+      // check must observe signal.aborted and terminate with finishReason=aborted.
+      controller.abort();
+      return { matches: ['doc-1'] };
+    });
+
+    const responses = await collectResponses(provider, {
+      tools: [...TOOL_DEFINITIONS],
+      executeTool,
+      signal: controller.signal,
+    });
+
+    // G17: abortSignal forwarded via sendMessage config.
+    expect(sendMessage.mock.calls[0]?.[0]?.config?.abortSignal).toBe(controller.signal);
+    expect(sendMessage.mock.calls[1]?.[0]?.config?.abortSignal).toBe(controller.signal);
+
+    const final = responses.at(-1);
+    expect(final?.metadata?.finishReason).toBe('aborted');
+    expect(executeTool).toHaveBeenCalledTimes(1);
+  });
+
+  it('yields finishReason=aborted without executing tools when the signal is pre-aborted', async () => {
+    const provider = new GeminiProvider();
+    await setupProvider(provider, {
+      sendMessageResponses: [
+        {
+          functionCalls: [{ id: 'call-1', name: 'search_docs', args: { query: 'q' } }],
+        },
+      ],
+    });
+
+    const controller = new AbortController();
+    controller.abort();
+
+    const executeTool = vi.fn();
+
+    const responses = await collectResponses(provider, {
+      tools: [...TOOL_DEFINITIONS],
+      executeTool,
+      signal: controller.signal,
+    });
+
+    expect(executeTool).not.toHaveBeenCalled();
+    expect(responses.at(-1)?.metadata?.finishReason).toBe('aborted');
+  });
+
+  it('yields incremental text content alongside function calls before continuing the loop', async () => {
+    const provider = new GeminiProvider();
+    await setupProvider(provider, {
+      sendMessageResponses: [
+        {
+          text: 'Let me search for that.',
+          functionCalls: [{ id: 'call-1', name: 'search_docs', args: { query: 'q' } }],
+        },
+        {
+          text: 'Done',
+          functionCalls: [],
+          usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 8 },
+        },
+      ],
+    });
+
+    const executeTool = vi.fn().mockResolvedValue({ results: ['doc-1'] });
+
+    const responses = await collectResponses(provider, {
+      tools: [...TOOL_DEFINITIONS],
+      executeTool,
+    });
+
+    // ⑤ First yielded chunk is the incremental text surfaced during the tool round.
+    expect(responses[0]).toMatchObject({
+      text: 'Let me search for that.',
+      isComplete: false,
+    });
+    expect(responses[1]).toMatchObject({ text: 'Done', isComplete: false });
+    expect(responses.at(-1)?.metadata?.finishReason).toBe('complete');
   });
 
   it('throws for a non-text terminal response with no actionable tool calls', async () => {
@@ -694,5 +794,69 @@ describe('GeminiProvider', () => {
         metadata: expect.objectContaining({ promptTokenCount: 3, candidatesTokenCount: 5 }),
       }),
     ]);
+  });
+
+  describe('tool-loop contract cases (shared)', () => {
+    const sharedParams = {
+      systemPrompt: 'You are helpful.',
+      history: [],
+      message: 'hello',
+      tools: [...TOOL_DEFINITIONS],
+    };
+
+    it.each(TOOL_LOOP_CONTRACT_CASES)(
+      '$id yields finishReason=$expectedFinishReason',
+      async testCase => {
+        const provider = new GeminiProvider();
+
+        // Adapter: each contract case is mapped to Gemini-shaped mock
+        // responses (functionCalls + text) using the case id as discriminator.
+        const toolCallResponse = (id: string, name: string, args: Record<string, unknown>) => ({
+          functionCalls: [{ id, name, args }],
+        });
+        const textResponse = (text: string) => ({ text, functionCalls: [] });
+
+        let sendMessageResponses: MockResponse[] = [];
+        let executeToolValue: unknown = { ok: true };
+
+        switch (testCase.id) {
+          case 'budget-exhausted-no-throw':
+            // Provider default maxToolRounds is 20; flood past it.
+            sendMessageResponses = Array.from({ length: 22 }, () =>
+              toolCallResponse('loop-call', 'search_docs', { query: 'loop' }),
+            );
+            break;
+          case 'pure-text-complete':
+            sendMessageResponses = [textResponse('done')];
+            break;
+          case 'stop-route':
+            sendMessageResponses = Array.from({ length: 6 }, (_, idx) =>
+              toolCallResponse(`call-${idx + 1}`, 'search_docs', { query: 'q' }),
+            );
+            executeToolValue = {
+              ok: false,
+              recoverable: true,
+              code: 'search-temporary-unavailable',
+              message: 'Search index is warming up.',
+              guidance: 'Retry the same search in a moment.',
+            };
+            break;
+          default:
+            throw new Error(`Unhandled contract case: ${testCase.id}`);
+        }
+
+        const { sendMessage } = await setupProvider(provider, { sendMessageResponses });
+
+        const executeTool = vi.fn().mockResolvedValue(executeToolValue);
+
+        const responses = await collectResponses(provider, {
+          ...sharedParams,
+          executeTool,
+        });
+
+        expect(sendMessage).toHaveBeenCalled();
+        expect(responses.at(-1)?.metadata?.finishReason).toBe(testCase.expectedFinishReason);
+      },
+    );
   });
 });

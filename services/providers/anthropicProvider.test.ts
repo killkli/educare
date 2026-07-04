@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AnthropicProvider } from './anthropicProvider';
+import { TOOL_LOOP_CONTRACT_CASES } from './toolLoopContract.cases';
 
 const TOOL_DEFINITIONS = [
   {
@@ -382,7 +383,7 @@ describe('AnthropicProvider', () => {
     });
   });
 
-  it('throws when Anthropic exceeds the maximum number of tool rounds', async () => {
+  it('yields finishReason=tool-budget-exhausted instead of throwing when the round budget is exceeded', async () => {
     const provider = new AnthropicProvider();
     await provider.initialize({
       apiKey: 'anthropic-test-key',
@@ -407,19 +408,324 @@ describe('AnthropicProvider', () => {
     );
     const executeTool = vi.fn().mockResolvedValue({ ok: true });
 
-    await expect(async () => {
-      for await (const chunk of provider.streamChat({
-        systemPrompt: 'You are helpful.',
-        history: [],
-        message: 'hello',
-        tools: [...TOOL_DEFINITIONS],
-        executeTool,
-      })) {
-        void chunk;
-      }
-    }).rejects.toThrow('Anthropic exceeded maximum tool rounds (2).');
+    const chunks = [];
+    for await (const chunk of provider.streamChat({
+      systemPrompt: 'You are helpful.',
+      history: [],
+      message: 'hello',
+      tools: [...TOOL_DEFINITIONS],
+      executeTool,
+    })) {
+      chunks.push(chunk);
+    }
+
+    // G13: budget exhaustion must NOT throw; it yields a final frame with
+    // finishReason='tool-budget-exhausted'.
+    const final = chunks.at(-1);
+    expect(final).toMatchObject({ text: '', isComplete: true });
+    expect(final?.metadata?.finishReason).toBe('tool-budget-exhausted');
+    expect(final?.metadata?.toolRoundCount).toBe(2);
 
     expect(executeTool).toHaveBeenCalledTimes(2);
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('forwards params.signal to fetch and yields finishReason=aborted on abort', async () => {
+    const provider = new AnthropicProvider();
+    await provider.initialize({
+      apiKey: 'anthropic-test-key',
+      model: 'claude-opus-4-8',
+    });
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
+      Promise.resolve(
+        createJsonResponse({
+          content: [
+            {
+              type: 'tool_use',
+              id: 'call-1',
+              name: 'render_preview',
+              input: { projectId: 'project-1' },
+            },
+          ],
+          usage: { input_tokens: 2, output_tokens: 1 },
+        }),
+      ),
+    );
+
+    const controller = new AbortController();
+    const executeTool = vi.fn().mockImplementation(async () => {
+      // Abort mid-round (after the first tool execution); the next loop-top
+      // check must observe signal.aborted and terminate with finishReason=aborted.
+      controller.abort();
+      return { ok: true };
+    });
+
+    const chunks = [];
+    for await (const chunk of provider.streamChat({
+      systemPrompt: 'You are helpful.',
+      history: [],
+      message: 'hello',
+      tools: [...TOOL_DEFINITIONS],
+      executeTool,
+      signal: controller.signal,
+    })) {
+      chunks.push(chunk);
+    }
+
+    // G17: signal forwarded to every fetch call.
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBe(controller.signal);
+    expect(fetchMock.mock.calls[1]?.[1]?.signal).toBe(controller.signal);
+
+    const final = chunks.at(-1);
+    expect(final?.metadata?.finishReason).toBe('aborted');
+    // Tool ran exactly once (round 1) before abort was observed at the top of round 2.
+    expect(executeTool).toHaveBeenCalledTimes(1);
+  });
+
+  it('yields finishReason=aborted without executing tools when the signal is pre-aborted', async () => {
+    const provider = new AnthropicProvider();
+    await provider.initialize({
+      apiKey: 'anthropic-test-key',
+      model: 'claude-opus-4-8',
+    });
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
+      Promise.resolve(
+        createJsonResponse({
+          content: [
+            {
+              type: 'tool_use',
+              id: 'call-1',
+              name: 'render_preview',
+              input: { projectId: 'project-1' },
+            },
+          ],
+          usage: { input_tokens: 1, output_tokens: 1 },
+        }),
+      ),
+    );
+
+    const controller = new AbortController();
+    controller.abort();
+
+    const executeTool = vi.fn();
+
+    const chunks = [];
+    for await (const chunk of provider.streamChat({
+      systemPrompt: 'You are helpful.',
+      history: [],
+      message: 'hello',
+      tools: [...TOOL_DEFINITIONS],
+      executeTool,
+      signal: controller.signal,
+    })) {
+      chunks.push(chunk);
+    }
+
+    expect(executeTool).not.toHaveBeenCalled();
+    const final = chunks.at(-1);
+    expect(final?.metadata?.finishReason).toBe('aborted');
+  });
+
+  it('yields incremental text content alongside tool_use before continuing the loop', async () => {
+    const provider = new AnthropicProvider();
+    await provider.initialize({
+      apiKey: 'anthropic-test-key',
+      model: 'claude-opus-4-8',
+    });
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          content: [
+            { type: 'text', text: 'Let me render that for you.' },
+            {
+              type: 'tool_use',
+              id: 'call-1',
+              name: 'render_preview',
+              input: { projectId: 'project-1' },
+            },
+          ],
+          usage: { input_tokens: 2, output_tokens: 1 },
+        }),
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          content: [{ type: 'text', text: 'done' }],
+          usage: { input_tokens: 3, output_tokens: 2 },
+        }),
+      );
+
+    const executeTool = vi.fn().mockResolvedValue({ ok: true });
+
+    const chunks = [];
+    for await (const chunk of provider.streamChat({
+      systemPrompt: 'You are helpful.',
+      history: [],
+      message: 'hello',
+      tools: [...TOOL_DEFINITIONS],
+      executeTool,
+    })) {
+      chunks.push(chunk);
+    }
+
+    // ⑤ First yielded chunk is the incremental text surfaced during the tool round.
+    expect(chunks[0]).toMatchObject({
+      text: 'Let me render that for you.',
+      isComplete: false,
+    });
+    expect(chunks[1]).toMatchObject({ text: 'done', isComplete: false });
+    expect(chunks.at(-1)?.metadata?.finishReason).toBe('complete');
+  });
+
+  it('evicts large tool_result content older than 3 rounds after 8 rounds', async () => {
+    const provider = new AnthropicProvider();
+    await provider.initialize({
+      apiKey: 'anthropic-test-key',
+      model: 'claude-opus-4-8',
+      maxToolRounds: 20,
+    });
+
+    // Each response is a tool call; final response is terminal text.
+    const toolCallResponse = () =>
+      createJsonResponse({
+        content: [
+          {
+            type: 'tool_use',
+            id: `call-${Math.random()}`,
+            name: 'render_preview',
+            input: { projectId: 'project-1' },
+          },
+        ],
+        usage: { input_tokens: 1, output_tokens: 1 },
+      });
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    for (let i = 0; i < 10; i += 1) {
+      fetchMock.mockResolvedValueOnce(toolCallResponse());
+    }
+    fetchMock.mockResolvedValueOnce(
+      createJsonResponse({
+        content: [{ type: 'text', text: 'done' }],
+        usage: { input_tokens: 1, output_tokens: 1 },
+      }),
+    );
+
+    // Tool result with content > 2KB; should be evicted once it's older than
+    // 3 rounds (after >8 rounds have completed).
+    const bigContent = 'x'.repeat(2500);
+    const executeTool = vi.fn().mockResolvedValue({ output: bigContent });
+
+    for await (const chunk of provider.streamChat({
+      systemPrompt: 'You are helpful.',
+      history: [],
+      message: 'hello',
+      tools: [...TOOL_DEFINITIONS],
+      executeTool,
+    })) {
+      void chunk;
+    }
+
+    // Inspect the final request body — the earliest tool_result content should
+    // have been replaced with the eviction placeholder.
+    const lastCallIndex = fetchMock.mock.calls.length - 1;
+    const lastRequestBody = JSON.parse(
+      fetchMock.mock.calls[lastCallIndex]?.[1]?.body as string,
+    ) as {
+      messages: Array<{ role: string; content?: unknown }>;
+    };
+    const userMessages = lastRequestBody.messages.filter(
+      (m): m is { role: string; content: Array<{ type: string; content?: string }> } =>
+        m.role === 'user' && Array.isArray(m.content),
+    );
+    const toolResults = userMessages.flatMap(m => m.content.filter(b => b.type === 'tool_result'));
+    const evictedCount = toolResults.filter(
+      r => r.content === '[evicted prior tool result (>2KB); re-run readFile to inspect]',
+    ).length;
+    expect(evictedCount).toBeGreaterThan(0);
+
+    // Most recent 3 rounds must never be evicted.
+    const lastThree = toolResults.slice(-3);
+    for (const r of lastThree) {
+      expect(r.content).not.toBe('[evicted prior tool result (>2KB); re-run readFile to inspect]');
+    }
+  });
+
+  describe('tool-loop contract cases (shared)', () => {
+    const sharedParams = {
+      systemPrompt: 'You are helpful.',
+      history: [],
+      message: 'hello',
+      tools: [...TOOL_DEFINITIONS],
+    };
+
+    it.each(TOOL_LOOP_CONTRACT_CASES)(
+      '$id yields finishReason=$expectedFinishReason',
+      async testCase => {
+        const provider = new AnthropicProvider();
+        await provider.initialize({
+          apiKey: 'anthropic-test-key',
+          model: 'claude-opus-4-8',
+          maxToolRounds: 3,
+        });
+
+        const fetchMock = vi.spyOn(globalThis, 'fetch');
+        const executeTool = vi.fn();
+
+        // Adapter: T1's shared contract mocks build OpenAI-shaped responses.
+        // Anthropic needs Anthropic-shaped transport, so we re-implement each
+        // scenario here using the case id as the scenario discriminator.
+        const toolCallResponse = (id: string, name: string, input: Record<string, unknown>) =>
+          createJsonResponse({
+            content: [{ type: 'tool_use', id, name, input }],
+            usage: { input_tokens: 1, output_tokens: 1 },
+          });
+        const textResponse = (text: string) =>
+          createJsonResponse({
+            content: [{ type: 'text', text }],
+            usage: { input_tokens: 1, output_tokens: 1 },
+          });
+
+        switch (testCase.id) {
+          case 'budget-exhausted-no-throw':
+            fetchMock.mockImplementation(() =>
+              Promise.resolve(
+                toolCallResponse('loop-call', 'render_preview', { projectId: 'loop' }),
+              ),
+            );
+            executeTool.mockResolvedValue({ ok: true });
+            break;
+          case 'pure-text-complete':
+            fetchMock.mockResolvedValue(textResponse('done'));
+            break;
+          case 'stop-route':
+            fetchMock.mockImplementation(() =>
+              Promise.resolve(toolCallResponse('call-1', 'render_preview', { projectId: 'q' })),
+            );
+            executeTool.mockResolvedValue({
+              ok: false,
+              recoverable: true,
+              code: 'preview-temporary-unavailable',
+              message: 'Preview service is still starting.',
+              guidance: 'Retry the same preview shortly.',
+            });
+            break;
+          default:
+            throw new Error(`Unhandled contract case: ${testCase.id}`);
+        }
+
+        const chunks = [];
+        for await (const chunk of provider.streamChat({
+          ...sharedParams,
+          executeTool,
+        })) {
+          chunks.push(chunk);
+        }
+
+        expect(chunks.at(-1)?.metadata?.finishReason).toBe(testCase.expectedFinishReason);
+      },
+    );
   });
 });

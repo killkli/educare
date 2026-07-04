@@ -146,7 +146,10 @@ export class AnthropicProvider implements LLMProvider {
     }
   }
 
-  private async createMessage(body: Record<string, unknown>): Promise<AnthropicMessageResponse> {
+  private async createMessage(
+    body: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<AnthropicMessageResponse> {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -155,6 +158,7 @@ export class AnthropicProvider implements LLMProvider {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify(body),
+      signal,
     });
 
     if (!response.ok) {
@@ -201,17 +205,39 @@ export class AnthropicProvider implements LLMProvider {
     }
 
     try {
-      let response = await this.createMessage(requestBody);
+      let response = await this.createMessage(requestBody, params.signal);
       let promptTokenCount = response.usage?.input_tokens || 0;
       let candidatesTokenCount = response.usage?.output_tokens || 0;
       let usage = buildAnthropicUsageMetadata(response.usage);
       const maxToolRounds = Math.max(1, Math.round(Number(this.config.maxToolRounds ?? 20)));
       let toolRoundCount = 0;
       let conversationMessages = [...messages];
+      // ⑥ Round-tag array for context eviction (mirrors T1). 0 = initial build
+      // messages; 1..N = round in which the message was appended.
+      let messageRoundTags: number[] = conversationMessages.map(() => 0);
       const repeatTracker = new Map<string, number>();
       const repeatedRecoverableErrors = new Map<string, RepeatedRecoverableErrorEntry>();
 
       while (visibleTools?.length && params.executeTool) {
+        // ④ AbortSignal (G17): check at loop top so abort never produces a half turn.
+        if (params.signal?.aborted) {
+          yield {
+            text: '',
+            isComplete: true,
+            metadata: {
+              promptTokenCount,
+              candidatesTokenCount,
+              model,
+              provider: this.name,
+              usage,
+              toolRoundCount,
+              repeatedRecoverableErrors: [...repeatedRecoverableErrors.values()],
+              finishReason: 'aborted',
+            },
+          };
+          return;
+        }
+
         const toolUseBlocks =
           response.content?.filter(
             (block): block is AnthropicToolUseBlock => block.type === 'tool_use',
@@ -221,8 +247,42 @@ export class AnthropicProvider implements LLMProvider {
           break;
         }
 
+        // ⑤ Incremental tool-round content yield: if the assistant turn has
+        // text alongside tool_use, surface it before the round blocks on tools.
+        const incrementalText =
+          response.content
+            ?.filter((block): block is AnthropicTextBlock => block.type === 'text')
+            .map(block => block.text)
+            .join('') || '';
+        if (incrementalText) {
+          yield {
+            text: incrementalText,
+            isComplete: false,
+            metadata: {
+              model,
+              provider: this.name,
+            },
+          };
+        }
+
+        // ① Budget exhaustion (G13): no longer throws; yields a final
+        // tool-budget-exhausted frame so callers can surface a clean stop.
         if (toolRoundCount >= maxToolRounds) {
-          throw new Error(`Anthropic exceeded maximum tool rounds (${maxToolRounds}).`);
+          yield {
+            text: '',
+            isComplete: true,
+            metadata: {
+              promptTokenCount,
+              candidatesTokenCount,
+              model,
+              provider: this.name,
+              usage,
+              toolRoundCount,
+              repeatedRecoverableErrors: [...repeatedRecoverableErrors.values()],
+              finishReason: 'tool-budget-exhausted',
+            },
+          };
+          return;
         }
 
         const toolResults = [] as Array<{
@@ -272,6 +332,38 @@ export class AnthropicProvider implements LLMProvider {
           repeatedRecoverableErrors.set(repeatKey, entry);
         }
 
+        // ⑥ Context eviction (mirrors T1): once we've crossed 8 completed
+        // rounds, before appending the new round's results, evict tool_result
+        // content blocks older than 3 rounds whose JSON content exceeds 2KB.
+        // Round tags are tracked in the parallel messageRoundTags array
+        // (0 = initial buildMessages; N = round in which the message was
+        // appended). Never evicts the most recent 3 rounds.
+        if (toolRoundCount > 8) {
+          const evictRoundTag = toolRoundCount - 3;
+          conversationMessages = conversationMessages.map((msg, idx) => {
+            if (msg.role !== 'user' || typeof msg.content === 'string') {
+              return msg;
+            }
+            const msgRoundTag = messageRoundTags[idx] ?? 0;
+            if (msgRoundTag === 0 || msgRoundTag > evictRoundTag) {
+              return msg;
+            }
+            let mutated = false;
+            const newContent = msg.content.map(block => {
+              if (block.type === 'tool_result' && (block.content ?? '').length > 2000) {
+                mutated = true;
+                return {
+                  ...block,
+                  content: '[evicted prior tool result (>2KB); re-run readFile to inspect]',
+                };
+              }
+              return block;
+            });
+            return mutated ? { ...msg, content: newContent } : msg;
+          });
+        }
+
+        const nextRoundTag = toolRoundCount + 1;
         conversationMessages = [
           ...conversationMessages,
           {
@@ -292,19 +384,27 @@ export class AnthropicProvider implements LLMProvider {
             content: toolResults,
           },
         ];
+        messageRoundTags = [
+          ...messageRoundTags,
+          nextRoundTag, // assistant message
+          nextRoundTag, // user tool_result message
+        ];
 
-        response = await this.createMessage({
-          model,
-          system: finalSystemPrompt,
-          messages: conversationMessages,
-          max_tokens: params.maxTokens || this.config.maxTokens || 4096,
-          tools: visibleTools.map(tool => ({
-            name: tool.name,
-            description: tool.prompt ? `${tool.description} ${tool.prompt}` : tool.description,
-            input_schema: tool.parameters,
-          })),
-          tool_choice: this.buildToolChoice(toolChoice),
-        });
+        response = await this.createMessage(
+          {
+            model,
+            system: finalSystemPrompt,
+            messages: conversationMessages,
+            max_tokens: params.maxTokens || this.config.maxTokens || 4096,
+            tools: visibleTools.map(tool => ({
+              name: tool.name,
+              description: tool.prompt ? `${tool.description} ${tool.prompt}` : tool.description,
+              input_schema: tool.parameters,
+            })),
+            tool_choice: this.buildToolChoice(toolChoice),
+          },
+          params.signal,
+        );
 
         promptTokenCount += response.usage?.input_tokens || 0;
         candidatesTokenCount += response.usage?.output_tokens || 0;
@@ -342,6 +442,7 @@ export class AnthropicProvider implements LLMProvider {
               usage,
               toolRoundCount,
               repeatedRecoverableErrors: [...repeatedRecoverableErrors.values()],
+              finishReason: 'stop-route',
             },
           };
           return;
@@ -370,6 +471,7 @@ export class AnthropicProvider implements LLMProvider {
           provider: this.name,
           toolRoundCount,
           repeatedRecoverableErrors: [...repeatedRecoverableErrors.values()],
+          finishReason: 'complete',
         },
       };
     } catch (error) {
