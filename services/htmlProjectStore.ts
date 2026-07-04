@@ -516,6 +516,132 @@ class HtmlProjectStore {
     };
   }
 
+  async copyFile(
+    projectId: string,
+    sourcePath: string,
+    destinationPath: string,
+  ): Promise<{ sourcePath: string; destinationPath: string; previewVersion: number }> {
+    const db = await getDb();
+    const project = await requireProject(db, projectId);
+    const normalizedSourcePath = normalizePath(sourcePath);
+    const normalizedDestinationPath = normalizePath(destinationPath);
+
+    if (normalizedSourcePath === normalizedDestinationPath) {
+      throw new Error('Source and destination paths must be different.');
+    }
+
+    const existingFile = await db.get(PROJECT_FILES_STORE, [projectId, normalizedSourcePath]);
+    if (!existingFile) {
+      throw new Error(`Project file ${normalizedSourcePath} not found.`);
+    }
+
+    const destinationFile = await db.get(PROJECT_FILES_STORE, [
+      projectId,
+      normalizedDestinationPath,
+    ]);
+    if (destinationFile) {
+      throw new Error(`Project file ${normalizedDestinationPath} already exists.`);
+    }
+
+    const timestamp = now();
+    const copiedFile: HtmlProjectFile = {
+      ...existingFile,
+      path: normalizedDestinationPath,
+      dependencies: inferDependencies(existingFile.kind, existingFile.content),
+      size: existingFile.content.length,
+      updatedAt: timestamp,
+    };
+    const assetPaths = new Set(project.assetPaths);
+
+    await db.put(PROJECT_FILES_STORE, copiedFile);
+
+    if (copiedFile.kind === 'asset') {
+      assetPaths.add(normalizedDestinationPath);
+    }
+
+    const nextProject: HtmlProject = {
+      ...project,
+      assetPaths: Array.from(assetPaths).sort(),
+      updatedAt: timestamp,
+      previewVersion: project.previewVersion + 1,
+      status: 'draft',
+      lastBuildError: null,
+    };
+
+    await updateProjectRecord(db, nextProject);
+
+    return {
+      sourcePath: normalizedSourcePath,
+      destinationPath: normalizedDestinationPath,
+      previewVersion: nextProject.previewVersion,
+    };
+  }
+
+  async renameFile(
+    projectId: string,
+    sourcePath: string,
+    destinationPath: string,
+  ): Promise<{ sourcePath: string; destinationPath: string; previewVersion: number }> {
+    const db = await getDb();
+    const project = await requireProject(db, projectId);
+    const normalizedSourcePath = normalizePath(sourcePath);
+    const normalizedDestinationPath = normalizePath(destinationPath);
+
+    if (normalizedSourcePath === normalizedDestinationPath) {
+      throw new Error('Source and destination paths must be different.');
+    }
+
+    const existingFile = await db.get(PROJECT_FILES_STORE, [projectId, normalizedSourcePath]);
+    if (!existingFile) {
+      throw new Error(`Project file ${normalizedSourcePath} not found.`);
+    }
+
+    const destinationFile = await db.get(PROJECT_FILES_STORE, [
+      projectId,
+      normalizedDestinationPath,
+    ]);
+    if (destinationFile) {
+      throw new Error(`Project file ${normalizedDestinationPath} already exists.`);
+    }
+
+    const timestamp = now();
+    const renamedFile: HtmlProjectFile = {
+      ...existingFile,
+      path: normalizedDestinationPath,
+      dependencies: inferDependencies(existingFile.kind, existingFile.content),
+      size: existingFile.content.length,
+      updatedAt: timestamp,
+    };
+    const assetPaths = new Set(project.assetPaths);
+
+    await db.put(PROJECT_FILES_STORE, renamedFile);
+    await db.delete(PROJECT_FILES_STORE, [projectId, normalizedSourcePath]);
+
+    if (renamedFile.kind === 'asset') {
+      assetPaths.delete(normalizedSourcePath);
+      assetPaths.add(normalizedDestinationPath);
+    }
+
+    const nextProject: HtmlProject = {
+      ...project,
+      entryFile:
+        project.entryFile === normalizedSourcePath ? normalizedDestinationPath : project.entryFile,
+      assetPaths: Array.from(assetPaths).sort(),
+      updatedAt: timestamp,
+      previewVersion: project.previewVersion + 1,
+      status: 'draft',
+      lastBuildError: null,
+    };
+
+    await updateProjectRecord(db, nextProject);
+
+    return {
+      sourcePath: normalizedSourcePath,
+      destinationPath: normalizedDestinationPath,
+      previewVersion: nextProject.previewVersion,
+    };
+  }
+
   async searchFiles(
     projectId: string,
     input: SearchHtmlProjectFilesInput,

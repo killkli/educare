@@ -35,7 +35,7 @@ describe('buildHtmlProjectSystemPrompt', () => {
     );
   });
 
-  it('tells the model to reuse the active project and inspect files before writing', () => {
+  it('tells the model to reuse the active project and use tools for project modifications', () => {
     const prompt = buildHtmlProjectSystemPrompt('project-123');
 
     expect(prompt).toContain('Current active HTML project id: project-123.');
@@ -43,7 +43,13 @@ describe('buildHtmlProjectSystemPrompt', () => {
       'Reuse it for incremental edits unless the user explicitly asks for a fresh project.',
     );
     expect(prompt).toContain(
-      'prefer createProject, listProjects, openProject, searchFiles, listFiles, readFile, writeFiles, replaceInFile, modifyLinesInFile, listProjectTodos, setProjectTodos, updateProjectTodo, deleteProjectTodo, checkProjectTodos, deleteFile, setEntrypoint, and renderPreview',
+      'prefer createProject, listProjects, openProject, searchFiles, listFiles, readFile, writeFiles, replaceInFile, modifyLinesInFile, listProjectTodos, setProjectTodos, updateProjectTodo, deleteProjectTodo, checkProjectTodos, deleteFile, copyFile, renameFile, setEntrypoint, and renderPreview',
+    );
+    expect(prompt).toContain(
+      'When HTML project tools are enabled and the user asks to create, edit, copy, rename, or delete project contents, you must use the project tools to perform those changes.',
+    );
+    expect(prompt).toContain(
+      'Do not answer a modification request only by proposing code or describing edits in chat unless the user explicitly asks for planning or explanation without execution.',
     );
     expect(prompt).toContain(
       'Always use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js. Never use host filesystem paths or URLs.',
@@ -53,6 +59,9 @@ describe('buildHtmlProjectSystemPrompt', () => {
     );
     expect(prompt).toContain(
       'Use writeFiles only for small complete-file writes. For edits inside an existing text file, prefer modifyLinesInFile after readFile.numberedContent when line-based edits are clearer, or use replaceInFile with raw content when you have one exact unique snippet.',
+    );
+    expect(prompt).toContain(
+      'For path-level duplication or moves, prefer copyFile and renameFile instead of manually simulating those operations with readFile plus writeFiles plus deleteFile.',
     );
     expect(prompt).toContain(
       'For multi-step project work, maintain a project-scoped checklist using listProjectTodos, setProjectTodos, updateProjectTodo, deleteProjectTodo, and checkProjectTodos. Before resuming project execution, inspect the current checklist. Before saying all work is complete, call checkProjectTodos and confirm allComplete is true.',

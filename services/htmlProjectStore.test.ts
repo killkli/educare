@@ -306,6 +306,214 @@ describe('htmlProjectStore', () => {
     });
   });
 
+  it('copies a file using canonicalized paths and increments previewVersion once', async () => {
+    const mockDb = createMockDb();
+    mockOpenDB.mockResolvedValue(mockDb);
+    vi.spyOn(Date, 'now')
+      .mockReturnValueOnce(1700000000000)
+      .mockReturnValueOnce(1700000001000)
+      .mockReturnValueOnce(1700000002000);
+
+    const { htmlProjectStore } = await import('./htmlProjectStore');
+
+    const project = await htmlProjectStore.createProject({
+      assistantId: 'assistant-1',
+      name: 'Canvas MVP',
+    });
+
+    await htmlProjectStore.writeFiles(project.id, [
+      {
+        path: 'index.html',
+        kind: 'html',
+        content: '<main>Hello</main>',
+      },
+    ]);
+
+    const copyResult = await htmlProjectStore.copyFile(
+      project.id,
+      './index.html',
+      'pages/index-copy.html',
+    );
+    const sourceFile = await htmlProjectStore.readFile(project.id, '/index.html');
+    const copiedFile = await htmlProjectStore.readFile(project.id, '/pages/index-copy.html');
+    const updatedProject = await htmlProjectStore.getProject(project.id);
+
+    expect(copyResult).toEqual({
+      sourcePath: '/index.html',
+      destinationPath: '/pages/index-copy.html',
+      previewVersion: 2,
+    });
+    expect(sourceFile).toMatchObject({
+      path: '/index.html',
+      content: '<main>Hello</main>',
+    });
+    expect(copiedFile).toMatchObject({
+      path: '/pages/index-copy.html',
+      content: '<main>Hello</main>',
+    });
+    expect(updatedProject?.previewVersion).toBe(2);
+  });
+
+  it('rejects copyFile when the source is missing, the destination exists, or both paths normalize equally', async () => {
+    const mockDb = createMockDb();
+    mockOpenDB.mockResolvedValue(mockDb);
+    vi.spyOn(Date, 'now').mockReturnValueOnce(1700000000000).mockReturnValueOnce(1700000001000);
+
+    const { htmlProjectStore } = await import('./htmlProjectStore');
+
+    const project = await htmlProjectStore.createProject({
+      assistantId: 'assistant-1',
+      name: 'Canvas MVP',
+    });
+
+    await htmlProjectStore.writeFiles(project.id, [
+      {
+        path: 'index.html',
+        kind: 'html',
+        content: '<main>Hello</main>',
+      },
+      {
+        path: 'pages/index-copy.html',
+        kind: 'html',
+        content: '<main>Existing</main>',
+      },
+    ]);
+
+    await expect(
+      htmlProjectStore.copyFile(project.id, '/missing.html', '/pages/missing-copy.html'),
+    ).rejects.toThrow('Project file /missing.html not found.');
+    await expect(
+      htmlProjectStore.copyFile(project.id, '/index.html', '/pages/index-copy.html'),
+    ).rejects.toThrow('Project file /pages/index-copy.html already exists.');
+    await expect(
+      htmlProjectStore.copyFile(project.id, '/index.html', './index.html'),
+    ).rejects.toThrow('Source and destination paths must be different.');
+  });
+
+  it('renames the entry file and updates project metadata', async () => {
+    const mockDb = createMockDb();
+    mockOpenDB.mockResolvedValue(mockDb);
+    vi.spyOn(Date, 'now')
+      .mockReturnValueOnce(1700000000000)
+      .mockReturnValueOnce(1700000001000)
+      .mockReturnValueOnce(1700000002000);
+
+    const { htmlProjectStore } = await import('./htmlProjectStore');
+
+    const project = await htmlProjectStore.createProject({
+      assistantId: 'assistant-1',
+      name: 'Canvas MVP',
+      entryFile: 'index.html',
+    });
+
+    await htmlProjectStore.writeFiles(project.id, [
+      {
+        path: 'index.html',
+        kind: 'html',
+        content: '<main>Hello</main>',
+      },
+    ]);
+
+    const renameResult = await htmlProjectStore.renameFile(
+      project.id,
+      '/index.html',
+      '/pages/home.html',
+    );
+    const oldFile = await htmlProjectStore.readFile(project.id, '/index.html');
+    const renamedFile = await htmlProjectStore.readFile(project.id, '/pages/home.html');
+    const updatedProject = await htmlProjectStore.getProject(project.id);
+
+    expect(renameResult).toEqual({
+      sourcePath: '/index.html',
+      destinationPath: '/pages/home.html',
+      previewVersion: 2,
+    });
+    expect(oldFile).toBeUndefined();
+    expect(renamedFile).toMatchObject({
+      path: '/pages/home.html',
+      content: '<main>Hello</main>',
+    });
+    expect(updatedProject).toMatchObject({
+      entryFile: '/pages/home.html',
+      previewVersion: 2,
+    });
+  });
+
+  it('renames asset files by moving assetPaths to the new canonical path', async () => {
+    const mockDb = createMockDb();
+    mockOpenDB.mockResolvedValue(mockDb);
+    vi.spyOn(Date, 'now')
+      .mockReturnValueOnce(1700000000000)
+      .mockReturnValueOnce(1700000001000)
+      .mockReturnValueOnce(1700000002000);
+
+    const { htmlProjectStore } = await import('./htmlProjectStore');
+
+    const project = await htmlProjectStore.createProject({
+      assistantId: 'assistant-1',
+      name: 'Canvas MVP',
+    });
+
+    await htmlProjectStore.writeFiles(project.id, [
+      {
+        path: 'assets/logo.bin',
+        kind: 'asset',
+        content: 'binary-data',
+      },
+    ]);
+
+    const renameResult = await htmlProjectStore.renameFile(
+      project.id,
+      './assets/logo.bin',
+      'assets/logo-2.bin',
+    );
+    const updatedProject = await htmlProjectStore.getProject(project.id);
+
+    expect(renameResult).toEqual({
+      sourcePath: '/assets/logo.bin',
+      destinationPath: '/assets/logo-2.bin',
+      previewVersion: 2,
+    });
+    expect(updatedProject?.assetPaths).toEqual(['/assets/logo-2.bin']);
+  });
+
+  it('rejects renameFile when the source is missing, the destination exists, or both paths normalize equally', async () => {
+    const mockDb = createMockDb();
+    mockOpenDB.mockResolvedValue(mockDb);
+    vi.spyOn(Date, 'now').mockReturnValueOnce(1700000000000).mockReturnValueOnce(1700000001000);
+
+    const { htmlProjectStore } = await import('./htmlProjectStore');
+
+    const project = await htmlProjectStore.createProject({
+      assistantId: 'assistant-1',
+      name: 'Canvas MVP',
+      entryFile: 'index.html',
+    });
+
+    await htmlProjectStore.writeFiles(project.id, [
+      {
+        path: 'index.html',
+        kind: 'html',
+        content: '<main>Hello</main>',
+      },
+      {
+        path: 'pages/home.html',
+        kind: 'html',
+        content: '<main>Existing</main>',
+      },
+    ]);
+
+    await expect(
+      htmlProjectStore.renameFile(project.id, '/missing.html', '/pages/missing.html'),
+    ).rejects.toThrow('Project file /missing.html not found.');
+    await expect(
+      htmlProjectStore.renameFile(project.id, '/index.html', '/pages/home.html'),
+    ).rejects.toThrow('Project file /pages/home.html already exists.');
+    await expect(
+      htmlProjectStore.renameFile(project.id, '/index.html', './index.html'),
+    ).rejects.toThrow('Source and destination paths must be different.');
+  });
+
   it('throws a clear error when writeFiles receives an empty files array', async () => {
     const mockDb = createMockDb();
     mockOpenDB.mockResolvedValue(mockDb);

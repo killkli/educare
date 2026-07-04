@@ -3,28 +3,36 @@ import type { ToolCall } from './llmAdapter';
 
 const {
   mockAssertProjectOwnership,
+  mockCopyFile,
+  mockDeleteFile,
   mockDeleteTodo,
   mockGetTodoSummary,
   mockListFiles,
   mockListProjectsByAssistant,
   mockListTodos,
   mockReadFile,
+  mockRenameFile,
   mockReplaceTodos,
   mockResolveProjectForPreview,
   mockSearchFiles,
+  mockSetEntrypoint,
   mockUpdateTodo,
   mockWriteFiles,
 } = vi.hoisted(() => ({
   mockAssertProjectOwnership: vi.fn(),
+  mockCopyFile: vi.fn(),
+  mockDeleteFile: vi.fn(),
   mockDeleteTodo: vi.fn(),
   mockGetTodoSummary: vi.fn(),
   mockListFiles: vi.fn(),
   mockListProjectsByAssistant: vi.fn(),
   mockListTodos: vi.fn(),
   mockReadFile: vi.fn(),
+  mockRenameFile: vi.fn(),
   mockReplaceTodos: vi.fn(),
   mockResolveProjectForPreview: vi.fn(),
   mockSearchFiles: vi.fn(),
+  mockSetEntrypoint: vi.fn(),
   mockUpdateTodo: vi.fn(),
   mockWriteFiles: vi.fn(),
 }));
@@ -36,14 +44,18 @@ vi.mock('./htmlProjectStore', async importOriginal => {
     ...actual,
     htmlProjectStore: {
       assertProjectOwnership: mockAssertProjectOwnership,
+      copyFile: mockCopyFile,
+      deleteFile: mockDeleteFile,
       deleteTodo: mockDeleteTodo,
       getTodoSummary: mockGetTodoSummary,
       listFiles: mockListFiles,
       listProjectsByAssistant: mockListProjectsByAssistant,
       listTodos: mockListTodos,
       readFile: mockReadFile,
+      renameFile: mockRenameFile,
       replaceTodos: mockReplaceTodos,
       searchFiles: mockSearchFiles,
+      setEntrypoint: mockSetEntrypoint,
       updateTodo: mockUpdateTodo,
       writeFiles: mockWriteFiles,
     },
@@ -88,6 +100,25 @@ describe('executeHtmlProjectToolCall', () => {
       allComplete: false,
     });
     mockListTodos.mockResolvedValue([]);
+    mockDeleteFile.mockResolvedValue({
+      deleted: true,
+      previewVersion: 4,
+    });
+    mockCopyFile.mockResolvedValue({
+      sourcePath: '/index.html',
+      destinationPath: '/index-copy.html',
+      previewVersion: 4,
+    });
+    mockRenameFile.mockResolvedValue({
+      sourcePath: '/index.html',
+      destinationPath: '/pages/home.html',
+      previewVersion: 4,
+    });
+    mockSetEntrypoint.mockResolvedValue({
+      id: 'project-1',
+      entryFile: '/index.html',
+      previewVersion: 4,
+    });
   });
 
   it('accepts a single file object, infers kind from path, and forwards normalized files', async () => {
@@ -1481,10 +1512,186 @@ describe('executeHtmlProjectToolCall', () => {
     expect(mockAssertProjectOwnership).toHaveBeenCalledWith('project-2', 'assistant-1');
     expect(mockSearchFiles).not.toHaveBeenCalled();
   });
+
+  it('copies a project file and refreshes preview metadata', async () => {
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'copyFile',
+        args: {
+          projectId: 'project-1',
+          sourcePath: '/index.html',
+          destinationPath: '/index-copy.html',
+        },
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-1',
+      },
+    );
+
+    expect(mockCopyFile).toHaveBeenCalledWith('project-1', '/index.html', '/index-copy.html');
+    expect(mockResolveProjectForPreview).toHaveBeenCalledWith('project-1');
+    expect(result).toMatchObject({
+      toolName: 'copyFile',
+      summary: '已複製檔案 /index.html -> /index-copy.html。',
+      result: {
+        projectId: 'project-1',
+        sourcePath: '/index.html',
+        destinationPath: '/index-copy.html',
+        copied: true,
+        previewVersion: 4,
+      },
+      workspace: {
+        activeProjectId: 'project-1',
+        activityMessage: '已複製檔案 /index.html -> /index-copy.html。',
+      },
+    });
+  });
+
+  it('renames a project file and refreshes preview metadata', async () => {
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'renameFile',
+        args: {
+          projectId: 'project-1',
+          sourcePath: '/index.html',
+          destinationPath: '/pages/home.html',
+        },
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-1',
+      },
+    );
+
+    expect(mockRenameFile).toHaveBeenCalledWith('project-1', '/index.html', '/pages/home.html');
+    expect(mockResolveProjectForPreview).toHaveBeenCalledWith('project-1');
+    expect(result).toMatchObject({
+      toolName: 'renameFile',
+      summary: '已重新命名檔案 /index.html -> /pages/home.html。',
+      result: {
+        projectId: 'project-1',
+        sourcePath: '/index.html',
+        destinationPath: '/pages/home.html',
+        renamed: true,
+        previewVersion: 4,
+      },
+      workspace: {
+        activeProjectId: 'project-1',
+        activityMessage: '已重新命名檔案 /index.html -> /pages/home.html。',
+      },
+    });
+  });
+
+  it('returns a recoverable result when copyFile source and destination normalize to the same path', async () => {
+    mockCopyFile.mockRejectedValue(new Error('Source and destination paths must be different.'));
+
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'copyFile',
+        args: {
+          projectId: 'project-1',
+          sourcePath: '/index.html',
+          destinationPath: './index.html',
+        },
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-1',
+      },
+    );
+
+    expect(result).toMatchObject({
+      toolName: 'copyFile',
+      summary: 'Source and destination paths must be different.',
+      result: {
+        ok: false,
+        recoverable: true,
+        code: 'copy-file-same-path',
+      },
+    });
+    expect(mockResolveProjectForPreview).not.toHaveBeenCalled();
+  });
+
+  it('returns a recoverable result when copyFile destination already exists', async () => {
+    mockCopyFile.mockRejectedValue(new Error('Project file /index-copy.html already exists.'));
+
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'copyFile',
+        args: {
+          projectId: 'project-1',
+          sourcePath: '/index.html',
+          destinationPath: '/index-copy.html',
+        },
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-1',
+      },
+    );
+
+    expect(result).toMatchObject({
+      toolName: 'copyFile',
+      summary: 'Project file /index-copy.html already exists.',
+      result: {
+        ok: false,
+        recoverable: true,
+        code: 'copy-file-destination-exists',
+        details: {
+          destinationPath: '/index-copy.html',
+        },
+      },
+    });
+    expect(mockResolveProjectForPreview).not.toHaveBeenCalled();
+  });
+
+  it('returns a recoverable result when renameFile source is missing', async () => {
+    mockRenameFile.mockRejectedValue(new Error('Project file /missing.html not found.'));
+
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'renameFile',
+        args: {
+          projectId: 'project-1',
+          sourcePath: '/missing.html',
+          destinationPath: '/pages/home.html',
+        },
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-1',
+      },
+    );
+
+    expect(result).toMatchObject({
+      toolName: 'renameFile',
+      summary: 'Project file /missing.html not found.',
+      result: {
+        ok: false,
+        recoverable: true,
+        code: 'rename-file-source-not-found',
+        details: {
+          sourcePath: '/missing.html',
+        },
+      },
+    });
+    expect(mockResolveProjectForPreview).not.toHaveBeenCalled();
+  });
 });
 
 describe('getHtmlProjectToolDefinitions', () => {
-  it('includes project todo tools and describes numbered readFile guidance', async () => {
+  it('includes copy/rename tools, todo tools, and numbered readFile guidance', async () => {
     const { getHtmlProjectToolDefinitions } = await import('./htmlProjectToolService');
 
     const definitions = getHtmlProjectToolDefinitions();
@@ -1493,6 +1700,8 @@ describe('getHtmlProjectToolDefinitions', () => {
     const modifyLinesInFileDefinition = definitions.find(
       ({ name }) => name === 'modifyLinesInFile',
     );
+    const copyFileDefinition = definitions.find(({ name }) => name === 'copyFile');
+    const renameFileDefinition = definitions.find(({ name }) => name === 'renameFile');
     const listProjectTodosDefinition = definitions.find(({ name }) => name === 'listProjectTodos');
     const setProjectTodosDefinition = definitions.find(({ name }) => name === 'setProjectTodos');
     const readFileDefinition = definitions.find(({ name }) => name === 'readFile');
@@ -1507,6 +1716,18 @@ describe('getHtmlProjectToolDefinitions', () => {
       name: 'modifyLinesInFile',
       parameters: {
         required: ['path', 'operation', 'startLine'],
+      },
+    });
+    expect(copyFileDefinition).toMatchObject({
+      name: 'copyFile',
+      parameters: {
+        required: ['sourcePath', 'destinationPath'],
+      },
+    });
+    expect(renameFileDefinition).toMatchObject({
+      name: 'renameFile',
+      parameters: {
+        required: ['sourcePath', 'destinationPath'],
       },
     });
     expect(listProjectTodosDefinition).toMatchObject({
@@ -1527,6 +1748,10 @@ describe('getHtmlProjectToolDefinitions', () => {
     expect(writeFilesDefinition?.description).toContain(
       'For existing files, prefer readFile plus replaceInFile or modifyLinesInFile over sending a large full-file rewrite.',
     );
+    expect(copyFileDefinition?.description).toContain('virtual project-root path');
+    expect(copyFileDefinition?.description).toContain('file duplication');
+    expect(renameFileDefinition?.description).toContain('virtual project-root path');
+    expect(renameFileDefinition?.description).toContain('path changes');
     expect(readFileDefinition?.description).toContain('numberedContent');
     expect(readFileDefinition?.description).toContain(
       'that prefix is not part of the real file content',

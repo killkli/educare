@@ -30,6 +30,8 @@ const HTML_PROJECT_TOOL_NAMES = [
   'deleteProjectTodo',
   'checkProjectTodos',
   'deleteFile',
+  'copyFile',
+  'renameFile',
   'setEntrypoint',
   'renderPreview',
 ] as const;
@@ -98,6 +100,18 @@ interface ModifyLinesInFileArgs {
 interface DeleteFileArgs {
   projectId?: string;
   path: string;
+}
+
+interface CopyFileArgs {
+  projectId?: string;
+  sourcePath: string;
+  destinationPath: string;
+}
+
+interface RenameFileArgs {
+  projectId?: string;
+  sourcePath: string;
+  destinationPath: string;
 }
 
 interface SetEntrypointArgs {
@@ -1538,6 +1552,192 @@ const handleDeleteFile = async (
   };
 };
 
+const handleCopyFile = async (
+  args: CopyFileArgs,
+  context: HtmlProjectToolContext,
+): Promise<HtmlProjectToolExecutionResult> => {
+  const sourcePath = typeof args.sourcePath === 'string' ? args.sourcePath.trim() : '';
+  const destinationPath =
+    typeof args.destinationPath === 'string' ? args.destinationPath.trim() : '';
+
+  if (!sourcePath) {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'invalid-copy-source-path',
+      message: 'copyFile requires a valid sourcePath.',
+      guidance: VIRTUAL_PROJECT_PATH_GUIDANCE,
+    });
+  }
+
+  if (!destinationPath) {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'invalid-copy-destination-path',
+      message: 'copyFile requires a valid destinationPath.',
+      guidance: VIRTUAL_PROJECT_PATH_GUIDANCE,
+    });
+  }
+
+  const project = await requireOwnedProject(args.projectId, context);
+
+  try {
+    const result = await htmlProjectStore.copyFile(project.id, sourcePath, destinationPath);
+    const preview = await htmlPreviewService.resolveProjectForPreview(project.id);
+    const summary = `已複製檔案 ${result.sourcePath} -> ${result.destinationPath}。`;
+
+    return {
+      toolName: 'copyFile',
+      summary,
+      result: {
+        projectId: project.id,
+        sourcePath: result.sourcePath,
+        destinationPath: result.destinationPath,
+        copied: true,
+        previewVersion: result.previewVersion,
+      },
+      workspace: createWorkspaceUpdate(project.id, summary, preview),
+    };
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === 'Source and destination paths must be different.') {
+        throw new HtmlProjectToolRecoverableError({
+          ok: false,
+          recoverable: true,
+          code: 'copy-file-same-path',
+          message: error.message,
+          guidance:
+            'Choose a different destinationPath so copyFile creates a new file instead of targeting the same normalized path.',
+        });
+      }
+
+      if (error.message.startsWith('Project file ') && error.message.endsWith(' not found.')) {
+        throw new HtmlProjectToolRecoverableError({
+          ok: false,
+          recoverable: true,
+          code: 'copy-file-source-not-found',
+          message: error.message,
+          guidance:
+            'Call listFiles or readFile first to confirm the exact sourcePath before retrying copyFile.',
+          details: {
+            sourcePath,
+          },
+        });
+      }
+
+      if (error.message.startsWith('Project file ') && error.message.endsWith(' already exists.')) {
+        throw new HtmlProjectToolRecoverableError({
+          ok: false,
+          recoverable: true,
+          code: 'copy-file-destination-exists',
+          message: error.message,
+          guidance:
+            'Choose a destinationPath that does not already exist, or inspect the existing file before deciding whether to overwrite it with another tool.',
+          details: {
+            destinationPath,
+          },
+        });
+      }
+    }
+
+    throw error;
+  }
+};
+
+const handleRenameFile = async (
+  args: RenameFileArgs,
+  context: HtmlProjectToolContext,
+): Promise<HtmlProjectToolExecutionResult> => {
+  const sourcePath = typeof args.sourcePath === 'string' ? args.sourcePath.trim() : '';
+  const destinationPath =
+    typeof args.destinationPath === 'string' ? args.destinationPath.trim() : '';
+
+  if (!sourcePath) {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'invalid-rename-source-path',
+      message: 'renameFile requires a valid sourcePath.',
+      guidance: VIRTUAL_PROJECT_PATH_GUIDANCE,
+    });
+  }
+
+  if (!destinationPath) {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'invalid-rename-destination-path',
+      message: 'renameFile requires a valid destinationPath.',
+      guidance: VIRTUAL_PROJECT_PATH_GUIDANCE,
+    });
+  }
+
+  const project = await requireOwnedProject(args.projectId, context);
+
+  try {
+    const result = await htmlProjectStore.renameFile(project.id, sourcePath, destinationPath);
+    const preview = await htmlPreviewService.resolveProjectForPreview(project.id);
+    const summary = `已重新命名檔案 ${result.sourcePath} -> ${result.destinationPath}。`;
+
+    return {
+      toolName: 'renameFile',
+      summary,
+      result: {
+        projectId: project.id,
+        sourcePath: result.sourcePath,
+        destinationPath: result.destinationPath,
+        renamed: true,
+        previewVersion: result.previewVersion,
+      },
+      workspace: createWorkspaceUpdate(project.id, summary, preview),
+    };
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === 'Source and destination paths must be different.') {
+        throw new HtmlProjectToolRecoverableError({
+          ok: false,
+          recoverable: true,
+          code: 'rename-file-same-path',
+          message: error.message,
+          guidance:
+            'Choose a different destinationPath so renameFile moves the file to a new normalized path.',
+        });
+      }
+
+      if (error.message.startsWith('Project file ') && error.message.endsWith(' not found.')) {
+        throw new HtmlProjectToolRecoverableError({
+          ok: false,
+          recoverable: true,
+          code: 'rename-file-source-not-found',
+          message: error.message,
+          guidance:
+            'Call listFiles or readFile first to confirm the exact sourcePath before retrying renameFile.',
+          details: {
+            sourcePath,
+          },
+        });
+      }
+
+      if (error.message.startsWith('Project file ') && error.message.endsWith(' already exists.')) {
+        throw new HtmlProjectToolRecoverableError({
+          ok: false,
+          recoverable: true,
+          code: 'rename-file-destination-exists',
+          message: error.message,
+          guidance:
+            'Choose a destinationPath that does not already exist, or inspect the existing file before deciding on a different path.',
+          details: {
+            destinationPath,
+          },
+        });
+      }
+    }
+
+    throw error;
+  }
+};
+
 const handleSetEntrypoint = async (
   args: SetEntrypointArgs,
   context: HtmlProjectToolContext,
@@ -1821,6 +2021,36 @@ export const getHtmlProjectToolDefinitions = (): ToolDefinition[] => [
     },
   },
   {
+    name: 'copyFile',
+    description:
+      'Copy one existing project file to a new virtual project-root path. Use this for file duplication instead of manually reading and rewriting the same file content. If later references need changes, inspect the project files and update them explicitly with searchFiles plus replaceInFile or modifyLinesInFile.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        projectId: { type: 'string' },
+        sourcePath: { type: 'string', description: VIRTUAL_PROJECT_PATH_GUIDANCE },
+        destinationPath: { type: 'string', description: VIRTUAL_PROJECT_PATH_GUIDANCE },
+      },
+      required: ['sourcePath', 'destinationPath'],
+    },
+  },
+  {
+    name: 'renameFile',
+    description:
+      'Rename or move one existing project file to a new virtual project-root path. Use this for path changes instead of simulating a rename with read plus write plus delete. If other files reference the old path, inspect them and update those references explicitly with searchFiles plus replaceInFile or modifyLinesInFile.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        projectId: { type: 'string' },
+        sourcePath: { type: 'string', description: VIRTUAL_PROJECT_PATH_GUIDANCE },
+        destinationPath: { type: 'string', description: VIRTUAL_PROJECT_PATH_GUIDANCE },
+      },
+      required: ['sourcePath', 'destinationPath'],
+    },
+  },
+  {
     name: 'setEntrypoint',
     description:
       'Set which HTML file should be used as the preview entrypoint. Use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js.',
@@ -1892,6 +2122,10 @@ export const executeHtmlProjectToolCall = async (
         return await handleCheckProjectTodos(safeArgs as unknown as CheckProjectTodosArgs, context);
       case 'deleteFile':
         return await handleDeleteFile(safeArgs as unknown as DeleteFileArgs, context);
+      case 'copyFile':
+        return await handleCopyFile(safeArgs as unknown as CopyFileArgs, context);
+      case 'renameFile':
+        return await handleRenameFile(safeArgs as unknown as RenameFileArgs, context);
       case 'setEntrypoint':
         return await handleSetEntrypoint(safeArgs as unknown as SetEntrypointArgs, context);
       case 'renderPreview':
