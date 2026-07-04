@@ -167,6 +167,16 @@ export const classifyHtmlProjectIntent = (
   const hasSignals = hasAnyHtmlProjectSignal(normalizedMessage);
 
   if (!hasSignals) {
+    if (activeProjectId) {
+      return {
+        intent: 'uncertain',
+        confidence: 'low',
+        selectedPackSet: DEFAULT_UNCERTAIN_PACK_SET,
+        reason:
+          'Active project present but no specific HTML signal; falling back to inspect/edit/finalize so tools are not silently dropped.',
+        requiresSummaryPreflight: true,
+      };
+    }
     return {
       intent: 'uncertain',
       confidence: 'low',
@@ -346,6 +356,12 @@ const buildPackSpecificGuidance = (packSet: HtmlProjectToolPackName[]): string[]
     );
   }
 
+  if (packSetLookup.has('bootstrap') || packSetLookup.has('edit')) {
+    guidance.push(
+      'Before writing files, plan the work with setProjectTodos (at least 3 concrete todos). Execute todos one at a time, marking them in_progress/completed.',
+    );
+  }
+
   if (packSetLookup.has('inspect')) {
     guidance.push(
       'For inspection routes, use getProjectSummary, searchFiles, listFiles, readFile, and listProjectTodos to understand the current project before deciding on edits.',
@@ -370,6 +386,9 @@ const buildPackSpecificGuidance = (packSet: HtmlProjectToolPackName[]): string[]
   if (packSetLookup.has('todo_finalize')) {
     guidance.push(
       'Before resuming project execution, inspect the current checklist or injected summary. Before saying all work is complete, call checkProjectTodos and confirm allComplete is true.',
+    );
+    guidance.push(
+      "Before calling reportTurnOutcome(outcome:'complete'), you MUST first call checkProjectTodos and confirm todoSummary.allComplete === true, AND call getPreviewRuntimeErrors and confirm status is 'clean' or 'not_executed' (no runtime errors). If todos remain or runtime errors exist, continue working instead of reporting complete.",
     );
 
     if (packSetLookup.has('edit')) {

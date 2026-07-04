@@ -110,6 +110,24 @@ describe('classifyHtmlProjectIntent', () => {
       }),
     );
   });
+
+  it('returns non-empty uncertain fallback when an active project has no HTML signal (AC#6)', () => {
+    const decision = classifyHtmlProjectIntent('What is the capital of France?', 'project-123');
+    expect(decision.intent).toBe('uncertain');
+    expect(decision.confidence).toBe('low');
+    expect(decision.selectedPackSet).toEqual(['inspect', 'edit', 'todo_finalize']);
+    expect(decision.selectedPackSet.length).toBeGreaterThan(0);
+    expect(decision.requiresSummaryPreflight).toBe(true);
+    expect(decision.reason).toContain('falling back');
+  });
+
+  it('returns an empty pack set when there is no active project and no HTML signal (truly off-topic)', () => {
+    const decision = classifyHtmlProjectIntent('What is the capital of France?', null);
+    expect(decision.intent).toBe('uncertain');
+    expect(decision.confidence).toBe('low');
+    expect(decision.selectedPackSet).toEqual([]);
+    expect(decision.requiresSummaryPreflight).toBe(false);
+  });
 });
 
 describe('buildHtmlProjectSystemPrompt', () => {
@@ -152,7 +170,7 @@ describe('buildHtmlProjectSystemPrompt', () => {
       'HTML tool packs exposed for this turn: inspect, edit, todo_finalize, preview_recheck.',
     );
     expect(prompt).toContain(
-      'Visible HTML project tools: getProjectSummary, listFiles, searchFiles, readFile, listProjectTodos, writeFiles, replaceInFile, modifyLinesInFile, copyFile, renameFile, deleteFile, setEntrypoint, setProjectTodos, updateProjectTodo, deleteProjectTodo, checkProjectTodos, renderPreview.',
+      'Visible HTML project tools: getProjectSummary, listFiles, searchFiles, readFile, listProjectTodos, writeFiles, replaceInFile, modifyLinesInFile, copyFile, renameFile, deleteFile, setEntrypoint, setProjectTodos, updateProjectTodo, deleteProjectTodo, checkProjectTodos, renderPreview, reportTurnOutcome, getPreviewRuntimeErrors, listSnapshots, revertToSnapshot.',
     );
     expect(prompt).toContain(
       'The system already injected a current project summary for this turn:',
@@ -182,7 +200,7 @@ describe('buildHtmlProjectSystemPrompt', () => {
       'HTML tool packs exposed for this turn: inspect, todo_finalize, preview_recheck.',
     );
     expect(prompt).toContain(
-      'Visible HTML project tools: getProjectSummary, listFiles, searchFiles, readFile, listProjectTodos, checkProjectTodos, renderPreview.',
+      'Visible HTML project tools: getProjectSummary, listFiles, searchFiles, readFile, listProjectTodos, checkProjectTodos, renderPreview, reportTurnOutcome, getPreviewRuntimeErrors, listSnapshots, revertToSnapshot.',
     );
     expect(prompt).not.toContain(
       'Visible HTML project tools: getProjectSummary, listFiles, searchFiles, readFile, listProjectTodos, writeFiles',
@@ -190,5 +208,69 @@ describe('buildHtmlProjectSystemPrompt', () => {
     expect(prompt).not.toContain(
       'use getProjectSummary when available, use searchFiles to locate relevant code, use listFiles to inspect structure, then use readFile before writeFiles, replaceInFile, or modifyLinesInFile.',
     );
+  });
+
+  it('adds plan-first guidance when the bootstrap pack is visible for a fresh build', () => {
+    const prompt = buildHtmlProjectSystemPrompt({
+      activeProjectId: null,
+      intentDecision: classifyHtmlProjectIntent(
+        'I want a brand new landing page from scratch.',
+        null,
+      ),
+      projectSummary: null,
+    });
+
+    expect(prompt).toContain('Current routing intent: new_build');
+    expect(prompt).toContain(
+      'Before writing files, plan the work with setProjectTodos (at least 3 concrete todos). Execute todos one at a time, marking them in_progress/completed.',
+    );
+  });
+
+  it('adds plan-first guidance when the edit pack is visible for a resume_project turn', () => {
+    const prompt = buildHtmlProjectSystemPrompt({
+      activeProjectId: 'project-123',
+      intentDecision: classifyHtmlProjectIntent(
+        'Continue the same project, fix the header, and refresh preview after that.',
+        'project-123',
+      ),
+      projectSummary,
+    });
+
+    expect(prompt).toContain(
+      'Before writing files, plan the work with setProjectTodos (at least 3 concrete todos). Execute todos one at a time, marking them in_progress/completed.',
+    );
+  });
+
+  it('strengthens the todo_finalize gate with reportTurnOutcome and getPreviewRuntimeErrors requirements', () => {
+    const prompt = buildHtmlProjectSystemPrompt({
+      activeProjectId: 'project-123',
+      intentDecision: classifyHtmlProjectIntent(
+        'Please finish this and recheck preview before we wrap up.',
+        'project-123',
+      ),
+      projectSummary,
+    });
+
+    expect(prompt).toContain(
+      "Before calling reportTurnOutcome(outcome:'complete'), you MUST first call checkProjectTodos and confirm todoSummary.allComplete === true, AND call getPreviewRuntimeErrors and confirm status is 'clean' or 'not_executed' (no runtime errors). If todos remain or runtime errors exist, continue working instead of reporting complete.",
+    );
+  });
+
+  it('adds the uncertain fallback pack set for an active project with no HTML signal (AC#6)', () => {
+    const prompt = buildHtmlProjectSystemPrompt({
+      activeProjectId: 'project-123',
+      intentDecision: classifyHtmlProjectIntent('What is the capital of France?', 'project-123'),
+      projectSummary: null,
+    });
+
+    expect(prompt).toContain('Current routing intent: uncertain (low confidence).');
+    expect(prompt).toContain(
+      'HTML tool packs exposed for this turn: inspect, edit, todo_finalize.',
+    );
+    // Plan-first + finalize gate should also appear since edit and todo_finalize are exposed
+    expect(prompt).toContain(
+      'Before writing files, plan the work with setProjectTodos (at least 3 concrete todos).',
+    );
+    expect(prompt).toContain("Before calling reportTurnOutcome(outcome:'complete')");
   });
 });

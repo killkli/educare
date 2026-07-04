@@ -5,6 +5,12 @@ import {
   groupMessagesByRounds,
   getIncompleteRound,
   reconstructHistory,
+  serializeAgentTurnLog,
+  MAX_AGENT_TURN_LOG_CHARS,
+  isSyntheticMessage,
+  partitionSyntheticMessages,
+  dropSyntheticForCompaction,
+  buildSyntheticMessage,
 } from './conversationUtils';
 import { ChatMessage, ConversationRound } from '../types';
 
@@ -256,6 +262,197 @@ describe('conversationUtils', () => {
           content: '[COMPRESSED_CONTEXT] Summary...',
         },
       ]);
+    });
+  });
+
+  describe('serializeAgentTurnLog', () => {
+    it('exports the 200-char constant', () => {
+      expect(MAX_AGENT_TURN_LOG_CHARS).toBe(200);
+    });
+
+    it('returns input unchanged when within the limit', () => {
+      const input = 'Loaded project, wrote index.html, ran preview.';
+      expect(serializeAgentTurnLog(input)).toBe(input);
+    });
+
+    it('normalizes newlines (CRLF and LF) to single spaces', () => {
+      const input = 'Line one.\nLine two.\r\nLine three.';
+      expect(serializeAgentTurnLog(input)).toBe('Line one. Line two. Line three.');
+    });
+
+    it('trims surrounding whitespace after normalization', () => {
+      expect(serializeAgentTurnLog('   hello world   ')).toBe('hello world');
+    });
+
+    it('truncates with ellipsis when exceeding the limit, total length <= MAX_AGENT_TURN_LOG_CHARS', () => {
+      const input = 'a'.repeat(MAX_AGENT_TURN_LOG_CHARS + 50);
+      const result = serializeAgentTurnLog(input);
+      expect(result.length).toBeLessThanOrEqual(MAX_AGENT_TURN_LOG_CHARS);
+      expect(result.endsWith('…')).toBe(true);
+      // The body should be (MAX_AGENT_TURN_LOG_CHARS - 3) 'a' chars followed by '…'
+      expect(result.slice(0, -1)).toBe('a'.repeat(MAX_AGENT_TURN_LOG_CHARS - 3));
+    });
+
+    it('does not truncate when exactly at the limit', () => {
+      const input = 'b'.repeat(MAX_AGENT_TURN_LOG_CHARS);
+      expect(serializeAgentTurnLog(input)).toBe(input);
+    });
+
+    it('normalizes newlines before measuring length', () => {
+      // 199 newlines + 1 char = 200 chars; after normalization each newline becomes a space
+      const input = `${'c'.repeat(199)}\n${'d'.repeat(50)}`;
+      const result = serializeAgentTurnLog(input);
+      expect(result.length).toBeLessThanOrEqual(MAX_AGENT_TURN_LOG_CHARS);
+      expect(result.endsWith('…')).toBe(true);
+    });
+  });
+
+  describe('isSyntheticMessage', () => {
+    it('returns true only when synthetic === true', () => {
+      expect(isSyntheticMessage({ role: 'user', content: 'x', synthetic: true })).toBe(true);
+      expect(isSyntheticMessage({ role: 'user', content: 'x', synthetic: false })).toBe(false);
+      expect(isSyntheticMessage({ role: 'user', content: 'x' })).toBe(false);
+    });
+  });
+
+  describe('partitionSyntheticMessages', () => {
+    it('partitions by synthetic flag while preserving order', () => {
+      const messages: ChatMessage[] = [
+        { role: 'user', content: 'real-1' },
+        { role: 'model', content: 'synthetic-1', synthetic: true },
+        { role: 'user', content: 'real-2' },
+        { role: 'model', content: 'synthetic-2', synthetic: true },
+      ];
+
+      const result = partitionSyntheticMessages(messages);
+      expect(result.synthetic).toEqual([
+        { role: 'model', content: 'synthetic-1', synthetic: true },
+        { role: 'model', content: 'synthetic-2', synthetic: true },
+      ]);
+      expect(result.real).toEqual([
+        { role: 'user', content: 'real-1' },
+        { role: 'user', content: 'real-2' },
+      ]);
+    });
+
+    it('returns empty synthetic when none are synthetic', () => {
+      const messages: ChatMessage[] = [
+        { role: 'user', content: 'a' },
+        { role: 'model', content: 'b' },
+      ];
+      const result = partitionSyntheticMessages(messages);
+      expect(result.synthetic).toEqual([]);
+      expect(result.real).toEqual(messages);
+    });
+
+    it('returns empty real when all are synthetic', () => {
+      const messages: ChatMessage[] = [
+        { role: 'user', content: 'a', synthetic: true },
+        { role: 'model', content: 'b', synthetic: true },
+      ];
+      const result = partitionSyntheticMessages(messages);
+      expect(result.synthetic).toEqual(messages);
+      expect(result.real).toEqual([]);
+    });
+
+    it('handles empty input', () => {
+      const result = partitionSyntheticMessages([]);
+      expect(result.synthetic).toEqual([]);
+      expect(result.real).toEqual([]);
+    });
+  });
+
+  describe('dropSyntheticForCompaction', () => {
+    const messages: ChatMessage[] = [
+      { role: 'user', content: 'real-A' },
+      { role: 'model', content: 'synthetic-1', synthetic: true },
+      { role: 'user', content: 'real-B' },
+      { role: 'model', content: 'synthetic-2', synthetic: true },
+      { role: 'user', content: 'real-C' },
+    ];
+
+    it('returns a shallow copy unchanged when dropCount <= 0', () => {
+      const result = dropSyntheticForCompaction(messages, 0);
+      expect(result).toEqual(messages);
+      expect(result).not.toBe(messages); // a copy, not the same reference
+    });
+
+    it('drops only synthetic messages first (oldest first)', () => {
+      const result = dropSyntheticForCompaction(messages, 1);
+      expect(result).toEqual([
+        { role: 'user', content: 'real-A' },
+        { role: 'user', content: 'real-B' },
+        { role: 'model', content: 'synthetic-2', synthetic: true },
+        { role: 'user', content: 'real-C' },
+      ]);
+    });
+
+    it('drops all synthetic messages before any real ones when dropCount >= synthetic count', () => {
+      const result = dropSyntheticForCompaction(messages, 2);
+      expect(result).toEqual([
+        { role: 'user', content: 'real-A' },
+        { role: 'user', content: 'real-B' },
+        { role: 'user', content: 'real-C' },
+      ]);
+    });
+
+    it('falls back to dropping real messages (oldest first) after synthetics are exhausted', () => {
+      const result = dropSyntheticForCompaction(messages, 3);
+      expect(result).toEqual([
+        { role: 'user', content: 'real-B' },
+        { role: 'user', content: 'real-C' },
+      ]);
+    });
+
+    it('respects dropCount and does not drop more than requested', () => {
+      const result = dropSyntheticForCompaction(messages, 4);
+      // 2 synthetic + 2 oldest real (real-A, real-B) dropped
+      expect(result).toEqual([{ role: 'user', content: 'real-C' }]);
+    });
+
+    it('returns empty array when dropCount >= messages.length', () => {
+      expect(dropSyntheticForCompaction(messages, messages.length)).toEqual([]);
+      expect(dropSyntheticForCompaction(messages, messages.length + 10)).toEqual([]);
+    });
+
+    it('preserves original relative order of remaining messages', () => {
+      const result = dropSyntheticForCompaction(messages, 1);
+      const remainingContents = result.map(m => m.content);
+      expect(remainingContents).toEqual(['real-A', 'real-B', 'synthetic-2', 'real-C']);
+    });
+
+    it('handles empty input', () => {
+      expect(dropSyntheticForCompaction([], 5)).toEqual([]);
+    });
+  });
+
+  describe('buildSyntheticMessage', () => {
+    it('builds a synthetic user message with synthetic:true', () => {
+      const msg = buildSyntheticMessage('user', 'Continuing previous turn');
+      expect(msg.role).toBe('user');
+      expect(msg.content).toBe('Continuing previous turn');
+      expect(msg.synthetic).toBe(true);
+      expect(msg.agentTurnLog).toBeUndefined();
+    });
+
+    it('builds a synthetic model message and serializes agentTurnLog', () => {
+      const longLog = 'Loaded project.\nWrote /index.html.\nRan preview.'.repeat(20);
+      const msg = buildSyntheticMessage('model', 'Synthetic assistant summary', longLog);
+      expect(msg.role).toBe('model');
+      expect(msg.synthetic).toBe(true);
+      expect(msg.agentTurnLog).toBeDefined();
+      expect(msg.agentTurnLog!.length).toBeLessThanOrEqual(MAX_AGENT_TURN_LOG_CHARS);
+      expect(msg.agentTurnLog!.endsWith('…')).toBe(true);
+    });
+
+    it('leaves agentTurnLog undefined when not provided', () => {
+      const msg = buildSyntheticMessage('user', 'no log');
+      expect(msg.agentTurnLog).toBeUndefined();
+    });
+
+    it('serializes short agentTurnLog verbatim (after newline normalization)', () => {
+      const msg = buildSyntheticMessage('model', 'ok', 'Line one.\nLine two.');
+      expect(msg.agentTurnLog).toBe('Line one. Line two.');
     });
   });
 });
