@@ -37,6 +37,16 @@ export default [
         // Abort API (agentic harness AbortSignal / AbortController)
         AbortSignal: 'readonly',
         AbortController: 'readonly',
+        // Fetch API types (used by harness provider/preview tests)
+        Response: 'readonly',
+        Request: 'readonly',
+        Headers: 'readonly',
+        Blob: 'readonly',
+        // Runtime/preview harness globals
+        performance: 'readonly',
+        Window: 'readonly',
+        MessageEvent: 'readonly',
+        HTMLIFrameElement: 'readonly',
         HTMLElement: 'readonly',
         Event: 'readonly',
         CustomEvent: 'readonly',

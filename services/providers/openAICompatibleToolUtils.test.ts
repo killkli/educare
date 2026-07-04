@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { streamOpenAICompatibleChat } from './openAICompatibleToolUtils';
+import { TOOL_LOOP_CONTRACT_CASES } from './toolLoopContract.cases';
 
 const TOOL_DEFINITIONS = [
   {
@@ -362,6 +363,7 @@ describe('streamOpenAICompatibleChat', () => {
           },
           toolRoundCount: 2,
           repeatedRecoverableErrors: [],
+          finishReason: 'complete',
         },
       },
     ]);
@@ -661,6 +663,7 @@ describe('streamOpenAICompatibleChat', () => {
               count: 1,
             },
           ],
+          finishReason: 'complete',
         },
       },
     ]);
@@ -915,12 +918,13 @@ describe('streamOpenAICompatibleChat', () => {
               count: 3,
             },
           ],
+          finishReason: 'stop-route',
         },
       },
     ]);
   });
 
-  it('throws a clear error after exceeding the maximum number of tool rounds', async () => {
+  it('yields finishReason=tool-budget-exhausted instead of throwing when the round budget is exceeded', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
       Promise.resolve(
         createJsonResponse({
@@ -948,25 +952,313 @@ describe('streamOpenAICompatibleChat', () => {
     );
     const executeTool = vi.fn().mockResolvedValue({ matches: [] });
 
-    await expect(async () => {
-      for await (const chunk of streamOpenAICompatibleChat({
-        endpoint: 'https://example.com/chat/completions',
-        headers: { Authorization: 'Bearer test' },
-        providerName: 'openai',
-        model: 'gpt-4o',
-        params: {
-          systemPrompt: 'You are helpful.',
-          history: [],
-          message: 'hello',
-          tools: [...TOOL_DEFINITIONS],
-          executeTool,
-        },
-      })) {
-        void chunk;
-      }
-    }).rejects.toThrow('OpenAI-compatible providers exceeded maximum tool rounds (20).');
+    const responses = [];
+    for await (const chunk of streamOpenAICompatibleChat({
+      endpoint: 'https://example.com/chat/completions',
+      headers: { Authorization: 'Bearer test' },
+      providerName: 'openai',
+      model: 'gpt-4o',
+      params: {
+        systemPrompt: 'You are helpful.',
+        history: [],
+        message: 'hello',
+        tools: [...TOOL_DEFINITIONS],
+        executeTool,
+      },
+    })) {
+      responses.push(chunk);
+    }
+
+    // G13: budget exhaustion must NOT throw; it yields a final frame with
+    // finishReason='tool-budget-exhausted'.
+    const final = responses.at(-1);
+    expect(final).toMatchObject({
+      text: '',
+      isComplete: true,
+    });
+    expect(final?.metadata?.finishReason).toBe('tool-budget-exhausted');
+    expect(final?.metadata?.toolRoundCount).toBe(20);
 
     expect(executeTool).toHaveBeenCalledTimes(20);
     expect(fetchMock).toHaveBeenCalledTimes(21);
+  });
+
+  it('forwards params.signal to fetch and yields finishReason=aborted on abort', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
+      Promise.resolve(
+        createJsonResponse({
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: null,
+                tool_calls: [
+                  {
+                    id: 'call-1',
+                    type: 'function',
+                    function: {
+                      name: 'search_docs',
+                      arguments: JSON.stringify({ query: 'financial aid' }),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+          usage: { prompt_tokens: 2, completion_tokens: 1 },
+        }),
+      ),
+    );
+
+    const controller = new AbortController();
+    const executeTool = vi.fn().mockImplementation(async () => {
+      // Abort mid-round (after the first tool execution); the next loop-top
+      // check must observe signal.aborted and terminate with finishReason=aborted.
+      controller.abort();
+      return { matches: ['doc-1'] };
+    });
+
+    const responses = [];
+    for await (const chunk of streamOpenAICompatibleChat({
+      endpoint: 'https://example.com/chat/completions',
+      headers: { Authorization: 'Bearer test' },
+      providerName: 'openai',
+      model: 'gpt-4o',
+      params: {
+        systemPrompt: 'You are helpful.',
+        history: [],
+        message: 'hello',
+        tools: [...TOOL_DEFINITIONS],
+        executeTool,
+        signal: controller.signal,
+      },
+    })) {
+      responses.push(chunk);
+    }
+
+    const fetchMock = vi.mocked(globalThis.fetch);
+    // Signal forwarded to every fetch call (G17).
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBe(controller.signal);
+
+    const final = responses.at(-1);
+    expect(final?.metadata?.finishReason).toBe('aborted');
+    expect(final?.isComplete).toBe(true);
+    // Tool ran exactly once (round 1) before abort was observed at the top of round 2.
+    expect(executeTool).toHaveBeenCalledTimes(1);
+  });
+
+  it('yields assistant content incrementally when a tool-call message also carries text', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    const executeTool = vi.fn().mockResolvedValueOnce({ matches: ['doc-1'] });
+
+    fetchMock
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: 'Let me search for that.',
+                tool_calls: [
+                  {
+                    id: 'call-1',
+                    type: 'function',
+                    function: {
+                      name: 'search_docs',
+                      arguments: JSON.stringify({ query: 'financial aid' }),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+          usage: { prompt_tokens: 3, completion_tokens: 2 },
+        }),
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: 'Here are the results.',
+              },
+            },
+          ],
+          usage: { prompt_tokens: 4, completion_tokens: 2 },
+        }),
+      );
+
+    const responses = [];
+    for await (const chunk of streamOpenAICompatibleChat({
+      endpoint: 'https://example.com/chat/completions',
+      headers: { Authorization: 'Bearer test' },
+      providerName: 'openai',
+      model: 'gpt-4o',
+      params: {
+        systemPrompt: 'You are helpful.',
+        history: [],
+        message: 'hello',
+        tools: [...TOOL_DEFINITIONS],
+        executeTool,
+      },
+    })) {
+      responses.push(chunk);
+    }
+
+    // ③ Incremental yield: the round-1 assistant text is yielded BEFORE the
+    // final answer so the user sees progress during the tool round.
+    expect(responses.map(r => r.text)).toEqual([
+      'Let me search for that.',
+      'Here are the results.',
+      '',
+    ]);
+    expect(responses.at(-1)?.metadata?.finishReason).toBe('complete');
+  });
+
+  it('evicts tool-result content older than 3 rounds and larger than 2KB after round 8', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    const largeResult = { matches: ['x'.repeat(2500)] };
+    const smallResult = { matches: ['ok'] };
+
+    // executeTool returns a large result on the first call (round 1) and
+    // small results afterwards; round 1's tool message should be evicted
+    // once the loop crosses round 8 + 3-round lookback.
+    const executeTool = vi
+      .fn()
+      .mockImplementation(() =>
+        Promise.resolve(executeTool.mock.calls.length === 1 ? largeResult : smallResult),
+      );
+
+    // Fetch always returns a tool call (10 rounds) then a final text answer.
+    const toolCallResponse = () =>
+      createJsonResponse({
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: null,
+              tool_calls: [
+                {
+                  id: 'call-1',
+                  type: 'function',
+                  function: {
+                    name: 'search_docs',
+                    arguments: JSON.stringify({ query: 'q' }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+        usage: { prompt_tokens: 1, completion_tokens: 1 },
+      });
+
+    const fetchSequence = Array.from({ length: 10 }, () => Promise.resolve(toolCallResponse()));
+    fetchSequence.push(
+      Promise.resolve(
+        createJsonResponse({
+          choices: [{ message: { role: 'assistant', content: 'done' } }],
+          usage: { prompt_tokens: 1, completion_tokens: 1 },
+        }),
+      ),
+    );
+    fetchMock.mockImplementation(() => fetchSequence.shift() as Promise<Response>);
+
+    for await (const chunk of streamOpenAICompatibleChat({
+      endpoint: 'https://example.com/chat/completions',
+      headers: { Authorization: 'Bearer test' },
+      providerName: 'openai',
+      model: 'gpt-4o',
+      params: {
+        systemPrompt: 'You are helpful.',
+        history: [],
+        message: 'hello',
+        tools: [...TOOL_DEFINITIONS],
+        executeTool,
+      },
+    })) {
+      void chunk;
+    }
+
+    expect(executeTool).toHaveBeenCalledTimes(10);
+
+    // The 11th fetch (index 10) is the first request sent AFTER the eviction
+    // at the round-9 append (toolRoundCount was 9 > 8). Round 1's tool result
+    // (tag=1, age=8 > 3) is > 2KB and must be replaced with the placeholder.
+    const evictedFetchBody = JSON.parse(fetchMock.mock.calls[10]?.[1]?.body as string);
+    const toolMessages = evictedFetchBody.messages.filter(
+      (m: { role: string }) => m.role === 'tool',
+    );
+    const round1ToolMessage = toolMessages[0];
+    expect(round1ToolMessage.content).toBe(
+      '[evicted prior tool result (>2KB); re-run readFile to inspect]',
+    );
+    // Structural integrity: tool_call_id preserved, role unchanged.
+    expect(round1ToolMessage.role).toBe('tool');
+    expect(round1ToolMessage.tool_call_id).toBe('call-1');
+
+    // Recent rounds' tool results (still small) are untouched.
+    const lastToolMessage = toolMessages.at(-1);
+    expect(lastToolMessage.content).toBe(JSON.stringify(smallResult));
+  });
+
+  it('pure-text path yields finishReason=complete', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      createJsonResponse({
+        choices: [{ message: { role: 'assistant', content: 'plain answer' } }],
+        usage: { prompt_tokens: 2, completion_tokens: 1 },
+      }),
+    );
+
+    const responses = [];
+    for await (const chunk of streamOpenAICompatibleChat({
+      endpoint: 'https://example.com/chat/completions',
+      headers: { Authorization: 'Bearer test' },
+      providerName: 'openai',
+      model: 'gpt-4o',
+      params: {
+        systemPrompt: 'You are helpful.',
+        history: [],
+        message: 'hello',
+        tools: [...TOOL_DEFINITIONS],
+        executeTool: vi.fn(),
+      },
+    })) {
+      responses.push(chunk);
+    }
+
+    expect(responses.at(-1)?.metadata?.finishReason).toBe('complete');
+  });
+
+  describe('tool-loop contract cases (shared)', () => {
+    const sharedParams = {
+      systemPrompt: 'You are helpful.',
+      history: [],
+      message: 'hello',
+      tools: [...TOOL_DEFINITIONS],
+    };
+
+    it.each(TOOL_LOOP_CONTRACT_CASES)(
+      '$id yields finishReason=$expectedFinishReason',
+      async testCase => {
+        const fetchMock = vi.spyOn(globalThis, 'fetch');
+        const executeTool = vi.fn();
+        testCase.setup({ fetch: fetchMock, executeTool });
+
+        const responses = [];
+        for await (const chunk of streamOpenAICompatibleChat({
+          endpoint: 'https://example.com/chat/completions',
+          headers: { Authorization: 'Bearer test' },
+          providerName: 'openai',
+          model: 'gpt-4o',
+          params: { ...sharedParams, executeTool },
+        })) {
+          responses.push(chunk);
+        }
+
+        expect(responses.at(-1)?.metadata?.finishReason).toBe(testCase.expectedFinishReason);
+      },
+    );
   });
 });

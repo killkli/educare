@@ -406,6 +406,7 @@ const fetchToolCallResponse = async (
   const response = await fetch(endpoint, {
     method: 'POST',
     headers,
+    signal: params.signal,
     body: JSON.stringify({
       model,
       messages,
@@ -441,6 +442,9 @@ export async function* streamOpenAICompatibleChat(
 
   const systemPrompt = buildFinalSystemPrompt(params);
   let messages = buildMessages(params, systemPrompt);
+  // Parallel round-tag array for context eviction (T1 ④).
+  // 0 = initial buildMessages output; 1..N = round in which the message was appended.
+  let messageRoundTags: number[] = messages.map(() => 0);
   let promptTokenCount = 0;
   let candidatesTokenCount = 0;
   let usage: ProviderUsageMetadata | undefined;
@@ -453,6 +457,25 @@ export async function* streamOpenAICompatibleChat(
     const repeatedRecoverableErrors = new Map<string, RepeatedRecoverableErrorEntry>();
 
     while (true) {
+      // ② AbortSignal (G17): check at loop top so abort never produces a half turn.
+      if (params.signal?.aborted) {
+        yield {
+          text: '',
+          isComplete: true,
+          metadata: {
+            promptTokenCount,
+            candidatesTokenCount,
+            model,
+            provider: providerName,
+            usage,
+            toolRoundCount,
+            repeatedRecoverableErrors: [...repeatedRecoverableErrors.values()],
+            finishReason: 'aborted',
+          },
+        };
+        return;
+      }
+
       const toolResponse = await fetchToolCallResponse(options, messages, toolRoundCount > 0);
       const assistantMessage = toolResponse.choices?.[0]?.message;
 
@@ -493,15 +516,44 @@ export async function* streamOpenAICompatibleChat(
             usage,
             toolRoundCount,
             repeatedRecoverableErrors: [...repeatedRecoverableErrors.values()],
+            finishReason: 'complete',
           },
         };
         return;
       }
 
+      // ③ Incremental content yield: if the assistant message has both content
+      // and tool_calls, yield the text immediately so the user sees partial
+      // progress before the tool round blocks on execution.
+      if (assistantMessage.content) {
+        yield {
+          text: assistantMessage.content,
+          isComplete: false,
+          metadata: {
+            model,
+            provider: providerName,
+          },
+        };
+      }
+
+      // ① Budget exhaustion (G13): no longer throws; yields a final
+      // tool-budget-exhausted frame so callers can surface a clean stop.
       if (toolRoundCount >= MAX_OPENAI_COMPATIBLE_TOOL_ROUNDS) {
-        throw new Error(
-          `OpenAI-compatible providers exceeded maximum tool rounds (${MAX_OPENAI_COMPATIBLE_TOOL_ROUNDS}).`,
-        );
+        yield {
+          text: '',
+          isComplete: true,
+          metadata: {
+            promptTokenCount,
+            candidatesTokenCount,
+            model,
+            provider: providerName,
+            usage,
+            toolRoundCount,
+            repeatedRecoverableErrors: [...repeatedRecoverableErrors.values()],
+            finishReason: 'tool-budget-exhausted',
+          },
+        };
+        return;
       }
 
       const toolExecution = await executeToolCalls(
@@ -512,6 +564,31 @@ export async function* streamOpenAICompatibleChat(
       for (const entry of toolExecution.repeatedRecoverableErrors) {
         repeatedRecoverableErrors.set(buildRepeatKey(entry.toolName, entry.code), entry);
       }
+
+      // ④ Context eviction: once we've crossed 8 completed rounds, before
+      // appending the new round's results, evict tool-result messages older
+      // than 3 rounds whose JSON content exceeds 2KB. Keeps message structure
+      // (role:'tool', tool_call_id) intact; results remain re-readable via
+      // readFile. Never evicts the most recent 3 rounds.
+      if (toolRoundCount > 8) {
+        const evictRoundTag = toolRoundCount - 3;
+        messages = messages.map((msg, idx) => {
+          if (
+            msg.role === 'tool' &&
+            messageRoundTags[idx] > 0 &&
+            messageRoundTags[idx] <= evictRoundTag &&
+            (msg.content ?? '').length > 2000
+          ) {
+            return {
+              ...msg,
+              content: '[evicted prior tool result (>2KB); re-run readFile to inspect]',
+            };
+          }
+          return msg;
+        });
+      }
+
+      const nextRoundTag = toolRoundCount + 1;
       messages = [
         ...messages,
         {
@@ -519,6 +596,11 @@ export async function* streamOpenAICompatibleChat(
           tool_calls: toolExecution.assistantToolCalls,
         },
         ...toolExecution.toolMessages,
+      ];
+      messageRoundTags = [
+        ...messageRoundTags,
+        nextRoundTag,
+        ...toolExecution.toolMessages.map(() => nextRoundTag),
       ];
       toolRoundCount += 1;
 
@@ -545,6 +627,7 @@ export async function* streamOpenAICompatibleChat(
             usage,
             toolRoundCount,
             repeatedRecoverableErrors: [...repeatedRecoverableErrors.values()],
+            finishReason: 'stop-route',
           },
         };
         return;
@@ -555,6 +638,7 @@ export async function* streamOpenAICompatibleChat(
   const response = await fetch(endpoint, {
     method: 'POST',
     headers,
+    signal: params.signal,
     body: JSON.stringify({
       model,
       messages,
@@ -618,6 +702,7 @@ export async function* streamOpenAICompatibleChat(
       usage: usage ?? { source: 'unavailable' },
       toolRoundCount: 0,
       repeatedRecoverableErrors: [],
+      finishReason: 'complete',
     },
   };
 }
