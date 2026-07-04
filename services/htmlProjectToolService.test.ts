@@ -14,6 +14,7 @@ const {
   mockRenameFile,
   mockReplaceTodos,
   mockResolveProjectForPreview,
+  mockBuildPreviewArtifact,
   mockSearchFiles,
   mockSetEntrypoint,
   mockUpdateTodo,
@@ -31,6 +32,7 @@ const {
   mockRenameFile: vi.fn(),
   mockReplaceTodos: vi.fn(),
   mockResolveProjectForPreview: vi.fn(),
+  mockBuildPreviewArtifact: vi.fn(),
   mockSearchFiles: vi.fn(),
   mockSetEntrypoint: vi.fn(),
   mockUpdateTodo: vi.fn(),
@@ -65,6 +67,7 @@ vi.mock('./htmlProjectStore', async importOriginal => {
 vi.mock('./htmlPreviewService', () => ({
   htmlPreviewService: {
     resolveProjectForPreview: mockResolveProjectForPreview,
+    buildPreviewArtifact: mockBuildPreviewArtifact,
   },
 }));
 
@@ -90,6 +93,23 @@ describe('executeHtmlProjectToolCall', () => {
       url: 'blob:preview-1',
       html: '<html></html>',
       error: null,
+    });
+    mockBuildPreviewArtifact.mockResolvedValue({
+      projectId: 'project-1',
+      previewVersion: 3,
+      entryFile: '/index.html',
+      previewReady: true,
+      previewUrlType: 'blob',
+      html: '<html></html>',
+      warnings: [],
+      error: null,
+      diagnostics: {
+        category: 'none',
+        outcome: 'ready',
+        repairable: false,
+        summary: 'Preview rendered successfully.',
+      },
+      generatedAt: 1700000000000,
     });
     mockGetTodoSummary.mockResolvedValue({
       projectId: 'project-1',
@@ -1373,6 +1393,166 @@ describe('executeHtmlProjectToolCall', () => {
     });
   });
 
+  it('returns a project summary with preview diagnostics and suggested next action', async () => {
+    mockListFiles.mockResolvedValue([
+      {
+        path: '/index.html',
+        kind: 'html',
+        size: 18,
+        updatedAt: 1700000001000,
+        dependencies: ['/scripts/app.js'],
+      },
+    ]);
+    mockGetTodoSummary.mockResolvedValue({
+      projectId: 'project-1',
+      total: 2,
+      pending: 1,
+      inProgress: 1,
+      completed: 0,
+      allComplete: false,
+    });
+    mockBuildPreviewArtifact.mockResolvedValue({
+      projectId: 'project-1',
+      previewVersion: 3,
+      entryFile: '/index.html',
+      previewReady: false,
+      previewUrlType: 'blob',
+      html: '<html></html>',
+      warnings: ['保留外部腳本資源：https://cdn.example.com/app.js'],
+      error: '缺少預覽所需檔案：/scripts/app.js',
+      diagnostics: {
+        category: 'missing_reference',
+        outcome: 'repairable_error',
+        repairable: true,
+        summary: 'Missing preview dependencies: /scripts/app.js.',
+        missingPaths: ['/scripts/app.js'],
+        warnings: ['保留外部腳本資源：https://cdn.example.com/app.js'],
+        details: [
+          'Restore the missing file(s) or update the HTML references before retrying preview.',
+        ],
+      },
+      generatedAt: 1700000000000,
+    });
+
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'getProjectSummary',
+        args: {
+          projectId: 'project-1',
+        },
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-9',
+      },
+    );
+
+    expect(mockAssertProjectOwnership).toHaveBeenCalledWith('project-1', 'assistant-1');
+    expect(mockListFiles).toHaveBeenCalledWith('project-1');
+    expect(mockGetTodoSummary).toHaveBeenCalledWith('project-1');
+    expect(mockBuildPreviewArtifact).toHaveBeenCalledWith('project-1');
+    expect(result).toMatchObject({
+      toolName: 'getProjectSummary',
+      result: {
+        projectSummary: {
+          projectId: 'project-1',
+          name: 'Canvas MVP',
+          entryFile: '/index.html',
+          previewReady: false,
+          fileCount: 1,
+          todoSummary: {
+            total: 2,
+            pending: 1,
+            inProgress: 1,
+            completed: 0,
+            allComplete: false,
+          },
+          previewDiagnostics: {
+            category: 'missing_reference',
+            outcome: 'repairable_error',
+            repairable: true,
+          },
+          suggestedNextActionCategory: 'repair_preview',
+        },
+      },
+      workspace: {
+        activeProjectId: 'project-1',
+        activityMessage: expect.stringContaining('建議下一步：repair_preview'),
+        preview: null,
+      },
+    });
+  });
+
+  it('returns renderPreview diagnostics when the preview is still broken', async () => {
+    mockResolveProjectForPreview.mockResolvedValue({
+      projectId: 'project-1',
+      previewVersion: 4,
+      entryFile: '/index.html',
+      previewReady: false,
+      previewUrlType: 'blob',
+      html: '<html></html>',
+      warnings: ['保留外部樣式資源：https://cdn.example.com/app.css'],
+      error: '缺少預覽所需檔案：/styles/app.css',
+      diagnostics: {
+        category: 'missing_reference',
+        outcome: 'repairable_error',
+        repairable: true,
+        summary: 'Missing preview dependencies: /styles/app.css.',
+        missingPaths: ['/styles/app.css'],
+        warnings: ['保留外部樣式資源：https://cdn.example.com/app.css'],
+        details: [
+          'Restore the missing file(s) or update the HTML references before retrying preview.',
+        ],
+      },
+      generatedAt: 1700000000000,
+    });
+
+    const { executeHtmlProjectToolCall } = await import('./htmlProjectToolService');
+
+    const result = await executeHtmlProjectToolCall(
+      {
+        name: 'renderPreview',
+        args: {
+          projectId: 'project-1',
+        },
+      },
+      {
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-1',
+      },
+    );
+
+    expect(mockAssertProjectOwnership).toHaveBeenCalledWith('project-1', 'assistant-1');
+    expect(mockResolveProjectForPreview).toHaveBeenCalledWith('project-1');
+    expect(result).toMatchObject({
+      toolName: 'renderPreview',
+      summary: '預覽重建失敗：缺少預覽所需檔案：/styles/app.css',
+      result: {
+        projectId: 'project-1',
+        previewVersion: 4,
+        entryFile: '/index.html',
+        previewReady: false,
+        error: '缺少預覽所需檔案：/styles/app.css',
+        diagnostics: {
+          category: 'missing_reference',
+          outcome: 'repairable_error',
+          repairable: true,
+        },
+      },
+      workspace: {
+        activeProjectId: 'project-1',
+        activityMessage: '預覽重建失敗：缺少預覽所需檔案：/styles/app.css',
+        preview: {
+          projectId: 'project-1',
+          previewVersion: 4,
+          previewReady: false,
+        },
+      },
+    });
+  });
+
   it('searches files in the owned project', async () => {
     mockSearchFiles.mockResolvedValue({
       projectId: 'project-1',
@@ -1691,10 +1871,13 @@ describe('executeHtmlProjectToolCall', () => {
 });
 
 describe('getHtmlProjectToolDefinitions', () => {
-  it('includes copy/rename tools, todo tools, and numbered readFile guidance', async () => {
+  it('includes project summary and preview tool guidance alongside edit definitions', async () => {
     const { getHtmlProjectToolDefinitions } = await import('./htmlProjectToolService');
 
     const definitions = getHtmlProjectToolDefinitions();
+    const getProjectSummaryDefinition = definitions.find(
+      ({ name }) => name === 'getProjectSummary',
+    );
     const writeFilesDefinition = definitions.find(({ name }) => name === 'writeFiles');
     const replaceInFileDefinition = definitions.find(({ name }) => name === 'replaceInFile');
     const modifyLinesInFileDefinition = definitions.find(
@@ -1705,7 +1888,14 @@ describe('getHtmlProjectToolDefinitions', () => {
     const listProjectTodosDefinition = definitions.find(({ name }) => name === 'listProjectTodos');
     const setProjectTodosDefinition = definitions.find(({ name }) => name === 'setProjectTodos');
     const readFileDefinition = definitions.find(({ name }) => name === 'readFile');
+    const renderPreviewDefinition = definitions.find(({ name }) => name === 'renderPreview');
 
+    expect(getProjectSummaryDefinition).toMatchObject({
+      name: 'getProjectSummary',
+      parameters: {
+        required: [],
+      },
+    });
     expect(replaceInFileDefinition).toMatchObject({
       name: 'replaceInFile',
       parameters: {
@@ -1739,6 +1929,8 @@ describe('getHtmlProjectToolDefinitions', () => {
         required: ['todos'],
       },
     });
+    expect(getProjectSummaryDefinition?.description).toContain('compact summary');
+    expect(getProjectSummaryDefinition?.description).toContain('suggested next action');
     expect(writeFilesDefinition?.description).toContain(
       'Write or overwrite one or more small complete project files in a single tool call.',
     );
@@ -1755,6 +1947,10 @@ describe('getHtmlProjectToolDefinitions', () => {
     expect(readFileDefinition?.description).toContain('numberedContent');
     expect(readFileDefinition?.description).toContain(
       'that prefix is not part of the real file content',
+    );
+    expect(renderPreviewDefinition?.description).toContain('preview refresh/recheck');
+    expect(renderPreviewDefinition?.description).toContain(
+      'repair diagnostics require revalidation',
     );
   });
 });

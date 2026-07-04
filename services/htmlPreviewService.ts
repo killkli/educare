@@ -2,6 +2,7 @@ import {
   HtmlProject,
   HtmlProjectFile,
   HtmlProjectPreviewArtifact,
+  HtmlProjectPreviewDiagnostics,
   HtmlProjectPreviewUrlType,
 } from '../types';
 import { htmlProjectStore } from './htmlProjectStore';
@@ -36,6 +37,40 @@ const resolveRelativePath = (basePath: string, targetPath: string): string => {
 
 const toDataUrl = (html: string): string =>
   `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+
+const buildReadyDiagnostics = (warnings: string[]): HtmlProjectPreviewDiagnostics => ({
+  category: warnings.length > 0 ? 'external_dependency_warning' : 'none',
+  outcome: 'ready',
+  repairable: false,
+  summary:
+    warnings.length > 0
+      ? 'Preview rendered with external dependency warnings.'
+      : 'Preview rendered successfully.',
+  warnings,
+  details: warnings.length > 0 ? warnings : undefined,
+});
+
+const buildMissingEntrypointDiagnostics = (entryFile: string): HtmlProjectPreviewDiagnostics => ({
+  category: 'missing_entrypoint',
+  outcome: 'repairable_error',
+  repairable: true,
+  summary: `Entrypoint ${entryFile} does not exist.`,
+  missingPaths: [entryFile],
+  details: ['Set a valid entry file or recreate the missing entrypoint file.'],
+});
+
+const buildMissingReferenceDiagnostics = (
+  missingPaths: string[],
+  warnings: string[],
+): HtmlProjectPreviewDiagnostics => ({
+  category: 'missing_reference',
+  outcome: 'repairable_error',
+  repairable: true,
+  summary: `Missing preview dependencies: ${missingPaths.join(', ')}.`,
+  missingPaths,
+  warnings,
+  details: ['Restore the missing file(s) or update the HTML references before retrying preview.'],
+});
 
 class HtmlPreviewService {
   private previewUrls = new Map<string, string>();
@@ -117,6 +152,7 @@ class HtmlPreviewService {
         html: '',
         warnings,
         error: `Entrypoint ${project.entryFile} 不存在。`,
+        diagnostics: buildMissingEntrypointDiagnostics(project.entryFile),
         generatedAt,
       };
     }
@@ -126,6 +162,7 @@ class HtmlPreviewService {
     html = this.inlineScripts(html, entryFile.path, fileMap, warnings, missing);
 
     if (missing.size > 0) {
+      const missingPaths = Array.from(missing);
       return {
         projectId: project.id,
         previewVersion: project.previewVersion,
@@ -134,7 +171,8 @@ class HtmlPreviewService {
         previewUrlType: 'blob',
         html,
         warnings,
-        error: `缺少預覽所需檔案：${Array.from(missing).join(', ')}`,
+        error: `缺少預覽所需檔案：${missingPaths.join(', ')}`,
+        diagnostics: buildMissingReferenceDiagnostics(missingPaths, warnings),
         generatedAt,
       };
     }
@@ -148,6 +186,7 @@ class HtmlPreviewService {
       html,
       warnings,
       error: null,
+      diagnostics: buildReadyDiagnostics(warnings),
       generatedAt,
     };
   }

@@ -1,3 +1,9 @@
+import type {
+  HtmlProjectIntentDecision,
+  HtmlProjectSummary,
+  HtmlProjectToolPackName,
+} from '../types';
+
 const HTML_PROJECT_KEYWORDS = [
   'landing page',
   'prototype',
@@ -5,11 +11,14 @@ const HTML_PROJECT_KEYWORDS = [
   'dashboard',
   'mini app',
   'single page',
+  'web page',
+  'webpage',
+  'site',
+  'ui mock',
   '網頁',
   '頁面',
   '網站',
   '原型',
-  'prototype',
   'landing',
   'hero section',
   'cta',
@@ -17,7 +26,6 @@ const HTML_PROJECT_KEYWORDS = [
   'html',
   'css',
   'javascript',
-  'app',
 ];
 
 const HTML_PROJECT_CONTINUATION_KEYWORDS = [
@@ -51,39 +59,311 @@ const HTML_PROJECT_CONTINUATION_KEYWORDS = [
   '任務清單',
 ];
 
+const HTML_PROJECT_INSPECTION_KEYWORDS = [
+  'inspect',
+  'review',
+  'summarize',
+  'summary',
+  'look at',
+  'read through',
+  'analyze',
+  'audit',
+  '檢查',
+  '看看',
+  '摘要',
+  '總結',
+  '分析',
+];
+
+const HTML_PROJECT_EDIT_KEYWORDS = [
+  'edit',
+  'update',
+  'change',
+  'modify',
+  'tweak',
+  'fix',
+  'add',
+  'remove',
+  'delete',
+  'rename',
+  'copy',
+  'write',
+  'replace',
+  'insert',
+  'build',
+  'create',
+  'implement',
+  'revise',
+  '修改',
+  '調整',
+  '更新',
+  '新增',
+  '刪除',
+  '修正',
+  '建立',
+  '改寫',
+  '複製',
+  '重新命名',
+];
+
+const HTML_PROJECT_COMPLETION_KEYWORDS = [
+  'finish',
+  'complete',
+  'finalize',
+  'wrap up',
+  'done',
+  'ship it',
+  '驗收',
+  '完成',
+  '收尾',
+  '定稿',
+  '確認完成',
+];
+
+const HTML_PROJECT_PREVIEW_RECHECK_KEYWORDS = [
+  'render preview',
+  'refresh preview',
+  'recheck preview',
+  'rebuild preview',
+  'open preview',
+  'preview again',
+  '重新整理預覽',
+  '重建預覽',
+  '重新檢查預覽',
+  '打開預覽',
+];
+
+const DEFAULT_UNCERTAIN_PACK_SET: HtmlProjectToolPackName[] = ['inspect', 'edit', 'todo_finalize'];
+
+const INTENT_PACKS: Record<HtmlProjectIntentDecision['intent'], HtmlProjectToolPackName[]> = {
+  new_build: ['bootstrap', 'edit', 'todo_finalize'],
+  resume_project: ['inspect', 'edit', 'todo_finalize'],
+  inspect_only: ['inspect'],
+  targeted_edit: ['inspect', 'edit', 'todo_finalize'],
+  finalize_or_complete: ['inspect', 'todo_finalize'],
+  uncertain: DEFAULT_UNCERTAIN_PACK_SET,
+};
+
+const includesKeyword = (normalizedMessage: string, keywords: string[]): boolean =>
+  keywords.some(keyword => normalizedMessage.includes(keyword.toLowerCase()));
+
+const hasAnyHtmlProjectSignal = (normalizedMessage: string): boolean => {
+  return [
+    HTML_PROJECT_KEYWORDS,
+    HTML_PROJECT_CONTINUATION_KEYWORDS,
+    HTML_PROJECT_INSPECTION_KEYWORDS,
+    HTML_PROJECT_EDIT_KEYWORDS,
+    HTML_PROJECT_COMPLETION_KEYWORDS,
+    HTML_PROJECT_PREVIEW_RECHECK_KEYWORDS,
+  ].some(keywordGroup => includesKeyword(normalizedMessage, keywordGroup));
+};
+
+export const classifyHtmlProjectIntent = (
+  message: string,
+  activeProjectId?: string | null,
+): HtmlProjectIntentDecision => {
+  const normalizedMessage = message.toLowerCase();
+  const hasSignals = hasAnyHtmlProjectSignal(normalizedMessage);
+
+  if (!hasSignals) {
+    return {
+      intent: 'uncertain',
+      confidence: 'low',
+      selectedPackSet: [],
+      reason: 'No HTML project signals detected for this turn.',
+      requiresSummaryPreflight: false,
+    };
+  }
+
+  const hasContinuationCue = includesKeyword(normalizedMessage, HTML_PROJECT_CONTINUATION_KEYWORDS);
+  const hasInspectionCue = includesKeyword(normalizedMessage, HTML_PROJECT_INSPECTION_KEYWORDS);
+  const hasEditCue = includesKeyword(normalizedMessage, HTML_PROJECT_EDIT_KEYWORDS);
+  const hasCompletionCue = includesKeyword(normalizedMessage, HTML_PROJECT_COMPLETION_KEYWORDS);
+  const hasPreviewCue = includesKeyword(normalizedMessage, HTML_PROJECT_PREVIEW_RECHECK_KEYWORDS);
+  const hasBuildCue = includesKeyword(normalizedMessage, HTML_PROJECT_KEYWORDS);
+  const mentionsNewProject =
+    normalizedMessage.includes('new project') ||
+    normalizedMessage.includes('brand new') ||
+    normalizedMessage.includes('from scratch') ||
+    normalizedMessage.includes('全新') ||
+    normalizedMessage.includes('重新建立');
+
+  if (
+    !activeProjectId &&
+    (mentionsNewProject || (hasBuildCue && !hasContinuationCue && !hasCompletionCue))
+  ) {
+    return {
+      intent: 'new_build',
+      confidence: mentionsNewProject ? 'high' : 'medium',
+      selectedPackSet: INTENT_PACKS.new_build,
+      reason:
+        'The user is asking for a fresh HTML/UI build rather than resuming an existing project.',
+      requiresSummaryPreflight: false,
+    };
+  }
+
+  if (hasCompletionCue && !hasEditCue) {
+    return {
+      intent: 'finalize_or_complete',
+      confidence: 'high',
+      selectedPackSet: hasPreviewCue
+        ? [...INTENT_PACKS.finalize_or_complete, 'preview_recheck']
+        : INTENT_PACKS.finalize_or_complete,
+      reason: 'The user is asking to verify or complete the current project state.',
+      requiresSummaryPreflight: Boolean(activeProjectId),
+    };
+  }
+
+  if (!activeProjectId && hasContinuationCue) {
+    const selectedPackSet = [
+      'bootstrap',
+      ...INTENT_PACKS.resume_project,
+    ] as HtmlProjectToolPackName[];
+
+    return {
+      intent: 'resume_project',
+      confidence: 'high',
+      selectedPackSet: hasPreviewCue ? [...selectedPackSet, 'preview_recheck'] : selectedPackSet,
+      reason: 'The user explicitly wants to reopen or continue existing canvas work.',
+      requiresSummaryPreflight: false,
+    };
+  }
+
+  if (activeProjectId && hasInspectionCue && !hasEditCue && !hasCompletionCue) {
+    return {
+      intent: 'inspect_only',
+      confidence: 'high',
+      selectedPackSet: hasPreviewCue
+        ? [...INTENT_PACKS.inspect_only, 'preview_recheck']
+        : INTENT_PACKS.inspect_only,
+      reason:
+        'The user is asking to inspect or summarize the current project without making changes.',
+      requiresSummaryPreflight: true,
+    };
+  }
+
+  if (activeProjectId && hasContinuationCue && !hasCompletionCue) {
+    return {
+      intent: 'resume_project',
+      confidence: hasEditCue ? 'medium' : 'high',
+      selectedPackSet: hasPreviewCue
+        ? [...INTENT_PACKS.resume_project, 'preview_recheck']
+        : INTENT_PACKS.resume_project,
+      reason:
+        'The turn continues an existing active project and may need current summary context first.',
+      requiresSummaryPreflight: true,
+    };
+  }
+
+  if (hasEditCue || (activeProjectId && !hasInspectionCue && !hasCompletionCue)) {
+    return {
+      intent: 'targeted_edit',
+      confidence: hasEditCue ? 'high' : 'medium',
+      selectedPackSet: hasPreviewCue
+        ? [...INTENT_PACKS.targeted_edit, 'preview_recheck']
+        : INTENT_PACKS.targeted_edit,
+      reason:
+        'The user is asking for a project change or the active project likely needs an incremental edit path.',
+      requiresSummaryPreflight: Boolean(activeProjectId),
+    };
+  }
+
+  if (hasInspectionCue) {
+    return {
+      intent: 'inspect_only',
+      confidence: 'medium',
+      selectedPackSet: hasPreviewCue
+        ? [...INTENT_PACKS.inspect_only, 'preview_recheck']
+        : INTENT_PACKS.inspect_only,
+      reason: 'The user asked to inspect current project state without a clear mutation request.',
+      requiresSummaryPreflight: Boolean(activeProjectId),
+    };
+  }
+
+  return {
+    intent: 'uncertain',
+    confidence: 'low',
+    selectedPackSet: DEFAULT_UNCERTAIN_PACK_SET,
+    reason: 'HTML project intent is ambiguous, so use the safe inspect/edit/finalize fallback.',
+    requiresSummaryPreflight: Boolean(activeProjectId),
+  };
+};
+
 export const shouldEnableHtmlProjectTools = (
   message: string,
   activeProjectId?: string | null,
 ): boolean => {
-  if (activeProjectId) {
-    return true;
-  }
-
-  const normalized = message.toLowerCase();
-  return [...HTML_PROJECT_KEYWORDS, ...HTML_PROJECT_CONTINUATION_KEYWORDS].some(keyword =>
-    normalized.includes(keyword.toLowerCase()),
-  );
+  return classifyHtmlProjectIntent(message, activeProjectId).selectedPackSet.length > 0;
 };
 
-export const buildHtmlProjectSystemPrompt = (activeProjectId?: string | null): string => {
+interface BuildHtmlProjectSystemPromptOptions {
+  activeProjectId?: string | null;
+  intentDecision?: HtmlProjectIntentDecision | null;
+  projectSummary?: HtmlProjectSummary | null;
+}
+
+const buildProjectSummaryPrompt = (projectSummary?: HtmlProjectSummary | null): string => {
+  if (!projectSummary) {
+    return '';
+  }
+
+  const compactSummary = {
+    projectId: projectSummary.projectId,
+    name: projectSummary.name,
+    entryFile: projectSummary.entryFile,
+    previewVersion: projectSummary.previewVersion,
+    previewReady: projectSummary.previewReady,
+    fileCount: projectSummary.fileCount,
+    files: projectSummary.files.map(file => file.path),
+    todoSummary: projectSummary.todoSummary,
+    lastBuildError: projectSummary.lastBuildError ?? null,
+    warnings: projectSummary.warnings,
+    previewDiagnostics: projectSummary.previewDiagnostics,
+    suggestedNextActionCategory: projectSummary.suggestedNextActionCategory,
+  };
+
+  return `The system already injected a current project summary for this turn: ${JSON.stringify(compactSummary)}. Do not start with redundant listFiles or listProjectTodos unless you need deeper detail than this summary provides.`;
+};
+
+export const buildHtmlProjectSystemPrompt = (
+  options?: string | null | BuildHtmlProjectSystemPromptOptions,
+): string => {
+  const normalizedOptions =
+    typeof options === 'object'
+      ? options
+      : {
+          activeProjectId: options,
+          intentDecision: null,
+          projectSummary: null,
+        };
+
+  const activeProjectId = normalizedOptions?.activeProjectId ?? null;
   const continuationPrompt = activeProjectId
     ? `Current active HTML project id: ${activeProjectId}. Reuse it for incremental edits unless the user explicitly asks for a fresh project.`
     : 'No active HTML project exists yet. If the user wants to continue or reopen earlier canvas work, call listProjects first, then openProject before editing files. Only createProject when the user wants a brand new webpage or prototype.';
+  const routingPrompt = normalizedOptions?.intentDecision?.selectedPackSet?.length
+    ? `Current routing intent: ${normalizedOptions.intentDecision.intent} (${normalizedOptions.intentDecision.confidence} confidence). HTML tool packs exposed for this turn: ${normalizedOptions.intentDecision.selectedPackSet.join(', ')}.`
+    : '';
+  const summaryPrompt = buildProjectSummaryPrompt(normalizedOptions?.projectSummary);
 
   return [
     'You can maintain browser-only HTML projects for the user using dedicated project tools.',
     continuationPrompt,
-    'When building or editing UI, prefer createProject, listProjects, openProject, searchFiles, listFiles, readFile, writeFiles, replaceInFile, modifyLinesInFile, listProjectTodos, setProjectTodos, updateProjectTodo, deleteProjectTodo, checkProjectTodos, deleteFile, copyFile, renameFile, setEntrypoint, and renderPreview over dumping large HTML directly into the chat response.',
+    routingPrompt,
+    summaryPrompt,
+    'When building or editing UI, prefer createProject, listProjects, openProject, getProjectSummary, searchFiles, listFiles, readFile, writeFiles, replaceInFile, modifyLinesInFile, listProjectTodos, setProjectTodos, updateProjectTodo, deleteProjectTodo, checkProjectTodos, deleteFile, copyFile, renameFile, setEntrypoint, and renderPreview over dumping large HTML directly into the chat response.',
     'When HTML project tools are enabled and the user asks to create, edit, copy, rename, or delete project contents, you must use the project tools to perform those changes. Do not answer a modification request only by proposing code or describing edits in chat unless the user explicitly asks for planning or explanation without execution.',
     'Always use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js. Never use host filesystem paths or URLs.',
-    'For targeted edits, inspect existing work first: use searchFiles to locate relevant code, use listFiles to inspect structure, then use readFile before writeFiles, replaceInFile, or modifyLinesInFile.',
+    'For targeted edits, inspect existing work first: use getProjectSummary when available, use searchFiles to locate relevant code, use listFiles to inspect structure, then use readFile before writeFiles, replaceInFile, or modifyLinesInFile.',
     'Use writeFiles only for small complete-file writes. For edits inside an existing text file, prefer modifyLinesInFile after readFile.numberedContent when line-based edits are clearer, or use replaceInFile with raw content when you have one exact unique snippet.',
     'For path-level duplication or moves, prefer copyFile and renameFile instead of manually simulating those operations with readFile plus writeFiles plus deleteFile.',
-    'For multi-step project work, maintain a project-scoped checklist using listProjectTodos, setProjectTodos, updateProjectTodo, deleteProjectTodo, and checkProjectTodos. Before resuming project execution, inspect the current checklist. Before saying all work is complete, call checkProjectTodos and confirm allComplete is true.',
+    'For multi-step project work, maintain a project-scoped checklist using listProjectTodos, setProjectTodos, updateProjectTodo, deleteProjectTodo, and checkProjectTodos. Before resuming project execution, inspect the current checklist or injected summary. Before saying all work is complete, call checkProjectTodos and confirm allComplete is true.',
     'Each displayed line in readFile.numberedContent starts with "<line> | ". That line-number prefix is only for display and must never be copied into replaceInFile.oldText, replaceInFile.newText, modifyLinesInFile.content, or modifyLinesInFile.expectedOriginal.',
-    'If a tool returns a recoverable validation error, retry once with corrected arguments or a smaller payload.',
+    'If a tool returns a recoverable validation error, retry once with corrected arguments or a smaller payload. If the same recoverable error repeats with stronger fallback guidance, follow that fallback instead of repeating the exact same failing call.',
     'After opening an existing project, continue editing that same project unless the user explicitly asks to fork or replace it.',
-    'After file changes, call renderPreview so the UI can refresh the sandboxed preview.',
+    'Successful mutating tools already refresh preview/workspace state automatically. Use renderPreview only when the user explicitly asks to rebuild, reopen, refresh, or recheck preview state, or when preview diagnostics indicate that a repair flow needs revalidation.',
     'Keep final chat responses concise and summarize the project changes rather than pasting the full source code.',
-  ].join(' ');
+  ]
+    .filter(Boolean)
+    .join(' ');
 };

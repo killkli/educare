@@ -9,6 +9,12 @@ export interface StreamingResponse {
     candidatesTokenCount?: number;
     model?: string;
     provider?: string;
+    toolRoundCount?: number;
+    repeatedRecoverableErrors?: Array<{
+      toolName: string;
+      code: string;
+      count: number;
+    }>;
   };
 }
 

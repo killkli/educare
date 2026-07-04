@@ -265,6 +265,123 @@ describe('AnthropicProvider', () => {
     });
   });
 
+  it('stops after repeated recoverable tool errors and reports matching completion metadata', async () => {
+    const provider = new AnthropicProvider();
+    await provider.initialize({
+      apiKey: 'anthropic-test-key',
+      model: 'claude-opus-4-8',
+      maxToolRounds: 20,
+    });
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    fetchMock
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          content: [
+            {
+              type: 'tool_use',
+              id: 'call-1',
+              name: 'render_preview',
+              input: { projectId: 'project-1' },
+            },
+          ],
+          usage: { input_tokens: 2, output_tokens: 1 },
+        }),
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          content: [
+            {
+              type: 'tool_use',
+              id: 'call-2',
+              name: 'render_preview',
+              input: { projectId: 'project-1' },
+            },
+          ],
+          usage: { input_tokens: 3, output_tokens: 1 },
+        }),
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          content: [
+            {
+              type: 'tool_use',
+              id: 'call-3',
+              name: 'render_preview',
+              input: { projectId: 'project-1' },
+            },
+          ],
+          usage: { input_tokens: 4, output_tokens: 1 },
+        }),
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          content: [{ type: 'text', text: 'unused stop-route response' }],
+          usage: { input_tokens: 5, output_tokens: 1 },
+        }),
+      );
+
+    const recoverableError = {
+      ok: false,
+      recoverable: true,
+      code: 'preview-temporary-unavailable',
+      message: 'Preview service is still starting.',
+      guidance: 'Retry the same preview shortly.',
+      details: { retryAfterMs: 750 },
+    };
+    const executeTool = vi.fn().mockResolvedValue(recoverableError);
+
+    const chunks = [];
+    for await (const chunk of provider.streamChat({
+      systemPrompt: 'You are helpful.',
+      history: [],
+      message: 'hello',
+      tools: [...TOOL_DEFINITIONS],
+      executeTool,
+    })) {
+      chunks.push(chunk);
+    }
+
+    expect(executeTool).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(chunks[0]).toMatchObject({
+      text: 'Stopped repeated recoverable tool failures and need a different repair path: render_preview:preview-temporary-unavailable x3',
+      isComplete: false,
+      metadata: {
+        model: 'claude-opus-4-8',
+        provider: 'anthropic',
+      },
+    });
+    expect(chunks[1]).toMatchObject({
+      text: '',
+      isComplete: true,
+      metadata: {
+        model: 'claude-opus-4-8',
+        provider: 'anthropic',
+        toolRoundCount: 3,
+        repeatedRecoverableErrors: [
+          {
+            toolName: 'render_preview',
+            code: 'preview-temporary-unavailable',
+            count: 3,
+          },
+        ],
+      },
+    });
+
+    const fourthRequestBody = JSON.parse(fetchMock.mock.calls[3]?.[1]?.body as string);
+    const stopRoutePayload = JSON.parse(fourthRequestBody.messages.at(-1).content[0].content);
+    expect(stopRoutePayload).toMatchObject({
+      recoverable: false,
+      loopAction: 'stop-route',
+      escalation: {
+        toolName: 'render_preview',
+        code: 'preview-temporary-unavailable',
+        attempt: 3,
+      },
+    });
+  });
+
   it('throws when Anthropic exceeds the maximum number of tool rounds', async () => {
     const provider = new AnthropicProvider();
     await provider.initialize({

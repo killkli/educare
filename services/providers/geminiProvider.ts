@@ -10,6 +10,11 @@ import {
 } from '@google/genai';
 import { LLMProvider, ProviderConfig, ChatParams, StreamingResponse } from '../llmAdapter';
 import { ApiKeyManager } from '../apiKeyManager';
+import {
+  buildEscalatedToolResult,
+  isRecoverableToolErrorResult,
+  isStopRouteToolResult,
+} from '../htmlProjectToolLoopControl';
 import { resolveToolPolicy } from './toolPolicyUtils';
 
 interface GeminiListedModel {
@@ -24,6 +29,14 @@ interface GeminiModelListingClient {
     }) => AsyncIterable<GeminiListedModel> | Promise<AsyncIterable<GeminiListedModel>>;
   };
 }
+
+interface RepeatedRecoverableErrorEntry {
+  toolName: string;
+  code: string;
+  count: number;
+}
+
+const buildRepeatKey = (toolName: string, code: string): string => `${toolName}::${code}`;
 
 export class GeminiProvider implements LLMProvider {
   readonly name = 'gemini';
@@ -307,6 +320,8 @@ export class GeminiProvider implements LLMProvider {
       if (params.tools?.length && params.executeTool) {
         let response = await chat.sendMessage({ message: params.message });
         let toolRoundCount = 0;
+        const repeatTracker = new Map<string, number>();
+        const repeatedRecoverableErrors = new Map<string, RepeatedRecoverableErrorEntry>();
 
         while (true) {
           const functionCalls = this.getFunctionCalls(response);
@@ -328,7 +343,13 @@ export class GeminiProvider implements LLMProvider {
               },
             };
 
-            yield this.buildCompletionChunk(response, model);
+            const completion = this.buildCompletionChunk(response, model);
+            completion.metadata = {
+              ...completion.metadata,
+              toolRoundCount,
+              repeatedRecoverableErrors: [...repeatedRecoverableErrors.values()],
+            };
+            yield completion;
             return;
           }
 
@@ -337,6 +358,8 @@ export class GeminiProvider implements LLMProvider {
           }
 
           const toolResponses = [];
+          const roundRecoverableErrors = new Map<string, RepeatedRecoverableErrorEntry>();
+          let stopRoute = false;
 
           for (const functionCall of functionCalls) {
             const functionName = functionCall.name;
@@ -344,13 +367,35 @@ export class GeminiProvider implements LLMProvider {
               continue;
             }
 
-            const result = await params.executeTool({
+            const rawResult = await params.executeTool({
               name: functionName,
               args:
                 functionCall.args && typeof functionCall.args === 'object'
                   ? (functionCall.args as Record<string, unknown>)
                   : {},
             });
+            const result = (() => {
+              if (!isRecoverableToolErrorResult(rawResult)) {
+                return rawResult;
+              }
+
+              const repeatKey = buildRepeatKey(functionName, rawResult.code);
+              const attempt = (repeatTracker.get(repeatKey) ?? 0) + 1;
+              repeatTracker.set(repeatKey, attempt);
+              roundRecoverableErrors.set(repeatKey, {
+                toolName: functionName,
+                code: rawResult.code,
+                count: attempt,
+              });
+              const escalated =
+                attempt >= 2
+                  ? buildEscalatedToolResult(functionName, rawResult, attempt)
+                  : rawResult;
+              if (isStopRouteToolResult(escalated)) {
+                stopRoute = true;
+              }
+              return escalated;
+            })();
 
             toolResponses.push(
               createPartFromFunctionResponse(functionCall.id ?? '', functionName, {
@@ -359,7 +404,38 @@ export class GeminiProvider implements LLMProvider {
             );
           }
 
+          for (const [repeatKey, entry] of roundRecoverableErrors.entries()) {
+            repeatedRecoverableErrors.set(repeatKey, entry);
+          }
           toolRoundCount += 1;
+
+          if (stopRoute) {
+            const stopSummary = [...repeatedRecoverableErrors.values()]
+              .map(entry => `${entry.toolName}:${entry.code} x${entry.count}`)
+              .join(', ');
+            yield {
+              text: `Stopped repeated recoverable tool failures and need a different repair path: ${stopSummary}`,
+              isComplete: false,
+              metadata: {
+                model,
+                provider: this.name,
+              },
+            };
+            yield {
+              text: '',
+              isComplete: true,
+              metadata: {
+                promptTokenCount: response.usageMetadata?.promptTokenCount ?? 0,
+                candidatesTokenCount: response.usageMetadata?.candidatesTokenCount ?? 0,
+                model,
+                provider: this.name,
+                toolRoundCount,
+                repeatedRecoverableErrors: [...repeatedRecoverableErrors.values()],
+              },
+            };
+            return;
+          }
+
           response = await chat.sendMessage({ message: toolResponses });
         }
       }
@@ -382,7 +458,16 @@ export class GeminiProvider implements LLMProvider {
         aggregatedResponse = chunk;
       }
 
-      yield this.buildCompletionChunk(aggregatedResponse ?? new GenerateContentResponse(), model);
+      const completion = this.buildCompletionChunk(
+        aggregatedResponse ?? new GenerateContentResponse(),
+        model,
+      );
+      completion.metadata = {
+        ...completion.metadata,
+        toolRoundCount: 0,
+        repeatedRecoverableErrors: [],
+      };
+      yield completion;
     } catch (error) {
       console.error('Gemini streaming error:', error);
       throw error;

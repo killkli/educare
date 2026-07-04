@@ -505,6 +505,78 @@ describe('GeminiProvider', () => {
     ]);
   });
 
+  it('stops after repeated recoverable tool errors and reports matching completion metadata', async () => {
+    const provider = new GeminiProvider();
+    const { sendMessage, sendMessageStream } = await setupProvider(provider, {
+      sendMessageResponses: [
+        {
+          functionCalls: [{ id: 'call-1', name: 'search_docs', args: { query: 'financial aid' } }],
+          usageMetadata: { promptTokenCount: 2, candidatesTokenCount: 1 },
+        },
+        {
+          functionCalls: [{ id: 'call-2', name: 'search_docs', args: { query: 'financial aid' } }],
+          usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 1 },
+        },
+        {
+          functionCalls: [{ id: 'call-3', name: 'search_docs', args: { query: 'financial aid' } }],
+          usageMetadata: { promptTokenCount: 4, candidatesTokenCount: 1 },
+        },
+        {
+          text: 'unused stop-route response',
+          functionCalls: [],
+          usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 1 },
+        },
+      ],
+    });
+
+    const recoverableError = {
+      ok: false,
+      recoverable: true,
+      code: 'search-temporary-unavailable',
+      message: 'Search index is warming up.',
+      guidance: 'Retry the same search in a moment.',
+      details: { retryAfterMs: 500 },
+    };
+    const executeTool = vi.fn().mockResolvedValue(recoverableError);
+
+    const responses = await collectResponses(provider, {
+      tools: [...TOOL_DEFINITIONS],
+      executeTool,
+    });
+
+    expect(executeTool).toHaveBeenCalledTimes(3);
+    expect(sendMessage).toHaveBeenCalledTimes(3);
+    expect(sendMessageStream).not.toHaveBeenCalled();
+    expect(responses).toEqual([
+      {
+        text: 'Stopped repeated recoverable tool failures and need a different repair path: search_docs:search-temporary-unavailable x3',
+        isComplete: false,
+        metadata: {
+          model: 'gemini-2.5-flash',
+          provider: 'gemini',
+        },
+      },
+      {
+        text: '',
+        isComplete: true,
+        metadata: {
+          promptTokenCount: 4,
+          candidatesTokenCount: 1,
+          model: 'gemini-2.5-flash',
+          provider: 'gemini',
+          toolRoundCount: 3,
+          repeatedRecoverableErrors: [
+            {
+              toolName: 'search_docs',
+              code: 'search-temporary-unavailable',
+              count: 3,
+            },
+          ],
+        },
+      },
+    ]);
+  });
+
   it('surfaces tool execution failures without attempting a follow-up stream', async () => {
     const provider = new GeminiProvider();
     const { sendMessageStream } = await setupProvider(provider, {

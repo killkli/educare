@@ -1,8 +1,11 @@
 import {
   HtmlProject,
   HtmlProjectFileKind,
+  HtmlProjectPreviewArtifact,
+  HtmlProjectSummary,
   HtmlProjectTodoStatus,
   HtmlProjectToolExecutionResult,
+  HtmlProjectToolPackName,
   HtmlProjectWorkspaceUpdate,
 } from '../types';
 import type { ToolCall, ToolDefinition } from './llmAdapter';
@@ -18,6 +21,7 @@ const HTML_PROJECT_TOOL_NAMES = [
   'createProject',
   'listProjects',
   'openProject',
+  'getProjectSummary',
   'searchFiles',
   'writeFiles',
   'replaceInFile',
@@ -36,6 +40,27 @@ const HTML_PROJECT_TOOL_NAMES = [
   'renderPreview',
 ] as const;
 
+type HtmlProjectToolName = (typeof HTML_PROJECT_TOOL_NAMES)[number];
+
+const HTML_PROJECT_TOOL_PACKS: Record<HtmlProjectToolPackName, HtmlProjectToolName[]> = {
+  bootstrap: ['createProject', 'listProjects', 'openProject'],
+  inspect: ['getProjectSummary', 'listFiles', 'searchFiles', 'readFile', 'listProjectTodos'],
+  edit: [
+    'writeFiles',
+    'replaceInFile',
+    'modifyLinesInFile',
+    'copyFile',
+    'renameFile',
+    'deleteFile',
+    'setEntrypoint',
+    'setProjectTodos',
+    'updateProjectTodo',
+    'deleteProjectTodo',
+  ],
+  todo_finalize: ['checkProjectTodos'],
+  preview_recheck: ['renderPreview'],
+};
+
 interface HtmlProjectToolContext {
   assistantId: string;
   sessionId?: string | null;
@@ -50,6 +75,10 @@ interface CreateProjectArgs {
 
 interface OpenProjectArgs {
   projectId: string;
+}
+
+interface GetProjectSummaryArgs {
+  projectId?: string;
 }
 
 interface SearchFilesArgs {
@@ -252,6 +281,70 @@ const createRecoverableToolExecutionResult = (
   result: { ...error },
   workspace: createWorkspaceUpdate(activeProjectId ?? null, error.message),
 });
+
+const resolveProjectSuggestedNextAction = (
+  project: HtmlProject,
+  preview: HtmlProjectPreviewArtifact,
+  fileCount: number,
+  todoSummary: HtmlProjectSummary['todoSummary'],
+): HtmlProjectSummary['suggestedNextActionCategory'] => {
+  if (!preview.previewReady && preview.diagnostics?.repairable) {
+    return 'repair_preview';
+  }
+
+  if (fileCount === 0) {
+    return 'bootstrap';
+  }
+
+  if (todoSummary.total > 0 && !todoSummary.allComplete) {
+    return 'resume_todos';
+  }
+
+  if (todoSummary.allComplete) {
+    return 'finalize';
+  }
+
+  if (project.lastBuildError) {
+    return 'inspect';
+  }
+
+  return 'edit';
+};
+
+const buildProjectSummary = async (project: HtmlProject): Promise<HtmlProjectSummary> => {
+  const [files, todoSummary, preview] = await Promise.all([
+    htmlProjectStore.listFiles(project.id),
+    htmlProjectStore.getTodoSummary(project.id),
+    htmlPreviewService.buildPreviewArtifact(project.id),
+  ]);
+
+  return {
+    projectId: project.id,
+    name: project.name,
+    entryFile: project.entryFile,
+    previewVersion: project.previewVersion,
+    previewReady: preview.previewReady,
+    files,
+    fileCount: files.length,
+    todoSummary,
+    lastBuildError: project.lastBuildError ?? null,
+    warnings: preview.warnings,
+    previewDiagnostics: preview.diagnostics ?? {
+      category: project.lastBuildError ? 'build_error' : 'unknown',
+      outcome: project.lastBuildError ? 'repairable_error' : 'non_repairable_error',
+      repairable: Boolean(project.lastBuildError),
+      summary: project.lastBuildError || 'Preview diagnostics unavailable.',
+      warnings: preview.warnings,
+      details: project.lastBuildError ? [project.lastBuildError] : undefined,
+    },
+    suggestedNextActionCategory: resolveProjectSuggestedNextAction(
+      project,
+      preview,
+      files.length,
+      todoSummary,
+    ),
+  };
+};
 
 const getRecoverableActiveProjectId = (
   args: unknown,
@@ -1001,8 +1094,28 @@ const handleOpenProject = async (
       name: project.name,
       entryFile: project.entryFile,
       previewVersion: preview.previewVersion,
+      previewReady: preview.previewReady,
+      diagnostics: preview.diagnostics ?? null,
     },
     workspace: createWorkspaceUpdate(project.id, summary, preview),
+  };
+};
+
+const handleGetProjectSummary = async (
+  args: GetProjectSummaryArgs,
+  context: HtmlProjectToolContext,
+): Promise<HtmlProjectToolExecutionResult> => {
+  const project = await requireOwnedProject(args.projectId, context);
+  const projectSummary = await buildProjectSummary(project);
+  const summary = `已整理 HTML 專案「${project.name}」摘要，包含 ${projectSummary.fileCount} 個檔案與 ${summarizeTodoSummary(projectSummary.todoSummary)} 建議下一步：${projectSummary.suggestedNextActionCategory}。`;
+
+  return {
+    toolName: 'getProjectSummary',
+    summary,
+    result: {
+      projectSummary,
+    },
+    workspace: createWorkspaceUpdate(project.id, summary),
   };
 };
 
@@ -1534,10 +1647,21 @@ const handleDeleteFile = async (
   args: DeleteFileArgs,
   context: HtmlProjectToolContext,
 ): Promise<HtmlProjectToolExecutionResult> => {
+  const path = typeof args.path === 'string' ? args.path.trim() : '';
+  if (!path) {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'invalid-delete-file-path',
+      message: 'deleteFile requires a valid path.',
+      guidance: VIRTUAL_PROJECT_PATH_GUIDANCE,
+    });
+  }
+
   const project = await requireOwnedProject(args.projectId, context);
-  const result = await htmlProjectStore.deleteFile(project.id, args.path);
+  const result = await htmlProjectStore.deleteFile(project.id, path);
   const preview = await htmlPreviewService.resolveProjectForPreview(project.id);
-  const summary = result.deleted ? `已刪除檔案 ${args.path}。` : `找不到檔案 ${args.path}。`;
+  const summary = result.deleted ? `已刪除檔案 ${path}。` : `找不到檔案 ${path}。`;
 
   return {
     toolName: 'deleteFile',
@@ -1545,7 +1669,7 @@ const handleDeleteFile = async (
     result: {
       projectId: project.id,
       deleted: result.deleted,
-      path: args.path,
+      path,
       previewVersion: result.previewVersion,
     },
     workspace: createWorkspaceUpdate(project.id, summary, preview),
@@ -1742,8 +1866,19 @@ const handleSetEntrypoint = async (
   args: SetEntrypointArgs,
   context: HtmlProjectToolContext,
 ): Promise<HtmlProjectToolExecutionResult> => {
+  const path = typeof args.path === 'string' ? args.path.trim() : '';
+  if (!path) {
+    throw new HtmlProjectToolRecoverableError({
+      ok: false,
+      recoverable: true,
+      code: 'invalid-entrypoint-path',
+      message: 'setEntrypoint requires a valid path.',
+      guidance: VIRTUAL_PROJECT_PATH_GUIDANCE,
+    });
+  }
+
   const project = await requireOwnedProject(args.projectId, context);
-  const updatedProject = await htmlProjectStore.setEntrypoint(project.id, args.path);
+  const updatedProject = await htmlProjectStore.setEntrypoint(project.id, path);
   const preview = await htmlPreviewService.resolveProjectForPreview(project.id);
   const summary = `已將入口檔切換為 ${updatedProject.entryFile}。`;
 
@@ -1780,6 +1915,7 @@ const handleRenderPreview = async (
       previewUrlType: preview.previewUrlType,
       warnings: preview.warnings,
       error: preview.error,
+      diagnostics: preview.diagnostics ?? null,
     },
     workspace: createWorkspaceUpdate(project.id, summary, preview),
   };
@@ -1817,6 +1953,18 @@ export const getHtmlProjectToolDefinitions = (): ToolDefinition[] => [
         projectId: { type: 'string' },
       },
       required: ['projectId'],
+    },
+  },
+  {
+    name: 'getProjectSummary',
+    description:
+      'Return a compact summary for the current HTML project, including file descriptors, todo summary, preview state, and suggested next action before resuming or editing work.',
+    parameters: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' },
+      },
+      required: [],
     },
   },
   {
@@ -2066,7 +2214,8 @@ export const getHtmlProjectToolDefinitions = (): ToolDefinition[] => [
   },
   {
     name: 'renderPreview',
-    description: 'Rebuild the latest preview artifact for the active HTML project.',
+    description:
+      'Rebuild the latest preview artifact for the active HTML project only when the user explicitly requests a preview refresh/recheck or when repair diagnostics require revalidation.',
     parameters: {
       type: 'object',
       properties: {
@@ -2076,6 +2225,31 @@ export const getHtmlProjectToolDefinitions = (): ToolDefinition[] => [
     },
   },
 ];
+
+export const getHtmlProjectToolDefinitionsForPacks = (
+  packSet: HtmlProjectToolPackName[],
+): ToolDefinition[] => {
+  if (packSet.length === 0) {
+    return [];
+  }
+
+  const allowedNames = new Set<HtmlProjectToolName>();
+  for (const packName of packSet) {
+    for (const toolName of HTML_PROJECT_TOOL_PACKS[packName]) {
+      allowedNames.add(toolName);
+    }
+  }
+
+  return getHtmlProjectToolDefinitions().filter(tool =>
+    allowedNames.has(tool.name as HtmlProjectToolName),
+  );
+};
+
+export const getAllHtmlProjectToolDefinitions = (): ToolDefinition[] =>
+  getHtmlProjectToolDefinitions();
+
+export const getHtmlProjectToolPackNames = (): HtmlProjectToolPackName[] =>
+  Object.keys(HTML_PROJECT_TOOL_PACKS) as HtmlProjectToolPackName[];
 
 export const isHtmlProjectToolName = (toolName: string): boolean => {
   return HTML_PROJECT_TOOL_NAMES.includes(toolName as (typeof HTML_PROJECT_TOOL_NAMES)[number]);
@@ -2098,6 +2272,8 @@ export const executeHtmlProjectToolCall = async (
         return await handleListProjects(context);
       case 'openProject':
         return await handleOpenProject(safeArgs as unknown as OpenProjectArgs, context);
+      case 'getProjectSummary':
+        return await handleGetProjectSummary(safeArgs as unknown as GetProjectSummaryArgs, context);
       case 'searchFiles':
         return await handleSearchFiles(safeArgs as unknown as SearchFilesArgs, context);
       case 'writeFiles':

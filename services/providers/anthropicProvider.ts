@@ -1,4 +1,9 @@
 import { ChatParams, LLMProvider, ProviderConfig, StreamingResponse } from '../llmAdapter';
+import {
+  buildEscalatedToolResult,
+  isRecoverableToolErrorResult,
+  isStopRouteToolResult,
+} from '../htmlProjectToolLoopControl';
 import { resolveToolPolicy } from './toolPolicyUtils';
 
 interface AnthropicTextBlock {
@@ -34,6 +39,14 @@ interface AnthropicRequestMessage {
         | { type: 'tool_result'; tool_use_id: string; content: string }
       >;
 }
+
+interface RepeatedRecoverableErrorEntry {
+  toolName: string;
+  code: string;
+  count: number;
+}
+
+const buildRepeatKey = (toolName: string, code: string): string => `${toolName}::${code}`;
 
 export class AnthropicProvider implements LLMProvider {
   readonly name = 'anthropic';
@@ -164,6 +177,8 @@ export class AnthropicProvider implements LLMProvider {
       const maxToolRounds = Math.max(1, Math.round(Number(this.config.maxToolRounds ?? 20)));
       let toolRoundCount = 0;
       let conversationMessages = [...messages];
+      const repeatTracker = new Map<string, number>();
+      const repeatedRecoverableErrors = new Map<string, RepeatedRecoverableErrorEntry>();
 
       while (visibleTools?.length && params.executeTool) {
         const toolUseBlocks =
@@ -184,18 +199,46 @@ export class AnthropicProvider implements LLMProvider {
           tool_use_id: string;
           content: string;
         }>;
+        const roundRecoverableErrors = new Map<string, RepeatedRecoverableErrorEntry>();
+        let stopRoute = false;
 
         for (const toolUseBlock of toolUseBlocks) {
-          const result = await params.executeTool({
+          const rawResult = await params.executeTool({
             name: toolUseBlock.name,
             args: toolUseBlock.input || {},
           });
+          const result = (() => {
+            if (!isRecoverableToolErrorResult(rawResult)) {
+              return rawResult;
+            }
+
+            const repeatKey = buildRepeatKey(toolUseBlock.name, rawResult.code);
+            const attempt = (repeatTracker.get(repeatKey) ?? 0) + 1;
+            repeatTracker.set(repeatKey, attempt);
+            roundRecoverableErrors.set(repeatKey, {
+              toolName: toolUseBlock.name,
+              code: rawResult.code,
+              count: attempt,
+            });
+            const escalated =
+              attempt >= 2
+                ? buildEscalatedToolResult(toolUseBlock.name, rawResult, attempt)
+                : rawResult;
+            if (isStopRouteToolResult(escalated)) {
+              stopRoute = true;
+            }
+            return escalated;
+          })();
 
           toolResults.push({
             type: 'tool_result',
             tool_use_id: toolUseBlock.id,
             content: JSON.stringify(result),
           });
+        }
+
+        for (const [repeatKey, entry] of roundRecoverableErrors.entries()) {
+          repeatedRecoverableErrors.set(repeatKey, entry);
         }
 
         conversationMessages = [
@@ -235,6 +278,33 @@ export class AnthropicProvider implements LLMProvider {
         promptTokenCount += response.usage?.input_tokens || 0;
         candidatesTokenCount += response.usage?.output_tokens || 0;
         toolRoundCount += 1;
+
+        if (stopRoute) {
+          const stopSummary = [...repeatedRecoverableErrors.values()]
+            .map(entry => `${entry.toolName}:${entry.code} x${entry.count}`)
+            .join(', ');
+          yield {
+            text: `Stopped repeated recoverable tool failures and need a different repair path: ${stopSummary}`,
+            isComplete: false,
+            metadata: {
+              model,
+              provider: this.name,
+            },
+          };
+          yield {
+            text: '',
+            isComplete: true,
+            metadata: {
+              promptTokenCount,
+              candidatesTokenCount,
+              model,
+              provider: this.name,
+              toolRoundCount,
+              repeatedRecoverableErrors: [...repeatedRecoverableErrors.values()],
+            },
+          };
+          return;
+        }
       }
 
       const finalText = this.extractText(response);
@@ -257,6 +327,8 @@ export class AnthropicProvider implements LLMProvider {
           candidatesTokenCount,
           model,
           provider: this.name,
+          toolRoundCount,
+          repeatedRecoverableErrors: [...repeatedRecoverableErrors.values()],
         },
       };
     } catch (error) {

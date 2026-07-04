@@ -138,6 +138,43 @@ export interface HtmlProjectFileDescriptor {
   dependencies?: string[];
 }
 
+export type HtmlProjectToolPackName =
+  | 'bootstrap'
+  | 'inspect'
+  | 'edit'
+  | 'todo_finalize'
+  | 'preview_recheck';
+
+export type HtmlProjectIntent =
+  | 'new_build'
+  | 'resume_project'
+  | 'inspect_only'
+  | 'targeted_edit'
+  | 'finalize_or_complete'
+  | 'uncertain';
+
+export type HtmlProjectIntentConfidence = 'high' | 'medium' | 'low';
+
+export type HtmlProjectPreviewDiagnosticCategory =
+  | 'none'
+  | 'missing_entrypoint'
+  | 'missing_reference'
+  | 'build_error'
+  | 'external_dependency_warning'
+  | 'unknown';
+
+export type HtmlProjectPreviewOutcome = 'ready' | 'repairable_error' | 'non_repairable_error';
+
+export interface HtmlProjectPreviewDiagnostics {
+  category: HtmlProjectPreviewDiagnosticCategory;
+  outcome: HtmlProjectPreviewOutcome;
+  repairable: boolean;
+  summary: string;
+  missingPaths?: string[];
+  warnings?: string[];
+  details?: string[];
+}
+
 export interface HtmlProjectPreviewArtifact {
   projectId: string;
   previewVersion: number;
@@ -148,7 +185,55 @@ export interface HtmlProjectPreviewArtifact {
   url?: string;
   warnings: string[];
   error?: string | null;
+  diagnostics?: HtmlProjectPreviewDiagnostics;
   generatedAt: number;
+}
+
+export interface HtmlProjectSummary {
+  projectId: string;
+  name: string;
+  entryFile: string;
+  previewVersion: number;
+  previewReady: boolean;
+  files: HtmlProjectFileDescriptor[];
+  fileCount: number;
+  todoSummary: HtmlProjectTodoSummary;
+  lastBuildError?: string | null;
+  warnings: string[];
+  previewDiagnostics: HtmlProjectPreviewDiagnostics;
+  suggestedNextActionCategory:
+    | 'bootstrap'
+    | 'inspect'
+    | 'resume_todos'
+    | 'repair_preview'
+    | 'finalize'
+    | 'edit';
+}
+
+export interface HtmlProjectIntentDecision {
+  intent: HtmlProjectIntent;
+  confidence: HtmlProjectIntentConfidence;
+  selectedPackSet: HtmlProjectToolPackName[];
+  reason: string;
+  requiresSummaryPreflight: boolean;
+}
+
+export interface HtmlProjectAgentTelemetryEvent {
+  sessionId?: string | null;
+  assistantId?: string | null;
+  projectId?: string | null;
+  provider: 'anthropic' | 'gemini' | 'openai_compatible' | 'unknown';
+  intent: string;
+  selectedPackSet: string[];
+  toolSequence: string[];
+  repeatedRecoverableErrors: Array<{
+    toolName: string;
+    code: string;
+    count: number;
+  }>;
+  previewOutcome?: HtmlProjectPreviewOutcome;
+  toolRounds: number;
+  durationMs?: number;
 }
 
 export interface HtmlProjectWorkspaceUpdate {

@@ -109,6 +109,12 @@ describe('htmlPreviewService', () => {
       previewUrlType: 'blob',
       url: 'blob:preview-1',
       error: null,
+      diagnostics: {
+        category: 'none',
+        outcome: 'ready',
+        repairable: false,
+        summary: 'Preview rendered successfully.',
+      },
     });
     expect(artifact.html).toContain('<style data-project-path="/styles/app.css">');
     expect(artifact.html).toContain('body { color: red; }');
@@ -116,7 +122,7 @@ describe('htmlPreviewService', () => {
     expect(artifact.html).toContain('console.log("preview");');
   });
 
-  it('returns an error artifact when preview dependencies are missing', async () => {
+  it('returns missing_reference diagnostics when preview dependencies are missing', async () => {
     mockGetProject.mockResolvedValue(project);
     mockListFiles.mockResolvedValue([{ path: '/index.html' }]);
     mockReadFile.mockResolvedValue(htmlFile);
@@ -129,6 +135,78 @@ describe('htmlPreviewService', () => {
     expect(artifact.url).toBeUndefined();
     expect(artifact.error).toContain('/styles/app.css');
     expect(artifact.error).toContain('/scripts/app.js');
+    expect(artifact.diagnostics).toEqual({
+      category: 'missing_reference',
+      outcome: 'repairable_error',
+      repairable: true,
+      summary: 'Missing preview dependencies: /styles/app.css, /scripts/app.js.',
+      missingPaths: ['/styles/app.css', '/scripts/app.js'],
+      warnings: [],
+      details: [
+        'Restore the missing file(s) or update the HTML references before retrying preview.',
+      ],
+    });
     expect(URL.createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it('returns missing_entrypoint diagnostics when the entry file does not exist', async () => {
+    mockGetProject.mockResolvedValue(project);
+    mockListFiles.mockResolvedValue([{ path: '/styles/app.css' }]);
+    mockReadFile.mockResolvedValue(undefined);
+
+    const { htmlPreviewService } = await import('./htmlPreviewService');
+
+    const artifact = await htmlPreviewService.resolveProjectForPreview('project-1');
+
+    expect(artifact).toMatchObject({
+      previewReady: false,
+      error: 'Entrypoint /index.html 不存在。',
+      diagnostics: {
+        category: 'missing_entrypoint',
+        outcome: 'repairable_error',
+        repairable: true,
+        summary: 'Entrypoint /index.html does not exist.',
+        missingPaths: ['/index.html'],
+        details: ['Set a valid entry file or recreate the missing entrypoint file.'],
+      },
+    });
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it('returns external_dependency_warning diagnostics when external assets are preserved', async () => {
+    const externalHtmlFile: HtmlProjectFile = {
+      ...htmlFile,
+      content:
+        '<!doctype html><html><head><link rel="stylesheet" href="https://cdn.example.com/app.css"></head><body><script src="https://cdn.example.com/app.js"></script></body></html>',
+      dependencies: [],
+    };
+
+    mockGetProject.mockResolvedValue(project);
+    mockListFiles.mockResolvedValue([{ path: '/index.html' }]);
+    mockReadFile.mockResolvedValue(externalHtmlFile);
+
+    const { htmlPreviewService } = await import('./htmlPreviewService');
+
+    const artifact = await htmlPreviewService.resolveProjectForPreview('project-1');
+
+    expect(artifact).toMatchObject({
+      previewReady: true,
+      diagnostics: {
+        category: 'external_dependency_warning',
+        outcome: 'ready',
+        repairable: false,
+        summary: 'Preview rendered with external dependency warnings.',
+        warnings: [
+          '保留外部樣式資源：https://cdn.example.com/app.css',
+          '保留外部腳本資源：https://cdn.example.com/app.js',
+        ],
+        details: [
+          '保留外部樣式資源：https://cdn.example.com/app.css',
+          '保留外部腳本資源：https://cdn.example.com/app.js',
+        ],
+      },
+    });
+    expect(artifact.html).toContain('https://cdn.example.com/app.css');
+    expect(artifact.html).toContain('https://cdn.example.com/app.js');
   });
 });

@@ -1,4 +1,9 @@
 import { ChatParams, StreamingResponse, ToolDefinition } from '../llmAdapter';
+import {
+  buildEscalatedToolResult,
+  isRecoverableToolErrorResult,
+  isStopRouteToolResult,
+} from '../htmlProjectToolLoopControl';
 import { readSseDataLines } from './sse';
 import { resolveToolPolicy } from './toolPolicyUtils';
 
@@ -38,6 +43,14 @@ interface StreamOptions {
   defaultMaxTokens?: number;
   defaultMaxToolRounds?: number;
 }
+
+interface RepeatedRecoverableErrorEntry {
+  toolName: string;
+  code: string;
+  count: number;
+}
+
+const buildRepeatKey = (toolName: string, code: string): string => `${toolName}::${code}`;
 
 interface RecoverableToolErrorResult {
   ok: false;
@@ -225,12 +238,40 @@ const buildHistorySafeToolCall = (
 const executeToolCalls = async (
   toolCalls: OpenAICompatibleToolCall[],
   executeTool: NonNullable<ChatParams['executeTool']>,
+  repeatTracker: Map<string, number>,
 ): Promise<{
   assistantToolCalls: OpenAICompatibleToolCall[];
   toolMessages: OpenAICompatibleMessage[];
+  repeatedRecoverableErrors: RepeatedRecoverableErrorEntry[];
+  stopRoute: boolean;
 }> => {
   const assistantToolCalls: OpenAICompatibleToolCall[] = [];
   const toolMessages: OpenAICompatibleMessage[] = [];
+  const repeatedRecoverableErrors = new Map<string, RepeatedRecoverableErrorEntry>();
+  let stopRoute = false;
+
+  const recordRecoverableResult = (toolName: string, result: unknown) => {
+    if (!isRecoverableToolErrorResult(result)) {
+      return result;
+    }
+
+    const repeatKey = buildRepeatKey(toolName, result.code);
+    const attempt = (repeatTracker.get(repeatKey) ?? 0) + 1;
+    repeatTracker.set(repeatKey, attempt);
+    const escalated = attempt >= 2 ? buildEscalatedToolResult(toolName, result, attempt) : result;
+
+    repeatedRecoverableErrors.set(repeatKey, {
+      toolName,
+      code: result.code,
+      count: attempt,
+    });
+
+    if (isStopRouteToolResult(escalated)) {
+      stopRoute = true;
+    }
+
+    return escalated;
+  };
 
   for (const [index, toolCall] of toolCalls.entries()) {
     const fallbackId = `invalid-tool-call-${index + 1}`;
@@ -239,37 +280,35 @@ const executeToolCalls = async (
     assistantToolCalls.push(historySafeToolCall);
 
     if (!toolCall.id) {
-      toolMessages.push(
-        createToolMessage(
-          toolCallId,
-          createRecoverableToolCallError(
-            'tool-call-missing-id',
-            'Tool call is missing a tool_call_id.',
-            'Retry the tool call with a valid tool_call_id, function name, and JSON object arguments.',
-            {
-              toolCallType: toolCall.type ?? null,
-              functionName: toolCall.function?.name ?? null,
-            },
-          ),
+      const result = recordRecoverableResult(
+        toolCall.function?.name || '__invalid_tool_call__',
+        createRecoverableToolCallError(
+          'tool-call-missing-id',
+          'Tool call is missing a tool_call_id.',
+          'Retry the tool call with a valid tool_call_id, function name, and JSON object arguments.',
+          {
+            toolCallType: toolCall.type ?? null,
+            functionName: toolCall.function?.name ?? null,
+          },
         ),
       );
+      toolMessages.push(createToolMessage(toolCallId, result));
       continue;
     }
 
     if (!toolCall.function?.name) {
-      toolMessages.push(
-        createToolMessage(
-          toolCallId,
-          createRecoverableToolCallError(
-            'tool-call-missing-name',
-            'Tool call is missing a function name.',
-            'Retry the tool call with a valid function name and JSON object arguments.',
-            {
-              toolCallType: toolCall.type ?? null,
-            },
-          ),
+      const result = recordRecoverableResult(
+        '__invalid_tool_call__',
+        createRecoverableToolCallError(
+          'tool-call-missing-name',
+          'Tool call is missing a function name.',
+          'Retry the tool call with a valid function name and JSON object arguments.',
+          {
+            toolCallType: toolCall.type ?? null,
+          },
         ),
       );
+      toolMessages.push(createToolMessage(toolCallId, result));
       continue;
     }
 
@@ -279,14 +318,20 @@ const executeToolCalls = async (
     }
 
     if (normalizedToolCall.argsError) {
-      toolMessages.push(createToolMessage(toolCallId, normalizedToolCall.argsError));
+      toolMessages.push(
+        createToolMessage(
+          toolCallId,
+          recordRecoverableResult(normalizedToolCall.name, normalizedToolCall.argsError),
+        ),
+      );
       continue;
     }
 
-    const result = await executeTool({
+    const rawResult = await executeTool({
       name: normalizedToolCall.name,
       args: normalizedToolCall.args,
     });
+    const result = recordRecoverableResult(normalizedToolCall.name, rawResult);
 
     toolMessages.push(createToolMessage(toolCallId, result));
   }
@@ -294,6 +339,8 @@ const executeToolCalls = async (
   return {
     assistantToolCalls,
     toolMessages,
+    repeatedRecoverableErrors: [...repeatedRecoverableErrors.values()],
+    stopRoute,
   };
 };
 
@@ -358,6 +405,8 @@ export async function* streamOpenAICompatibleChat(
 
   if (visibleTools?.length && params.executeTool) {
     let toolRoundCount = 0;
+    const repeatTracker = new Map<string, number>();
+    const repeatedRecoverableErrors = new Map<string, RepeatedRecoverableErrorEntry>();
 
     while (true) {
       const toolResponse = await fetchToolCallResponse(options, messages, toolRoundCount > 0);
@@ -386,6 +435,8 @@ export async function* streamOpenAICompatibleChat(
             candidatesTokenCount,
             model,
             provider: providerName,
+            toolRoundCount,
+            repeatedRecoverableErrors: [...repeatedRecoverableErrors.values()],
           },
         };
         return;
@@ -397,19 +448,50 @@ export async function* streamOpenAICompatibleChat(
         );
       }
 
-      const { assistantToolCalls, toolMessages } = await executeToolCalls(
+      const toolExecution = await executeToolCalls(
         assistantMessage.tool_calls,
         params.executeTool,
+        repeatTracker,
       );
+      for (const entry of toolExecution.repeatedRecoverableErrors) {
+        repeatedRecoverableErrors.set(buildRepeatKey(entry.toolName, entry.code), entry);
+      }
       messages = [
         ...messages,
         {
           ...assistantMessage,
-          tool_calls: assistantToolCalls,
+          tool_calls: toolExecution.assistantToolCalls,
         },
-        ...toolMessages,
+        ...toolExecution.toolMessages,
       ];
       toolRoundCount += 1;
+
+      if (toolExecution.stopRoute) {
+        const stopSummary = [...repeatedRecoverableErrors.values()]
+          .map(entry => `${entry.toolName}:${entry.code} x${entry.count}`)
+          .join(', ');
+        yield {
+          text: `Stopped repeated recoverable tool failures and need a different repair path: ${stopSummary}`,
+          isComplete: false,
+          metadata: {
+            model,
+            provider: providerName,
+          },
+        };
+        yield {
+          text: '',
+          isComplete: true,
+          metadata: {
+            promptTokenCount,
+            candidatesTokenCount,
+            model,
+            provider: providerName,
+            toolRoundCount,
+            repeatedRecoverableErrors: [...repeatedRecoverableErrors.values()],
+          },
+        };
+        return;
+      }
     }
   }
 
@@ -474,6 +556,8 @@ export async function* streamOpenAICompatibleChat(
       candidatesTokenCount,
       model,
       provider: providerName,
+      toolRoundCount: 0,
+      repeatedRecoverableErrors: [],
     },
   };
 }

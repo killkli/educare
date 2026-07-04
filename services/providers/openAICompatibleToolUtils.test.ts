@@ -352,6 +352,8 @@ describe('streamOpenAICompatibleChat', () => {
           candidatesTokenCount: 6,
           model: 'gpt-4o',
           provider: 'openai',
+          toolRoundCount: 2,
+          repeatedRecoverableErrors: [],
         },
       },
     ]);
@@ -635,6 +637,14 @@ describe('streamOpenAICompatibleChat', () => {
           candidatesTokenCount: 3,
           model: 'gpt-4o',
           provider: 'openai',
+          toolRoundCount: 1,
+          repeatedRecoverableErrors: [
+            {
+              toolName: 'search_docs',
+              code: 'tool-arguments-invalid-json',
+              count: 1,
+            },
+          ],
         },
       },
     ]);
@@ -739,6 +749,151 @@ describe('streamOpenAICompatibleChat', () => {
         },
       }),
     });
+  });
+
+  it('stops after repeated recoverable tool errors and reports matching completion metadata', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    const recoverableError = {
+      ok: false,
+      recoverable: true,
+      code: 'search-temporary-unavailable',
+      message: 'Search index is warming up.',
+      guidance: 'Retry the same search in a moment.',
+      details: { retryAfterMs: 500 },
+    };
+    const executeTool = vi.fn().mockResolvedValue(recoverableError);
+
+    fetchMock
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: null,
+                tool_calls: [
+                  {
+                    id: 'call-1',
+                    type: 'function',
+                    function: {
+                      name: 'search_docs',
+                      arguments: JSON.stringify({ query: 'financial aid' }),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+          usage: { prompt_tokens: 2, completion_tokens: 1 },
+        }),
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: null,
+                tool_calls: [
+                  {
+                    id: 'call-2',
+                    type: 'function',
+                    function: {
+                      name: 'search_docs',
+                      arguments: JSON.stringify({ query: 'financial aid' }),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+          usage: { prompt_tokens: 3, completion_tokens: 1 },
+        }),
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: null,
+                tool_calls: [
+                  {
+                    id: 'call-3',
+                    type: 'function',
+                    function: {
+                      name: 'search_docs',
+                      arguments: JSON.stringify({ query: 'financial aid' }),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+          usage: { prompt_tokens: 4, completion_tokens: 1 },
+        }),
+      )
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: 'unused stop-route response',
+              },
+            },
+          ],
+          usage: { prompt_tokens: 5, completion_tokens: 1 },
+        }),
+      );
+
+    const responses = [];
+    for await (const chunk of streamOpenAICompatibleChat({
+      endpoint: 'https://example.com/chat/completions',
+      headers: { Authorization: 'Bearer test' },
+      providerName: 'openai',
+      model: 'gpt-4o',
+      params: {
+        systemPrompt: 'You are helpful.',
+        history: [],
+        message: 'hello',
+        tools: [...TOOL_DEFINITIONS],
+        executeTool,
+      },
+    })) {
+      responses.push(chunk);
+    }
+
+    expect(executeTool).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(responses).toEqual([
+      {
+        text: 'Stopped repeated recoverable tool failures and need a different repair path: search_docs:search-temporary-unavailable x3',
+        isComplete: false,
+        metadata: {
+          model: 'gpt-4o',
+          provider: 'openai',
+        },
+      },
+      {
+        text: '',
+        isComplete: true,
+        metadata: {
+          promptTokenCount: 9,
+          candidatesTokenCount: 3,
+          model: 'gpt-4o',
+          provider: 'openai',
+          toolRoundCount: 3,
+          repeatedRecoverableErrors: [
+            {
+              toolName: 'search_docs',
+              code: 'search-temporary-unavailable',
+              count: 3,
+            },
+          ],
+        },
+      },
+    ]);
   });
 
   it('throws a clear error after exceeding the maximum number of tool rounds', async () => {
