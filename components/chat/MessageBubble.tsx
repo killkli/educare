@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { MessageBubbleProps } from './types';
 import { UserIcon, GeminiIcon } from '../ui/Icons';
 import ReactMarkdown from 'react-markdown';
@@ -23,6 +23,56 @@ const getPlainText = (children: React.ReactNode): string => {
 };
 
 const MessageBubble: React.FC<MessageBubbleProps> = ({ message, index: _index }) => {
+  // G6: 合成 (synthetic) 訊息預設摺疊,使用者可展開檢視。
+  const [syntheticExpanded, setSyntheticExpanded] = useState(false);
+
+  if (message.synthetic) {
+    return (
+      <div className='flex justify-start' data-testid='synthetic-message'>
+        <div className='max-w-4xl'>
+          <button
+            type='button'
+            onClick={() => setSyntheticExpanded(open => !open)}
+            className='inline-flex items-center gap-2 rounded-full border border-gray-700/60 bg-gray-800/40 px-3 py-1 text-xs text-gray-400 transition hover:border-gray-600 hover:text-gray-200'
+            aria-expanded={syntheticExpanded}
+            aria-label={syntheticExpanded ? '摺疊續跑訊息' : '展開續跑訊息'}
+            title={syntheticExpanded ? '摺疊續跑訊息' : '展開續跑訊息'}
+          >
+            <span
+              className='inline-block h-1.5 w-1.5 rounded-full bg-gray-500'
+              aria-hidden='true'
+            />
+            <span>Agent 續跑銜接訊息</span>
+            <svg
+              className={`h-3 w-3 transition-transform ${syntheticExpanded ? 'rotate-180' : ''}`}
+              fill='none'
+              stroke='currentColor'
+              viewBox='0 0 24 24'
+              aria-hidden='true'
+            >
+              <path
+                strokeLinecap='round'
+                strokeLinejoin='round'
+                strokeWidth={2}
+                d='M19 9l-7 7-7-7'
+              />
+            </svg>
+          </button>
+          {syntheticExpanded && (
+            <div className='mt-2 rounded-xl border border-dashed border-gray-700/50 bg-gray-900/40 px-4 py-2 text-xs text-gray-400'>
+              {message.content}
+              {message.agentTurnLog && (
+                <div className='mt-2 border-t border-gray-800 pt-2 text-[10px] text-gray-500'>
+                  {message.agentTurnLog}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   const renderMessageContent = (content: string) => {
     return (
       <ReactMarkdown

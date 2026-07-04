@@ -7,6 +7,7 @@ import { htmlProjectZipService } from '../../services/htmlProjectZipService';
 import { PreviewToolbar } from './PreviewToolbar';
 import { PreviewFrame } from './PreviewFrame';
 import { FileTree } from './FileTree';
+import { AgentRunPanel } from './AgentRunPanel';
 
 type WorkspaceTab = 'preview' | 'files' | 'activity';
 
@@ -175,7 +176,8 @@ export function HtmlProjectWorkspace({ projectId }: HtmlProjectWorkspaceProps): 
           </div>
         )}
         {activeTab === 'activity' && (
-          <div className='h-full space-y-2 overflow-y-auto pr-1'>
+          <div className='h-full space-y-3 overflow-y-auto pr-1'>
+            <AgentRunPanel projectId={projectId} runState={state.agentRunState ?? null} />
             {state.projectToolActivity.length === 0 ? (
               <p className='text-sm text-gray-400'>尚未收到 project tool activity。</p>
             ) : (

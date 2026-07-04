@@ -24,6 +24,10 @@ export interface ChatInputProps {
   statusText: string;
   disabled?: boolean;
   isWorkspaceOpen?: boolean;
+  /** G5: 當 agent run 進行中為 true,顯示「停止」鈕並鎖定輸入。 */
+  isRunning?: boolean;
+  /** G5: 使用者按下「停止」鈕的回呼 (會 abort 進行中的 controller)。 */
+  onStop?: () => void;
 }
 
 export interface SessionManagerProps {
@@ -48,6 +52,8 @@ export interface ChatContainerProps {
   assistantDescription?: string;
   isWorkspaceOpen?: boolean;
   headerActions?: ReactNode;
+  /** G9: 由父層 (AppShell) 從 assistant.agentHarnessEnabled 傳入;預設 true。 */
+  agentHarnessEnabled?: boolean;
 }
 
 export interface WelcomeMessageProps {

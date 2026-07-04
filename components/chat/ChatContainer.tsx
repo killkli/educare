@@ -6,7 +6,8 @@ import ChatInput from './ChatInput';
 import WelcomeMessage from './WelcomeMessage';
 import ThinkingIndicator from './ThinkingIndicator';
 import StreamingResponse from './StreamingResponse';
-import { streamChat } from '../../services/llmService';
+import { AgentRunController } from '../../services/agentRunController';
+import type { AgentRunState } from '../../types';
 import { ChatMessage, HtmlProjectWorkspaceUpdate } from '../../types';
 import { applyTokenUsageToSession } from '../../services/sessionTokenUsage';
 
@@ -22,6 +23,7 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
   assistantDescription,
   isWorkspaceOpen = false,
   headerActions,
+  agentHarnessEnabled = true,
 }) => {
   const actions = useContext(AppContext)?.actions ?? null;
   const [input, setInput] = useState('');
@@ -30,8 +32,15 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
   const [statusText, setStatusText] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [currentSession, setCurrentSession] = useState(session);
+  const [runState, setRunState] = useState<AgentRunState | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const sessionRef = useRef(session);
+  const controllerRef = useRef<AgentRunController | null>(null);
+  const isThinkingRef = useRef(isThinking);
+
+  useEffect(() => {
+    isThinkingRef.current = isThinking;
+  }, [isThinking]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -83,6 +92,8 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
     setIsLoading(true);
     setIsThinking(true);
     setStreamingResponse('');
+    setRunState(null);
+    actions?.setAgentRunState?.(null);
 
     const newUserMessage = { role: 'user' as const, content: userMessage };
     const updatedSession = {
@@ -117,52 +128,83 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
         });
       }
 
-      await streamChat({
-        systemPrompt: enhancedSystemPrompt,
-        history: chatHistory,
-        message: userMessage,
+      // G5/G9: 透過 AgentRunController 統一調度 (单回合 when agentHarnessEnabled=false)
+      const controller = new AgentRunController({
         assistantId,
         sessionId: currentSession.id,
         activeProjectId: currentSession.activeProjectId ?? null,
+        systemPrompt: enhancedSystemPrompt,
+        history: chatHistory,
+        message: userMessage,
         knowledgeChunks: ragChunks,
-        onChunk: chunk => {
-          if (isThinking) {
-            setIsThinking(false);
-          }
-          setStreamingResponse(prev => prev + chunk);
-        },
-        onProjectToolActivity: handleProjectToolActivity,
-        onComplete: (tokenInfo, fullModelResponse) => {
-          setIsLoading(false);
-          setIsThinking(false);
-          setStatusText('');
-
-          const baseSession = sessionRef.current;
-          const newAiMessage = { role: 'model' as const, content: fullModelResponse };
-          const finalSession = applyTokenUsageToSession(
-            {
-              ...baseSession,
-              messages: [...baseSession.messages, newAiMessage],
-            },
-            tokenInfo,
-          );
-
-          sessionRef.current = finalSession;
-          setCurrentSession(finalSession);
-          setStreamingResponse('');
-          onNewMessage(finalSession, userMessage, fullModelResponse, tokenInfo);
+        agentHarnessEnabled,
+        sharedMode,
+        callbacks: {
+          onChunk: chunk => {
+            if (isThinkingRef.current) {
+              setIsThinking(false);
+            }
+            setStreamingResponse(prev => prev + chunk);
+          },
+          onProjectToolActivity: handleProjectToolActivity,
+          onStateChange: nextState => {
+            setRunState(nextState);
+            actions?.setAgentRunState?.(nextState);
+          },
+          onError: error => {
+            console.error('AgentRunController error:', error);
+          },
         },
       });
+      controllerRef.current = controller;
+
+      const result = await controller.run();
+      controllerRef.current = null;
+
+      // Capture final state (in case the controller didn't emit a terminal onStateChange).
+      setRunState(result.state);
+      actions?.setAgentRunState?.(result.state);
+
+      const tokenInfo = result.tokenInfo;
+      const fullModelResponse = result.fullText;
+
+      setIsLoading(false);
+      setIsThinking(false);
+      setStatusText('');
+
+      const baseSession = sessionRef.current;
+      const newAiMessage = { role: 'model' as const, content: fullModelResponse };
+      const finalSession = applyTokenUsageToSession(
+        {
+          ...baseSession,
+          messages: [...baseSession.messages, newAiMessage],
+        },
+        tokenInfo,
+      );
+
+      sessionRef.current = finalSession;
+      setCurrentSession(finalSession);
+      setStreamingResponse('');
+      onNewMessage(finalSession, userMessage, fullModelResponse, tokenInfo);
     } catch (error) {
+      controllerRef.current = null;
       console.error('Error during chat stream:', error);
       setIsLoading(false);
       setIsThinking(false);
       setStatusText('');
+      setRunState(null);
+      actions?.setAgentRunState?.(null);
       setStreamingResponse(
         `抱歉，發生錯誤。API 返回以下錯誤：\n\n${(error as Error).message}\n\n請檢查您的 API 密鑰和控制檯以取得更多細節。`,
       );
     }
   };
+
+  const handleStop = () => {
+    controllerRef.current?.stop('user-stop');
+  };
+
+  const isRunning = runState?.status === 'running';
 
   return (
     <div className='flex flex-col h-full bg-gray-900'>
@@ -188,6 +230,8 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
                     setCurrentSession(resetSession);
                     sessionRef.current = resetSession;
                     actions?.clearProjectWorkspace?.();
+                    actions?.setAgentRunState?.(null);
+                    setRunState(null);
                     setStreamingResponse('');
                     setIsThinking(false);
                     setStatusText('');
@@ -253,6 +297,8 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
         statusText={statusText}
         disabled={false}
         isWorkspaceOpen={isWorkspaceOpen}
+        isRunning={isRunning}
+        onStop={handleStop}
       />
     </div>
   );

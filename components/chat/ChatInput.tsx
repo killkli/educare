@@ -9,6 +9,8 @@ const ChatInput: React.FC<ChatInputProps> = ({
   statusText,
   disabled = false,
   isWorkspaceOpen = false,
+  isRunning = false,
+  onStop,
 }) => {
   const [isComposing, setIsComposing] = React.useState(false);
 
@@ -57,8 +59,8 @@ const ChatInput: React.FC<ChatInputProps> = ({
               onCompositionEnd={handleCompositionEnd}
               placeholder='輸入您的訊息...'
               rows={1}
-              className='w-full bg-gray-700/60 border-2 border-gray-600/40 rounded-2xl px-4 md:px-6 py-3 md:py-4 resize-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/60 focus:bg-gray-700/80 text-white placeholder-gray-400 max-h-32 shadow-lg backdrop-blur-sm transition-all duration-300 hover:border-gray-500/60 focus:outline-none text-sm md:text-base'
-              disabled={isLoading || disabled}
+              className='w-full bg-gray-700/60 border-2 border-gray-600/40 rounded-2xl px-4 md:px-6 py-3 md:py-4 resize-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/60 focus:bg-gray-700/80 text-white placeholder-gray-400 max-h-32 shadow-lg backdrop-blur-sm transition-all duration-300 hover:border-gray-500/60 focus:outline-none text-sm md:text-base disabled:opacity-60 disabled:cursor-not-allowed'
+              disabled={isLoading || disabled || isRunning}
               aria-label='輸入訊息'
               aria-describedby='input-help'
               aria-multiline='true'
@@ -79,12 +81,14 @@ const ChatInput: React.FC<ChatInputProps> = ({
           </div>
           <button
             onClick={onSend}
-            disabled={isLoading || !value.trim() || disabled}
+            disabled={isLoading || !value.trim() || disabled || isRunning}
             className={`relative ${
-              isLoading || !value.trim() || disabled
+              isLoading || !value.trim() || disabled || isRunning
                 ? 'bg-gray-600/50 cursor-not-allowed'
                 : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 hover:scale-105 hover:shadow-xl hover:shadow-cyan-500/30'
-            } text-white rounded-2xl px-4 md:px-8 py-3 md:py-4 font-medium md:font-semibold transition-all duration-300 flex items-center justify-center min-w-[80px] md:min-w-[100px] shadow-lg border border-gray-600/30 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-gray-800 text-sm md:text-base`}
+            } text-white rounded-2xl px-4 md:px-8 py-3 md:py-4 font-medium md:font-semibold transition-all duration-300 flex items-center justify-center min-w-[80px] md:min-w-[100px] shadow-lg border border-gray-600/30 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-gray-800 text-sm md:text-base ${
+              isRunning ? 'hidden' : ''
+            }`}
             aria-label={isLoading ? '正在傳送訊息' : '傳送訊息'}
             type='submit'
           >
@@ -112,7 +116,38 @@ const ChatInput: React.FC<ChatInputProps> = ({
               </>
             )}
           </button>
+          {isRunning && (
+            <button
+              onClick={() => onStop?.()}
+              className='relative bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 hover:scale-105 hover:shadow-xl hover:shadow-rose-500/30 text-white rounded-2xl px-4 md:px-8 py-3 md:py-4 font-medium md:font-semibold transition-all duration-300 flex items-center justify-center min-w-[80px] md:min-w-[100px] shadow-lg border border-rose-400/40 focus:outline-none focus:ring-2 focus:ring-rose-400 focus:ring-offset-2 focus:ring-offset-gray-800 text-sm md:text-base'
+              aria-label='停止 Agent 執行'
+              title='停止 Agent 執行'
+              type='button'
+            >
+              <svg
+                className='w-4 h-4 md:w-5 md:h-5 mr-1 md:mr-2'
+                fill='currentColor'
+                viewBox='0 0 24 24'
+                aria-hidden='true'
+              >
+                <rect x='6' y='6' width='12' height='12' rx='1.5' />
+              </svg>
+              <span className='hidden sm:inline md:inline'>停止</span>
+            </button>
+          )}
         </div>
+
+        {/* G5: Agent 執行中提示 */}
+        {isRunning && (
+          <div
+            className='mt-3 flex items-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200'
+            role='status'
+            aria-live='polite'
+          >
+            <span className='inline-block h-2 w-2 animate-pulse rounded-full bg-rose-400' />
+            <span>Agent 執行中,可按停止結束目前回合。</span>
+          </div>
+        )}
 
         {/* Footer Info */}
         <div className='flex justify-center items-center mt-2 md:mt-4' id='input-help'>

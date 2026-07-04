@@ -1,14 +1,18 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ChatContainer from '../ChatContainer';
 import { createMockChatSession, TEST_ASSISTANTS } from './test-utils';
 import { useAppContext } from '../../core/useAppContext';
-import type { HtmlProjectPreviewArtifact } from '../../../types';
+import type { AgentRunState } from '../../../types';
+import type { AgentRunController, AgentRunResult } from '../../../services/agentRunController';
 
 const {
   mockCreateNewSession,
-  mockStreamChat,
+  mockAgentRunControllerCtor,
+  mockControllerRun,
+  mockControllerStop,
+  mockControllerGetInstance,
   mockPerformCachedRagQuery,
   mockResultsToContextString,
   mockSetActiveProject,
@@ -16,9 +20,13 @@ const {
   mockSetProjectPreview,
   mockAppendProjectActivity,
   mockClearProjectWorkspace,
+  mockSetAgentRunState,
 } = vi.hoisted(() => ({
   mockCreateNewSession: vi.fn().mockResolvedValue(undefined),
-  mockStreamChat: vi.fn(),
+  mockAgentRunControllerCtor: vi.fn(),
+  mockControllerRun: vi.fn(),
+  mockControllerStop: vi.fn(),
+  mockControllerGetInstance: vi.fn(),
   mockPerformCachedRagQuery: vi.fn(),
   mockResultsToContextString: vi.fn(),
   mockSetActiveProject: vi.fn(),
@@ -26,6 +34,7 @@ const {
   mockSetProjectPreview: vi.fn(),
   mockAppendProjectActivity: vi.fn(),
   mockClearProjectWorkspace: vi.fn(),
+  mockSetAgentRunState: vi.fn(),
 }));
 
 vi.mock('../../core/useAppContext', async () => {
@@ -39,14 +48,23 @@ vi.mock('../../core/useAppContext', async () => {
         setProjectPreview: mockSetProjectPreview,
         appendProjectActivity: mockAppendProjectActivity,
         clearProjectWorkspace: mockClearProjectWorkspace,
+        setAgentRunState: mockSetAgentRunState,
       },
     }),
     useAppContext: vi.fn(),
   };
 });
 
-vi.mock('../../../services/llmService', () => ({
-  streamChat: mockStreamChat,
+vi.mock('../../../services/agentRunController', () => ({
+  AgentRunController: vi.fn().mockImplementation((...args: unknown[]) => {
+    mockAgentRunControllerCtor(...args);
+    const instance: Partial<AgentRunController> = {
+      run: mockControllerRun,
+      stop: mockControllerStop,
+      getState: mockControllerGetInstance,
+    };
+    return instance;
+  }),
 }));
 
 vi.mock('../../../services/ragCacheManagerV2', () => ({
@@ -76,6 +94,55 @@ vi.mock('../../settings', () => ({
   RagSettingsModal: () => null,
 }));
 
+const runningState: AgentRunState = {
+  runId: 'run-1',
+  projectId: '',
+  sessionId: 'test-session-1',
+  assistantId: 'test-assistant-1',
+  status: 'running',
+  turnIndex: 0,
+  maxTurns: 5,
+  previewDiagnosticState: 'not_executed',
+  autoContinued: false,
+  toolTrace: [],
+  startedAt: 1640995200000,
+  updatedAt: 1640995200000,
+};
+
+const completeState: AgentRunState = {
+  ...runningState,
+  status: 'complete',
+  turnIndex: 1,
+  previewDiagnosticState: 'clean',
+  finishReason: 'complete',
+};
+
+const buildRunResult = (fullText: string): AgentRunResult => ({
+  state: completeState,
+  fullText,
+  finalHistory: [],
+  tokenInfo: {
+    promptTokenCount: 10,
+    candidatesTokenCount: 15,
+  },
+  telemetry: {
+    sessionId: 'test-session-1',
+    assistantId: 'test-assistant-1',
+    projectId: null,
+    provider: 'unknown',
+    intent: 'uncertain',
+    selectedPackSet: [],
+    toolSequence: [],
+    repeatedRecoverableErrors: [],
+    toolRounds: 0,
+    runId: 'run-1',
+    turnIndex: 0,
+    finishReason: 'complete',
+    autoContinued: false,
+    runtimeDiagnosticState: 'clean',
+  },
+});
+
 describe('ChatContainer', () => {
   const defaultProps = {
     session: createMockChatSession(),
@@ -97,6 +164,7 @@ describe('ChatContainer', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+
     vi.mocked(useAppContext).mockReturnValue({
       actions: {
         createNewSession: mockCreateNewSession,
@@ -105,6 +173,7 @@ describe('ChatContainer', () => {
         setProjectPreview: mockSetProjectPreview,
         appendProjectActivity: mockAppendProjectActivity,
         clearProjectWorkspace: mockClearProjectWorkspace,
+        setAgentRunState: mockSetAgentRunState,
       },
     } as unknown as ReturnType<typeof useAppContext>);
 
@@ -120,9 +189,14 @@ describe('ChatContainer', () => {
       },
     });
     mockResultsToContextString.mockReturnValue('');
-    mockStreamChat.mockImplementation(async ({ message, onChunk, onComplete }) => {
-      onChunk('Hello');
-      onComplete({ promptTokenCount: 10, candidatesTokenCount: 15 }, `${message} reply`);
+
+    // Default: emit chunks + complete, then resolve with a result.
+    mockControllerRun.mockImplementation(async () => {
+      const options = mockAgentRunControllerCtor.mock.calls.at(-1)?.[0] as {
+        callbacks?: { onChunk?: (text: string, turn: number) => void };
+      };
+      options?.callbacks?.onChunk?.('Hello', 0);
+      return buildRunResult('Test reply');
     });
   });
 
@@ -167,7 +241,7 @@ describe('ChatContainer', () => {
     });
   });
 
-  it('passes assistant, session, and active project ids to streamChat', async () => {
+  it('constructs AgentRunController with assistantId, sessionId, activeProjectId, and message', async () => {
     const session = createMockChatSession({ activeProjectId: 'project-42' });
 
     render(<ChatContainer {...defaultProps} session={session} />);
@@ -175,38 +249,64 @@ describe('ChatContainer', () => {
     await sendMessage('Continue building');
 
     await waitFor(() => {
-      expect(mockStreamChat).toHaveBeenCalledWith(
+      expect(mockAgentRunControllerCtor).toHaveBeenCalledWith(
         expect.objectContaining({
           assistantId: defaultProps.assistantId,
           sessionId: session.id,
           activeProjectId: 'project-42',
           message: 'Continue building',
+          agentHarnessEnabled: true,
         }),
       );
     });
   });
 
-  it('wires project tool activity into AppContext workspace actions', async () => {
-    const preview: HtmlProjectPreviewArtifact = {
-      projectId: 'project-99',
-      previewVersion: 3,
-      entryFile: '/index.html',
-      previewReady: true,
-      previewUrlType: 'blob',
-      html: '<html></html>',
-      url: 'blob:preview-99',
-      warnings: [],
-      error: null,
-      generatedAt: Date.now(),
-    };
+  it('threads agentHarnessEnabled=false when the prop is false', async () => {
+    render(<ChatContainer {...defaultProps} agentHarnessEnabled={false} />);
 
-    mockStreamChat.mockImplementationOnce(async ({ onProjectToolActivity, onComplete }) => {
-      onProjectToolActivity({
+    await sendMessage('Single turn only');
+
+    await waitFor(() => {
+      expect(mockAgentRunControllerCtor).toHaveBeenCalledWith(
+        expect.objectContaining({ agentHarnessEnabled: false }),
+      );
+    });
+  });
+
+  it('finalizes the session with fullText + tokenInfo after run resolves', async () => {
+    mockControllerRun.mockResolvedValueOnce(buildRunResult('Final response text'));
+
+    render(<ChatContainer {...defaultProps} />);
+
+    await sendMessage('Finish without chunk');
+
+    await waitFor(() => {
+      expect(defaultProps.onNewMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ id: defaultProps.session.id }),
+        'Finish without chunk',
+        'Final response text',
+        expect.objectContaining({ promptTokenCount: 10, candidatesTokenCount: 15 }),
+      );
+    });
+  });
+
+  it('forwards onProjectToolActivity into AppContext workspace actions', async () => {
+    mockControllerRun.mockImplementationOnce(async () => {
+      const options = mockAgentRunControllerCtor.mock.calls.at(-1)?.[0] as {
+        callbacks?: {
+          onProjectToolActivity?: (update: {
+            activeProjectId: string;
+            preview: { url: string };
+            activityMessage: string;
+          }) => void;
+        };
+      };
+      options?.callbacks?.onProjectToolActivity?.({
         activeProjectId: 'project-99',
-        preview,
+        preview: { url: 'blob:preview-99' },
         activityMessage: 'Updated preview',
       });
-      onComplete({ promptTokenCount: 1, candidatesTokenCount: 2 }, 'Done');
+      return buildRunResult('Done');
     });
 
     render(<ChatContainer {...defaultProps} />);
@@ -216,31 +316,127 @@ describe('ChatContainer', () => {
     await waitFor(() => {
       expect(mockSetActiveProject).toHaveBeenCalledWith('project-99');
       expect(mockSetProjectWorkspaceOpen).toHaveBeenCalledWith(true);
-      expect(mockSetProjectPreview).toHaveBeenCalledWith(preview);
+      expect(mockSetProjectPreview).toHaveBeenCalledWith({ url: 'blob:preview-99' });
       expect(mockAppendProjectActivity).toHaveBeenCalledWith('Updated preview');
     });
   });
 
-  it('clears loading state when completion happens before any chunk arrives', async () => {
-    mockStreamChat.mockImplementationOnce(async ({ onComplete }) => {
-      onComplete({ promptTokenCount: 2, candidatesTokenCount: 4 }, 'Final response');
+  it('forwards onStateChange to AppContext.setAgentRunState', async () => {
+    mockControllerRun.mockImplementationOnce(async () => {
+      const options = mockAgentRunControllerCtor.mock.calls.at(-1)?.[0] as {
+        callbacks?: { onStateChange?: (state: AgentRunState) => void };
+      };
+      options?.callbacks?.onStateChange?.(runningState);
+      options?.callbacks?.onStateChange?.(completeState);
+      return buildRunResult('Done');
     });
 
     render(<ChatContainer {...defaultProps} />);
 
-    await sendMessage('Finish without chunk');
+    await sendMessage('Track state');
 
     await waitFor(() => {
-      expect(screen.getByText('Final response')).toBeInTheDocument();
+      expect(mockSetAgentRunState).toHaveBeenCalledWith(runningState);
+      expect(mockSetAgentRunState).toHaveBeenCalledWith(completeState);
     });
-
-    expect(screen.queryByRole('button', { name: '正在傳送訊息' })).not.toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: '輸入訊息' })).toBeEnabled();
-    expect(screen.queryByText('🤖 生成回答...')).not.toBeInTheDocument();
   });
 
-  it('clears loading state and shows the error when rejection happens before any chunk arrives', async () => {
-    mockStreamChat.mockRejectedValueOnce(new Error('Gemini terminal response had no visible text'));
+  it('calls controller.stop when the Stop button is clicked during a run', async () => {
+    // Run that stays pending (we control resolution) so the Stop button stays visible.
+    let resolveRun: (value: AgentRunResult) => void = () => undefined;
+    mockControllerRun.mockImplementationOnce(
+      async () =>
+        new Promise<AgentRunResult>(resolve => {
+          resolveRun = resolve;
+        }),
+    );
+
+    let stateChange: ((state: AgentRunState) => void) | null = null as unknown as
+      | ((state: AgentRunState) => void)
+      | null;
+    mockAgentRunControllerCtor.mockImplementationOnce((options: unknown) => {
+      const opts = options as { callbacks?: { onStateChange?: (s: AgentRunState) => void } };
+      stateChange = opts.callbacks?.onStateChange ?? null;
+      mockAgentRunControllerCtor.mock.calls.at(-1);
+      return {
+        run: mockControllerRun,
+        stop: mockControllerStop,
+        getState: mockControllerGetInstance,
+      } as Partial<AgentRunController>;
+    });
+
+    render(<ChatContainer {...defaultProps} />);
+
+    await sendMessage('Stop me');
+
+    // Emit running state so the Stop button renders.
+    await act(async () => {
+      stateChange?.(runningState);
+    });
+
+    const stopButton = await screen.findByRole('button', { name: '停止 Agent 執行' });
+    expect(stopButton).toBeInTheDocument();
+
+    await userEvent.setup().click(stopButton);
+
+    await waitFor(() => {
+      expect(mockControllerStop).toHaveBeenCalledWith('user-stop');
+    });
+
+    // Resolve the run so the component cleans up.
+    await act(async () => {
+      resolveRun(buildRunResult('Stopped run'));
+    });
+  });
+
+  it('locks the input while a run is in progress', async () => {
+    let resolveRun: (value: AgentRunResult) => void = () => undefined;
+    mockControllerRun.mockImplementationOnce(
+      async () =>
+        new Promise<AgentRunResult>(resolve => {
+          resolveRun = resolve;
+        }),
+    );
+
+    let stateChange: ((state: AgentRunState) => void) | null = null as unknown as
+      | ((state: AgentRunState) => void)
+      | null;
+    mockAgentRunControllerCtor.mockImplementationOnce((options: unknown) => {
+      const opts = options as { callbacks?: { onStateChange?: (s: AgentRunState) => void } };
+      stateChange = opts.callbacks?.onStateChange ?? null;
+      return {
+        run: mockControllerRun,
+        stop: mockControllerStop,
+        getState: mockControllerGetInstance,
+      } as Partial<AgentRunController>;
+    });
+
+    render(<ChatContainer {...defaultProps} />);
+
+    await sendMessage('Lock me');
+
+    await act(async () => {
+      stateChange?.(runningState);
+    });
+
+    const textarea = await screen.findByRole('textbox', { name: '輸入訊息' });
+    await waitFor(() => {
+      expect(textarea).toBeDisabled();
+    });
+
+    await act(async () => {
+      resolveRun(buildRunResult('Unlocked'));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: '輸入訊息' })).toBeEnabled();
+    });
+  });
+
+  it('shows the error text when controller.run rejects', async () => {
+    mockControllerRun.mockRejectedValueOnce(
+      new Error('Gemini terminal response had no visible text'),
+    );
 
     render(<ChatContainer {...defaultProps} />);
 
@@ -272,6 +468,7 @@ describe('ChatContainer', () => {
     });
 
     expect(mockClearProjectWorkspace).toHaveBeenCalled();
+    expect(mockSetAgentRunState).toHaveBeenCalledWith(null);
     expect(screen.getByTestId('welcome-message')).toBeInTheDocument();
     expect(screen.queryByText('Existing message')).not.toBeInTheDocument();
   });

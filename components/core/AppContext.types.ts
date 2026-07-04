@@ -1,5 +1,11 @@
 import React from 'react';
-import { Assistant, ChatSession, EmbeddingConfig, HtmlProjectPreviewArtifact } from '../../types';
+import {
+  AgentRunState,
+  Assistant,
+  ChatSession,
+  EmbeddingConfig,
+  HtmlProjectPreviewArtifact,
+} from '../../types';
 
 export type ViewMode =
   | 'chat'
@@ -39,6 +45,11 @@ export interface AppState {
   isProjectWorkspaceOpen: boolean;
   projectPreview: HtmlProjectPreviewArtifact | null;
   projectToolActivity: string[];
+  /**
+   * 目前的 Agent run 狀態 (T7 活動面板來源)。null 表示沒有進行中/最近結束的 run。
+   * 由 ChatContainer 在 AgentRunController callbacks 中透過 setAgentRunState 更新。
+   */
+  agentRunState: AgentRunState | null;
 }
 
 export type AppAction =
@@ -69,7 +80,8 @@ export type AppAction =
   | { type: 'SET_PROJECT_PREVIEW'; payload: HtmlProjectPreviewArtifact | null }
   | { type: 'APPEND_PROJECT_ACTIVITY'; payload: string }
   | { type: 'CLEAR_PROJECT_ACTIVITY' }
-  | { type: 'RESET_PROJECT_WORKSPACE' };
+  | { type: 'RESET_PROJECT_WORKSPACE' }
+  | { type: 'SET_AGENT_RUN_STATE'; payload: AgentRunState | null };
 
 export interface AppContextValue {
   state: AppState;
@@ -95,6 +107,7 @@ export interface AppContextValue {
     setProjectWorkspaceOpen: (open: boolean) => void;
     setProjectPreview: (preview: HtmlProjectPreviewArtifact | null) => void;
     appendProjectActivity: (message: string) => void;
+    setAgentRunState: (state: AgentRunState | null) => void;
     createProjectForCurrentSession: () => Promise<void>;
     openProjectForCurrentSession: (projectId: string) => Promise<void>;
     renameProjectForCurrentSession: (projectId: string, name: string) => Promise<void>;

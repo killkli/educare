@@ -147,6 +147,7 @@ function AppContent(): React.JSX.Element {
             ragChunks={state.currentAssistant.ragChunks ?? []}
             onNewMessage={handleNewMessage}
             sharedMode={!!state.isShared}
+            agentHarnessEnabled={state.currentAssistant.agentHarnessEnabled ?? true}
           />
         )}
 
@@ -245,6 +246,7 @@ function AppContent(): React.JSX.Element {
                 ragChunks={state.currentAssistant.ragChunks ?? []}
                 onNewMessage={handleNewMessage}
                 sharedMode={!!state.isShared}
+                agentHarnessEnabled={state.currentAssistant.agentHarnessEnabled ?? true}
                 isWorkspaceOpen={Boolean(state.isProjectWorkspaceOpen && state.activeProjectId)}
                 headerActions={
                   !state.isProjectWorkspaceOpen && state.activeProjectId ? (

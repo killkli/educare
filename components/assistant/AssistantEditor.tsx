@@ -21,6 +21,7 @@ export const AssistantEditor: React.FC<AssistantEditorProps> = ({
   const [description, setDescription] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
   const [ragChunks, setRagChunks] = useState<RagChunk[]>([]);
+  const [agentHarnessEnabled, setAgentHarnessEnabled] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [highlightFields, setHighlightFields] = useState(false);
 
@@ -33,11 +34,13 @@ export const AssistantEditor: React.FC<AssistantEditorProps> = ({
       setDescription(assistant.description || '');
       setSystemPrompt(assistant.systemPrompt);
       setRagChunks(assistant.ragChunks || []);
+      setAgentHarnessEnabled(assistant.agentHarnessEnabled ?? true);
     } else {
       setName('');
       setDescription('');
       setSystemPrompt('您是一個有用且專業的 AI 助理。');
       setRagChunks([]);
+      setAgentHarnessEnabled(true);
     }
   }, [assistant]);
 
@@ -61,6 +64,7 @@ export const AssistantEditor: React.FC<AssistantEditorProps> = ({
         systemPrompt: systemPrompt.trim(),
         ragChunks: ragChunks,
         createdAt: assistant?.createdAt || Date.now(),
+        agentHarnessEnabled,
       };
 
       // 只保存到本地，不自動上傳到 Turso
@@ -152,6 +156,33 @@ export const AssistantEditor: React.FC<AssistantEditorProps> = ({
           }`}
           placeholder='定義助理的角色、個性和指導。'
         />
+      </div>
+
+      {/* G9: Agentic harness 開關 */}
+      <div className='mb-6'>
+        <label
+          htmlFor='agent-harness-enabled'
+          className='flex items-start gap-3 cursor-pointer select-none'
+        >
+          <input
+            id='agent-harness-enabled'
+            type='checkbox'
+            checked={agentHarnessEnabled}
+            onChange={e => setAgentHarnessEnabled(e.target.checked)}
+            disabled={isSaving}
+            className='mt-1 h-4 w-4 rounded border-gray-500 bg-gray-700 text-cyan-500 focus:ring-2 focus:ring-cyan-500/50 focus:ring-offset-0'
+            aria-describedby='agent-harness-help'
+          />
+          <span className='flex flex-col'>
+            <span className='text-sm font-semibold text-gray-300'>
+              Agentic harness (自動跨回合續跑)
+            </span>
+            <span id='agent-harness-help' className='mt-1 text-xs text-gray-500 leading-relaxed'>
+              開啟後,模型會依 todo 進度與預覽診斷自動續跑(預設最多 5
+              回合);關閉則退回單回合行為。Shared mode 不受此設定影響(續跑預算 = 1)。
+            </span>
+          </span>
+        </label>
       </div>
 
       <RAGFileUpload

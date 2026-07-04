@@ -1,5 +1,5 @@
 import React, { useReducer, useCallback, useEffect } from 'react';
-import { Assistant, ChatSession, EmbeddingConfig } from '../../types';
+import { AgentRunState, Assistant, ChatSession, EmbeddingConfig } from '../../types';
 import * as db from '../../services/db';
 import { initializeProviders } from '../../services/providerRegistry';
 import {
@@ -68,6 +68,7 @@ const initialState: AppState = {
   isProjectWorkspaceOpen: false,
   projectPreview: null,
   projectToolActivity: [],
+  agentRunState: null,
 };
 
 function appReducer(state: AppState, action: AppAction): AppState {
@@ -190,6 +191,12 @@ function appReducer(state: AppState, action: AppAction): AppState {
         isProjectWorkspaceOpen: false,
         projectPreview: null,
         projectToolActivity: [],
+        agentRunState: null,
+      };
+    case 'SET_AGENT_RUN_STATE':
+      return {
+        ...state,
+        agentRunState: action.payload,
       };
     default:
       return state;
@@ -568,6 +575,10 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
     dispatch({ type: 'APPEND_PROJECT_ACTIVITY', payload: message });
   }, []);
 
+  const setAgentRunState = useCallback((nextState: AgentRunState | null) => {
+    dispatch({ type: 'SET_AGENT_RUN_STATE', payload: nextState });
+  }, []);
+
   const clearProjectWorkspace = useCallback(() => {
     if (state.activeProjectId) {
       htmlPreviewService.revokePreviewUrl(state.activeProjectId);
@@ -840,6 +851,7 @@ export function AppProvider({ children }: AppProviderProps): React.JSX.Element {
       setProjectWorkspaceOpen,
       setProjectPreview,
       appendProjectActivity,
+      setAgentRunState,
       createProjectForCurrentSession,
       openProjectForCurrentSession,
       renameProjectForCurrentSession,

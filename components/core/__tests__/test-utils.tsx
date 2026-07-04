@@ -150,6 +150,7 @@ export const createMockAppState = (overrides: Partial<AppState> = {}): AppState 
   isProjectWorkspaceOpen: false,
   projectPreview: null,
   projectToolActivity: [],
+  agentRunState: null,
   ...overrides,
 });
 

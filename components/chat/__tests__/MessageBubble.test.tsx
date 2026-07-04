@@ -200,4 +200,38 @@ describe('MessageBubble', () => {
       }).not.toThrow();
     });
   });
+
+  describe('Synthetic Message Collapse (G6)', () => {
+    it('renders collapsed marker for synthetic messages and hides raw content by default', () => {
+      const synthetic = createMockChatMessage({
+        role: 'user',
+        content: 'CONTINUATION_PROMPT hidden from user',
+        synthetic: true,
+      });
+
+      render(<MessageBubble message={synthetic} index={0} />);
+
+      expect(screen.getByTestId('synthetic-message')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '展開續跑訊息' })).toBeInTheDocument();
+      // Raw content must not appear until expanded.
+      expect(screen.queryByText('CONTINUATION_PROMPT hidden from user')).not.toBeInTheDocument();
+    });
+
+    it('reveals the synthetic content when the marker is clicked', () => {
+      const synthetic = createMockChatMessage({
+        role: 'user',
+        content: 'Hidden continuation text',
+        synthetic: true,
+        agentTurnLog: 'turn-log-summary',
+      });
+
+      render(<MessageBubble message={synthetic} index={0} />);
+
+      fireEvent.click(screen.getByRole('button', { name: '展開續跑訊息' }));
+
+      expect(screen.getByText('Hidden continuation text')).toBeInTheDocument();
+      expect(screen.getByText('turn-log-summary')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '摺疊續跑訊息' })).toBeInTheDocument();
+    });
+  });
 });
