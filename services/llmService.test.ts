@@ -255,4 +255,206 @@ describe('streamChat', () => {
 
     expect(mockExecuteHtmlProjectToolCall).toHaveBeenCalledTimes(1);
   });
+
+  it('uses packSetOverride directly and bypasses intent classification', async () => {
+    const observedChatParams: Array<Record<string, unknown>> = [];
+    const provider = {
+      name: 'gemini',
+      displayName: 'Gemini',
+      supportedModels: ['gemini-2.5-flash'],
+      isAvailable: () => true,
+      streamChat: vi.fn(async function* (params) {
+        observedChatParams.push(params as Record<string, unknown>);
+        yield {
+          text: 'done',
+          isComplete: true,
+          metadata: {
+            promptTokenCount: 4,
+            candidatesTokenCount: 2,
+            provider: 'gemini',
+            model: 'gemini-2.5-flash',
+            toolRoundCount: 0,
+            repeatedRecoverableErrors: [],
+          },
+        };
+      }),
+    };
+
+    mockGetActiveProvider.mockReturnValue(provider);
+
+    const htmlProjectPrompting = await import('./htmlProjectPrompting');
+    const classifySpy = vi
+      .spyOn(htmlProjectPrompting, 'classifyHtmlProjectIntent')
+      .mockReturnValue({
+        intent: 'inspect_only',
+        confidence: 'high',
+        selectedPackSet: ['inspect'],
+        reason: 'spy-default',
+        requiresSummaryPreflight: false,
+      });
+
+    try {
+      const { streamChat } = await import('./llmService');
+
+      await streamChat({
+        systemPrompt: 'You are helpful.',
+        history: [],
+        message: 'continuation',
+        assistantId: 'assistant-1',
+        activeProjectId: 'project-123',
+        knowledgeChunks: [],
+        packSetOverride: ['inspect', 'edit'],
+        onChunk: vi.fn(),
+        onComplete: vi.fn(),
+        onProjectToolActivity: vi.fn(),
+      });
+
+      // G2: classifier is NOT called when packSetOverride is supplied.
+      expect(classifySpy).not.toHaveBeenCalled();
+      // The override pack set drives tool exposure — both inspect + edit tools
+      // are visible to the provider.
+      const toolNames = (observedChatParams[0]?.tools as Array<{ name: string }> | undefined)?.map(
+        t => t.name,
+      );
+      expect(toolNames).toEqual(expect.arrayContaining(['writeFiles', 'readFile']));
+    } finally {
+      classifySpy.mockRestore();
+    }
+  });
+
+  it('threads params.signal into the provider chatParams', async () => {
+    const observedChatParams: Array<Record<string, unknown>> = [];
+    const provider = {
+      name: 'gemini',
+      displayName: 'Gemini',
+      supportedModels: ['gemini-2.5-flash'],
+      isAvailable: () => true,
+      streamChat: vi.fn(async function* (params) {
+        observedChatParams.push(params as Record<string, unknown>);
+        yield {
+          text: 'ok',
+          isComplete: true,
+          metadata: {
+            promptTokenCount: 1,
+            candidatesTokenCount: 1,
+            provider: 'gemini',
+            model: 'gemini-2.5-flash',
+            toolRoundCount: 0,
+            repeatedRecoverableErrors: [],
+          },
+        };
+      }),
+    };
+
+    mockGetActiveProvider.mockReturnValue(provider);
+
+    const { streamChat } = await import('./llmService');
+
+    const controller = new AbortController();
+    await streamChat({
+      systemPrompt: 'You are helpful.',
+      history: [],
+      message: 'hello',
+      assistantId: 'assistant-1',
+      knowledgeChunks: [],
+      signal: controller.signal,
+      onChunk: vi.fn(),
+      onComplete: vi.fn(),
+    });
+
+    expect(observedChatParams[0]?.signal).toBe(controller.signal);
+  });
+
+  it('passes finishReason and projectSummary through onComplete metadata', async () => {
+    const provider = {
+      name: 'gemini',
+      displayName: 'Gemini',
+      supportedModels: ['gemini-2.5-flash'],
+      isAvailable: () => true,
+      streamChat: vi.fn(async function* () {
+        // Streaming chunk (text captured into fullResponseText).
+        yield {
+          text: 'all ',
+          isComplete: false,
+        };
+        yield {
+          text: 'done',
+          isComplete: true,
+          metadata: {
+            promptTokenCount: 5,
+            candidatesTokenCount: 3,
+            provider: 'gemini',
+            model: 'gemini-2.5-flash',
+            toolRoundCount: 1,
+            repeatedRecoverableErrors: [],
+            finishReason: 'tool-budget-exhausted',
+          },
+        };
+      }),
+    };
+
+    mockGetActiveProvider.mockReturnValue(provider);
+    // Surface a projectSummary via the preflight path so we can assert it
+    // flows into onComplete metadata. The message below triggers the
+    // finalize_or_complete route which performs summary preflight.
+    mockExecuteHtmlProjectToolCall.mockResolvedValue({
+      workspace: {
+        activeProjectId: 'project-123',
+        activityMessage: 'summary',
+        preview: null,
+      },
+      result: {
+        projectSummary: {
+          projectId: 'project-123',
+          name: 'Demo',
+          entryFile: '/index.html',
+          previewVersion: 4,
+          previewReady: true,
+          files: [],
+          fileCount: 0,
+          todoSummary: {
+            projectId: 'project-123',
+            total: 2,
+            pending: 0,
+            inProgress: 0,
+            completed: 2,
+            allComplete: true,
+          },
+          warnings: [],
+          previewDiagnostics: {
+            category: 'none',
+            outcome: 'ready',
+            repairable: false,
+            summary: 'ok',
+          },
+          suggestedNextActionCategory: 'finalize',
+        },
+      },
+      summary: 'summary',
+    });
+
+    const { streamChat } = await import('./llmService');
+
+    const onComplete = vi.fn();
+    await streamChat({
+      systemPrompt: 'You are helpful.',
+      history: [],
+      message: 'Please finish this and recheck preview before we wrap up.',
+      assistantId: 'assistant-1',
+      activeProjectId: 'project-123',
+      knowledgeChunks: [],
+      onChunk: vi.fn(),
+      onComplete,
+      onProjectToolActivity: vi.fn(),
+    });
+
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    const [metadata, fullText] = onComplete.mock.calls[0];
+    expect(fullText).toBe('all ');
+    expect(metadata.finishReason).toBe('tool-budget-exhausted');
+    expect(metadata.projectSummary).toMatchObject({
+      projectId: 'project-123',
+      todoSummary: { allComplete: true, completed: 2 },
+    });
+  });
 });

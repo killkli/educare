@@ -1,10 +1,12 @@
 import {
   ChatMessage,
   RagChunk,
+  type FinishReason,
   type HtmlProjectAgentTelemetryEvent,
   type HtmlProjectIntentDecision,
   type HtmlProjectPreviewOutcome,
   type HtmlProjectSummary,
+  type HtmlProjectToolPackName,
   type HtmlProjectWorkspaceUpdate,
 } from '../types';
 import { ToolCall, type ProviderUsageMetadata } from './llmAdapter';
@@ -36,6 +38,20 @@ export interface StreamChatParams {
   sessionId?: string | null;
   activeProjectId?: string | null;
   knowledgeChunks?: RagChunk[];
+  /**
+   * AbortSignal (G4/G17). Threaded into the provider's chatParams; providers
+   * check `signal.aborted` per round and yield finishReason='aborted' within
+   * ~1 round. No half-turn writes.
+   */
+  signal?: AbortSignal;
+  /**
+   * Pack set override (G2). When present and non-empty, BYPASSES intent
+   * classification — the override pack is used directly as `selectedPackSet`,
+   * htmlProjectToolEnabled is forced true, and `effectiveIntentDecision` is
+   * built with intent='uncertain', confidence='high', requiresSummaryPreflight=false.
+   * Used by AgentRunController for continuation turns.
+   */
+  packSetOverride?: HtmlProjectToolPackName[];
   onChunk: (text: string) => void;
   onProjectToolActivity?: (update: HtmlProjectWorkspaceUpdate) => void;
   onComplete: (
@@ -45,6 +61,14 @@ export interface StreamChatParams {
       usage?: ProviderUsageMetadata;
       provider?: string;
       model?: string;
+      /** Harness finish reason (G13/T1). 'complete' default when unspecified. */
+      finishReason?: FinishReason;
+      /** Most recent project summary observed during the turn (G4). */
+      projectSummary?: HtmlProjectSummary | null;
+      /** Per-turn tool sequence (mirrored from telemetry for controller use). */
+      toolSequence?: string[];
+      /** Effective selected pack set (mirrored from telemetry for controller use). */
+      selectedPackSet?: HtmlProjectToolPackName[];
     },
     fullText: string,
   ) => void;
@@ -69,7 +93,7 @@ const mapProviderForTelemetry = (
   }
 };
 
-const getProjectSummaryFromToolResult = (value: unknown): HtmlProjectSummary | null => {
+export const getProjectSummaryFromToolResult = (value: unknown): HtmlProjectSummary | null => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return null;
   }
@@ -139,6 +163,8 @@ export const streamChat = async (params: StreamChatParams) => {
     sessionId,
     activeProjectId,
     knowledgeChunks = [],
+    signal,
+    packSetOverride,
     onChunk,
     onProjectToolActivity,
     onComplete,
@@ -165,11 +191,23 @@ export const streamChat = async (params: StreamChatParams) => {
   let resolvedActiveProjectId = activeProjectId ?? null;
   let projectSummary: HtmlProjectSummary | null = null;
   let latestPreviewOutcome: HtmlProjectPreviewOutcome | undefined;
+  let finishReason: FinishReason | undefined;
 
   const knowledgeToolEnabled = hasKnowledgeChunks(knowledgeChunks);
-  const initialIntentDecision = classifyHtmlProjectIntent(message, resolvedActiveProjectId);
+
+  // G2: packSetOverride bypasses intent classification for continuation turns.
+  const hasPackSetOverride = !!packSetOverride && packSetOverride.length > 0;
+  const initialIntentDecision: HtmlProjectIntentDecision = hasPackSetOverride
+    ? {
+        intent: 'uncertain',
+        confidence: 'high',
+        selectedPackSet: [...(packSetOverride as HtmlProjectToolPackName[])],
+        reason: 'packSetOverride supplied — bypassing intent classification (continuation turn).',
+        requiresSummaryPreflight: false,
+      }
+    : classifyHtmlProjectIntent(message, resolvedActiveProjectId);
   let selectedPackSet = [...initialIntentDecision.selectedPackSet];
-  let htmlProjectToolEnabled = selectedPackSet.length > 0;
+  let htmlProjectToolEnabled = hasPackSetOverride || selectedPackSet.length > 0;
 
   const telemetryEvent: HtmlProjectAgentTelemetryEvent = {
     sessionId,
@@ -333,6 +371,7 @@ export const streamChat = async (params: StreamChatParams) => {
       message,
       tools: tools.length > 0 ? tools : undefined,
       executeTool: tools.length > 0 ? executeTool : undefined,
+      signal,
     };
 
     for await (const response of activeProvider.streamChat(chatParams)) {
@@ -350,6 +389,7 @@ export const streamChat = async (params: StreamChatParams) => {
         telemetryEvent.toolRounds = response.metadata.toolRoundCount || 0;
         telemetryEvent.repeatedRecoverableErrors =
           response.metadata.repeatedRecoverableErrors || [];
+        finishReason = response.metadata.finishReason;
         break;
       }
     }
@@ -358,6 +398,7 @@ export const streamChat = async (params: StreamChatParams) => {
     telemetryEvent.previewOutcome =
       latestPreviewOutcome ?? projectSummary?.previewDiagnostics.outcome;
     telemetryEvent.durationMs = Date.now() - startedAt;
+    telemetryEvent.finishReason = finishReason;
 
     if (htmlProjectToolEnabled) {
       recordHtmlProjectTelemetryEvent(telemetryEvent);
@@ -370,6 +411,10 @@ export const streamChat = async (params: StreamChatParams) => {
         usage,
         provider: responseProvider,
         model: responseModel,
+        finishReason,
+        projectSummary,
+        toolSequence: telemetryEvent.toolSequence,
+        selectedPackSet: selectedPackSet,
       },
       fullResponseText,
     );
