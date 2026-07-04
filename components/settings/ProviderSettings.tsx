@@ -128,8 +128,8 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
     if (key === 'maxToolRounds') {
       const numericValue = Number(value);
       const sanitizedValue = Number.isFinite(numericValue)
-        ? Math.min(50, Math.max(1, Math.round(numericValue)))
-        : 20;
+        ? Math.min(200, Math.max(1, Math.round(numericValue)))
+        : 50;
       providerManager.updateProviderConfig(providerType, { [key]: sanitizedValue });
       setSettings(providerManager.getSettings());
       return;
@@ -613,8 +613,8 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
                         <input
                           type='number'
                           min='100'
-                          max='32000'
-                          step='100'
+                          max='64000'
+                          step='1'
                           value={config.maxTokens || 4096}
                           onChange={e =>
                             handleConfigUpdate(providerType, 'maxTokens', parseInt(e.target.value))
@@ -629,16 +629,16 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
                         <input
                           type='number'
                           min='1'
-                          max='50'
+                          max='200'
                           step='1'
                           value={
-                            typeof config.maxToolRounds === 'number' ? config.maxToolRounds : 20
+                            typeof config.maxToolRounds === 'number' ? config.maxToolRounds : 50
                           }
                           onChange={e =>
                             handleConfigUpdate(
                               providerType,
                               'maxToolRounds',
-                              parseInt(e.target.value || '20', 10),
+                              parseInt(e.target.value || '50', 10),
                             )
                           }
                           className={inputClass}
@@ -646,7 +646,7 @@ const ProviderSettings: React.FC<ProviderSettingsProps> = ({ onClose }) => {
                       </div>
                     </div>
                     <p className='-mt-2 text-xs text-gray-500'>
-                      控制模型在同一輪對話中最多可進行幾次工具呼叫往返，預設 20。
+                      控制模型在同一輪對話中最多可進行幾次工具呼叫往返，預設 50。
                     </p>
 
                     {/* Actions */}

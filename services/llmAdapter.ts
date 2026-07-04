@@ -215,7 +215,7 @@ const sanitizeProviderConfig = (
   }),
   maxTokens: sanitizeNumber(savedConfig?.maxTokens, defaultConfig.maxTokens ?? 4096, {
     min: 100,
-    max: 32000,
+    max: 64000,
   }),
   maxToolRounds: sanitizeNumber(savedConfig?.maxToolRounds, defaultConfig.maxToolRounds ?? 50, {
     min: 1,
