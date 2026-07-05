@@ -331,9 +331,13 @@ export function buildVfsBootstrapScript(options: {
 
       function signalReady() {
         // Signal the in-iframe harness bridge (V1/V4). The bridge owns the parent-facing
-        // 'ready' ack — it drains window.__vfsErrors__ and posts ready on vfs:ready (or its
-        // window 'load' fallback). The bootstrap itself never posts 'ready' to the parent,
-        // avoiding duplicate acks.
+        // 'ready' ack — on 'vfs:ready' it drains window.__vfsErrors__ and posts ready. The
+        // bootstrap always reaches signalReady (success or degraded) via the outer try/catch
+        // + whenDomReady try/catch, so vfs:ready always fires and the bridge acks. There is
+        // intentionally NO window 'load' fallback in the bridge — that preserves the V10
+        // semantic where a top-level-await module that never settles yields 'not_executed'
+        // (the parent's waitForRuntimeDiagnostics 5s wait is the ultimate backstop). The
+        // bootstrap itself never posts 'ready' to the parent, avoiding duplicate acks.
         try {
           window.__vfsReady__ = { done: true, degraded: degraded };
           window.__vfsErrors__ = errorBuffer;
@@ -342,8 +346,9 @@ export function buildVfsBootstrapScript(options: {
           var evt = new CustomEvent('vfs:ready', { detail: { degraded: degraded } });
           window.dispatchEvent(evt);
         } catch (_) {
-          // CustomEvent unavailable — the bridge's window 'load' fallback still guarantees a
-          // ready ack, so we never deadlock.
+          // CustomEvent unavailable — vfs:ready cannot fire. The parent's
+          // waitForRuntimeDiagnostics 5s timeout returns 'not_executed' for this version,
+          // which is the correct degraded outcome (no silent false 'clean').
         }
       }
 

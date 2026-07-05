@@ -363,4 +363,80 @@ describe('buildVfsBootstrapScript — IIFE execution in jsdom', () => {
     expect(errors).toEqual([]);
     void pending;
   });
+
+  it('#3 smoke: a realistic manifest drives the IIFE assembly (import map + [data-vfs] rewrite), catching helper/IIFE divergence', async () => {
+    const manifest: VfsManifest = {
+      files: [
+        {
+          path: '/main.js',
+          kind: 'js',
+          mime: 'text/javascript',
+          encoding: 'utf-8',
+          content: "import { x } from './utils.js';",
+          isModule: true,
+        },
+        {
+          path: '/utils.js',
+          kind: 'js',
+          mime: 'text/javascript',
+          encoding: 'utf-8',
+          content: 'export const x = 1;',
+          isModule: true,
+        },
+        {
+          path: '/styles.css',
+          kind: 'css',
+          mime: 'text/css',
+          encoding: 'utf-8',
+          content: '@import "./base.css"; .a { background: url(./logo.png); }',
+          isModule: false,
+        },
+        {
+          path: '/base.css',
+          kind: 'css',
+          mime: 'text/css',
+          encoding: 'utf-8',
+          content: 'body { margin: 0; }',
+          isModule: false,
+        },
+        {
+          path: '/logo.png',
+          kind: 'asset',
+          mime: 'image/png',
+          encoding: 'base64',
+          content: btoa('png'),
+          isModule: false,
+        },
+      ],
+      entryModules: [{ path: '/main.js' }],
+    };
+
+    const w = window as unknown as Record<string, unknown>;
+    delete w.__vfsReady__;
+    delete w.__vfsErrors__;
+    document.head.innerHTML = `<script type="application/json" data-vfs-manifest>${serializeVfsManifest(manifest)}</script>`;
+    document.body.innerHTML = '<img data-vfs="/logo.png" src="/logo.png" alt="x">';
+
+    const script = buildVfsBootstrapScript({ projectId: 'p-smoke', previewVersion: 1 });
+    const body = script.replace(/^<script data-vfs-bootstrap>/, '').replace(/<\/script>$/, '');
+    (0, eval)(body);
+    // whenDomReady defers (setTimeout 0); let assembly + element rewrite settle.
+    await new Promise(resolve => setTimeout(resolve, 120));
+
+    // Import map injected with vfs:/path keys for module files (validates the IIFE's import-map
+    // assembly mirrors the unit-tested assembleVfs).
+    const importMapScript = document.head.querySelector('script[type="importmap"]');
+    expect(importMapScript).not.toBeNull();
+    const importMap = JSON.parse(importMapScript!.textContent || '{}');
+    expect(importMap.imports['vfs:/main.js']).toBeDefined();
+    expect(importMap.imports['vfs:/utils.js']).toBeDefined();
+
+    // [data-vfs] asset rewritten to a blob URL at DOMContentLoaded (validates the IIFE's
+    // element-rewrite path mirrors rewriteSrcset/rewriteCss helpers).
+    const img = document.body.querySelector('img[data-vfs="/logo.png"]') as {
+      getAttribute(name: string): string | null;
+    } | null;
+    expect(img).not.toBeNull();
+    expect(img?.getAttribute('src')).toMatch(/^blob:/);
+  });
 });

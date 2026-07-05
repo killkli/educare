@@ -105,7 +105,7 @@ const buildHarnessMetaScript = (projectId: string, previewVersion: number): stri
   return `<script type="application/json" data-harness-meta>${meta}</script>`;
 };
 
-const buildRuntimeBridgeScript = (): string => {
+export const buildRuntimeBridgeScript = (): string => {
   // Body is serialized as an IIFE so it cannot collide with project globals. The helper
   // implementations mirror `dedupeAndCapEntries` / `truncateMessage` in previewRuntimeDiagnostics.ts.
   const body = `
@@ -664,10 +664,12 @@ class HtmlPreviewService {
     });
   }
 
-  private buildArtifact(
-    project: HtmlProject,
-    files: HtmlProjectFile[],
-  ): HtmlProjectPreviewArtifact {
+  /**
+   * Build a preview artifact HTML from an in-memory project + files (no store access). Exposed
+   * (non-private) so the Playwright E2E can render through the REAL build pipeline rather than a
+   * hand-assembled manifest, regression-covering the build→bootstrap contract (architect #4).
+   */
+  buildArtifact(project: HtmlProject, files: HtmlProjectFile[]): HtmlProjectPreviewArtifact {
     const fileMap = new Map(files.map(file => [file.path, file]));
     const entryFile = fileMap.get(project.entryFile);
     const warnings: string[] = [];
