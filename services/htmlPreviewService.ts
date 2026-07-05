@@ -1,11 +1,21 @@
 import {
   HtmlProject,
   HtmlProjectFile,
+  HtmlProjectFileKind,
   HtmlProjectPreviewArtifact,
   HtmlProjectPreviewDiagnostics,
   HtmlProjectPreviewUrlType,
+  PREVIEW_WARNING_KINDS,
 } from '../types';
 import { htmlProjectStore } from './htmlProjectStore';
+import {
+  buildVfsBootstrapScript,
+  serializeVfsManifest,
+  type VfsManifest,
+  type VfsManifestEntryModule,
+  type VfsManifestFile,
+} from './previewVfsBootstrap';
+import { rewriteModuleSpecifiers } from './previewVfsRewriter';
 
 const EXTERNAL_REF_PATTERN = /^(?:[a-z]+:|#|\/\/)/i;
 
@@ -80,7 +90,10 @@ const buildMissingReferenceDiagnostics = (
  *     element (never from URL parsing — sandboxed blobs have no usable query params).
  *   - Captures window 'error', 'unhandledrejection', and wraps console.error / console.warn.
  *   - Deduplicates entries by (kind+message), caps at 50, and truncates messages to ~500 chars.
- *   - On window 'load', postMessage `{ type:'ready', projectId, previewVersion }` to parent.
+ *   - On 'vfs:ready' (dispatched by the VFS bootstrap — success or degraded), drains the
+ *     bootstrap's error buffer (window.__vfsErrors__) and postMessage `{ type:'ready',
+ *     projectId, previewVersion }` to parent. The bootstrap always fires vfs:ready, so the
+ *     ready-ack contract never deadlocks (V1/V4).
  *   - PostMessage `{ type:'runtime-errors', ... }` to parent — flushed on first error and at
  *     most every ~250ms, plus a final flush on pagehide/beforeunload.
  *
@@ -281,9 +294,41 @@ const buildRuntimeBridgeScript = (): string => {
         }
       }
 
-      window.addEventListener('load', function () {
+      // VFS bootstrap coordination (V1/V4). The bootstrap always dispatches a 'vfs:ready'
+      // CustomEvent and sets window.__vfsReady__={done:true} when the VFS is assembled (success
+      // or degraded). The bridge owns the parent-facing 'ready' ack and drains the bootstrap's
+      // error buffer (window.__vfsErrors__) so bootstrap-time / fetch-miss errors surface as
+      // runtime-errors. Replaces the legacy window 'load' ready trigger.
+      function drainVfsErrors() {
+        try {
+          var buffered = window.__vfsErrors__;
+          if (buffered && buffered.length) {
+            for (var i = 0; i < buffered.length; i++) {
+              var entry = buffered[i];
+              addEntry(entry.kind || 'error', entry.message || '');
+            }
+            window.__vfsErrors__ = [];
+          }
+        } catch (_) { /* ignore */ }
+      }
+
+      var readySent = false;
+      function sendReady() {
+        if (readySent) {
+          return;
+        }
+        readySent = true;
+        drainVfsErrors();
+        flushErrors(true);
         postToParent('ready', {});
-      });
+      }
+
+      if (window.__vfsReady__ && window.__vfsReady__.done) {
+        // Bootstrap already finished before the bridge installed.
+        sendReady();
+      } else {
+        window.addEventListener('vfs:ready', sendReady);
+      }
 
       function finalFlush() {
         flushErrors(true);
@@ -317,6 +362,272 @@ const injectRuntimeBridge = (html: string, projectId: string, previewVersion: nu
     return `${html.slice(0, htmlClose.index)}${injection}\n${html.slice(htmlClose.index)}`;
   }
   return `${html}\n${injection}`;
+};
+
+// ============================================================================
+// VFS sandbox (選項 A, plan v2) — manifest + bootstrap single pipeline (V1)
+// ============================================================================
+
+const MIME_BY_KIND: Record<HtmlProjectFileKind, string> = {
+  html: 'text/html',
+  css: 'text/css',
+  js: 'text/javascript',
+  json: 'application/json',
+  svg: 'image/svg+xml',
+  md: 'text/markdown',
+  asset: 'application/octet-stream',
+};
+
+const MIME_BY_EXT: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  bmp: 'image/bmp',
+  ico: 'image/x-icon',
+  apng: 'image/apng',
+  avif: 'image/avif',
+  svg: 'image/svg+xml',
+  woff: 'font/woff',
+  woff2: 'font/woff2',
+  ttf: 'font/ttf',
+  otf: 'font/otf',
+  json: 'application/json',
+  csv: 'text/csv',
+  txt: 'text/plain',
+  xml: 'application/xml',
+};
+
+const extOf = (path: string): string => {
+  const seg = path.split('/').pop() || '';
+  const dot = seg.lastIndexOf('.');
+  return dot > 0 ? seg.slice(dot + 1).toLowerCase() : '';
+};
+
+const mimeForFile = (path: string, kind: HtmlProjectFileKind): string => {
+  const ext = extOf(path);
+  if (MIME_BY_EXT[ext]) {
+    return MIME_BY_EXT[ext];
+  }
+  return MIME_BY_KIND[kind] || 'application/octet-stream';
+};
+
+interface VfsBuildContext {
+  manifestFiles: VfsManifestFile[];
+  manifestPaths: Set<string>;
+  entryModules: VfsManifestEntryModule[];
+  classicScriptPaths: Set<string>;
+  inlineCounter: number;
+}
+
+const createVfsBuildContext = (): VfsBuildContext => ({
+  manifestFiles: [],
+  manifestPaths: new Set(),
+  entryModules: [],
+  classicScriptPaths: new Set(),
+  inlineCounter: 0,
+});
+
+const addManifestFile = (ctx: VfsBuildContext, file: VfsManifestFile): void => {
+  if (!ctx.manifestPaths.has(file.path)) {
+    ctx.manifestPaths.add(file.path);
+    ctx.manifestFiles.push(file);
+  }
+};
+
+/** V10: remove `<base>` tags (they break VFS path assumptions) and record a warning each. */
+const removeBaseTags = (html: string, warnings: string[]): string =>
+  html.replace(/<base\b[^>]*>/gi, match => {
+    warnings.push(`${PREVIEW_WARNING_KINDS.baseTagRemoved}: ${match}`);
+    return '';
+  });
+
+/**
+ * Extract `<script type="module">` (external + inline) from the HTML: rewrite specifiers (V3),
+ * register the module source as a virtual manifest file, record the entry, and remove the tag
+ * so the bootstrap can load modules via the import map AFTER it is assembled. Classic scripts
+ * are handled separately by `inlineClassicScripts`.
+ */
+const extractModuleScripts = (
+  html: string,
+  entryPath: string,
+  fileMap: Map<string, HtmlProjectFile>,
+  warnings: string[],
+  missing: Set<string>,
+  ctx: VfsBuildContext,
+): string => {
+  const scriptPattern = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
+  return html.replace(scriptPattern, (full, attrs: string, body: string) => {
+    if (!/\btype\s*=\s*['"]?module['"]?/i.test(attrs)) {
+      return full;
+    }
+    const srcMatch = /\bsrc\s*=\s*['"]([^'"]+)['"]/i.exec(attrs);
+    if (srcMatch) {
+      const src = srcMatch[1];
+      if (EXTERNAL_REF_PATTERN.test(src)) {
+        warnings.push(`保留外部模組資源：${src}`);
+        return full;
+      }
+      const resolved = resolveRelativePath(entryPath, src);
+      const file = fileMap.get(resolved);
+      if (!file) {
+        missing.add(resolved);
+        return full;
+      }
+      ctx.entryModules.push({ path: resolved });
+      return '';
+    }
+    // Inline module → synthetic file at root so relative specifiers resolve correctly.
+    const syntheticPath = `/__vfs_inline_module_${ctx.inlineCounter++}.js`;
+    const { code } = rewriteModuleSpecifiers(body, syntheticPath);
+    addManifestFile(ctx, {
+      path: syntheticPath,
+      kind: 'js',
+      mime: 'text/javascript',
+      encoding: 'utf-8',
+      content: code,
+      isModule: true,
+    });
+    ctx.entryModules.push({ path: syntheticPath });
+    return '';
+  });
+};
+
+/**
+ * Inline classic `<script src="local">` (module tags already removed). Tracks which JS paths
+ * are classic so they are excluded from the import map (a file used as a classic script must
+ * not also be resolved as a module).
+ */
+const inlineClassicScripts = (
+  html: string,
+  entryPath: string,
+  fileMap: Map<string, HtmlProjectFile>,
+  warnings: string[],
+  missing: Set<string>,
+  classicScriptPaths: Set<string>,
+): string => {
+  const scriptPattern = /<script([^>]*?)src=['"]([^'"]+)['"]([^>]*)><\/script>/gi;
+  return html.replace(scriptPattern, (full, beforeSrc: string, src: string, afterSrc: string) => {
+    if (EXTERNAL_REF_PATTERN.test(src)) {
+      warnings.push(`保留外部腳本資源：${src}`);
+      return full;
+    }
+    const resolved = resolveRelativePath(entryPath, src);
+    const file = fileMap.get(resolved);
+    if (!file) {
+      missing.add(resolved);
+      return full;
+    }
+    classicScriptPaths.add(resolved);
+    return `<script${beforeSrc}${afterSrc} data-project-path="${resolved}">\n${file.content}\n</script>`;
+  });
+};
+
+/**
+ * Tag local asset references (`<img>/<source>/<video>/<audio>` src, `<link rel=icon>` href) with
+ * `data-vfs="/resolved/path"` so the bootstrap can rewrite them to blob URLs at DOMContentLoaded,
+ * and detect statically-missing asset references (blocking). `srcset` references are checked for
+ * missing files (the bootstrap rewrites srcset independently at runtime).
+ */
+const tagVfsAssets = (
+  html: string,
+  entryPath: string,
+  fileMap: Map<string, HtmlProjectFile>,
+  warnings: string[],
+  missing: Set<string>,
+): string => {
+  const checkSrcset = (srcset: string) => {
+    srcset.split(',').forEach(candidate => {
+      const trimmed = candidate.trim();
+      if (!trimmed) {
+        return;
+      }
+      const url = trimmed.split(/\s/)[0].split('#')[0].split('?')[0];
+      if (!url || EXTERNAL_REF_PATTERN.test(url)) {
+        return;
+      }
+      const resolved = resolveRelativePath(entryPath, url);
+      if (!fileMap.has(resolved)) {
+        missing.add(resolved);
+      }
+    });
+  };
+
+  let out = html.replace(
+    /<(img|source|video|audio|image)\b([^>]*)>/gi,
+    (full, _tag: string, attrs: string) => {
+      let next = full;
+      const srcMatch = /\bsrc\s*=\s*['"]([^'"]+)['"]/i.exec(attrs);
+      if (srcMatch && !EXTERNAL_REF_PATTERN.test(srcMatch[1])) {
+        const resolved = resolveRelativePath(entryPath, srcMatch[1]);
+        if (!fileMap.has(resolved)) {
+          missing.add(resolved);
+        }
+        if (!/\bdata-vfs\s*=/.test(attrs)) {
+          next = `${full.slice(0, full.lastIndexOf('>'))} data-vfs="${resolved}">`;
+        }
+      }
+      const srcsetMatch = /\bsrcset\s*=\s*['"]([^'"]+)['"]/i.exec(attrs);
+      if (srcsetMatch) {
+        checkSrcset(srcsetMatch[1]);
+      }
+      return next;
+    },
+  );
+
+  // <link rel="icon"|"apple-touch-icon"|"shortcut icon" href="local">
+  out = out.replace(/<link\b([^>]*)>/gi, (full, attrs: string) => {
+    if (!/\brel\s*=\s*['"]?(?:icon|apple-touch-icon|shortcut icon|mask-icon)['"]?/i.test(attrs)) {
+      return full;
+    }
+    const hrefMatch = /\bhref\s*=\s*['"]([^'"]+)['"]/i.exec(attrs);
+    if (!hrefMatch || EXTERNAL_REF_PATTERN.test(hrefMatch[1])) {
+      return full;
+    }
+    const resolved = resolveRelativePath(entryPath, hrefMatch[1]);
+    if (!fileMap.has(resolved)) {
+      missing.add(resolved);
+      return full;
+    }
+    if (/\bdata-vfs\s*=/.test(attrs)) {
+      return full;
+    }
+    return `${full.slice(0, full.lastIndexOf('>'))} data-vfs="${resolved}">`;
+  });
+
+  return out;
+};
+
+const buildVfsManifestScript = (manifest: VfsManifest): string =>
+  `<script type="application/json" data-vfs-manifest>${serializeVfsManifest(manifest)}</script>`;
+
+/**
+ * Inject the VFS scaffolding (manifest + bootstrap) at the very START of `<head>` so the
+ * bootstrap — which reads the sibling `<script data-vfs-manifest>` and runs before any module
+ * script — is the first thing the parser executes. Falls back to before `<html>` or doc start.
+ */
+const injectVfsScaffolding = (
+  html: string,
+  manifest: VfsManifest,
+  projectId: string,
+  previewVersion: number,
+): string => {
+  const manifestScript = buildVfsManifestScript(manifest);
+  const bootstrap = buildVfsBootstrapScript({ projectId, previewVersion });
+  const injection = `${manifestScript}\n${bootstrap}`;
+
+  const headOpen = /<head([^>]*)>/i.exec(html);
+  if (headOpen) {
+    const idx = headOpen.index + headOpen[0].length;
+    return `${html.slice(0, idx)}\n${injection}${html.slice(idx)}`;
+  }
+  const htmlOpen = /<html([^>]*)>/i.exec(html);
+  if (htmlOpen) {
+    const idx = htmlOpen.index + htmlOpen[0].length;
+    return `${html.slice(0, idx)}\n${injection}${html.slice(idx)}`;
+  }
+  return `${injection}\n${html}`;
 };
 
 class HtmlPreviewService {
@@ -353,32 +664,6 @@ class HtmlPreviewService {
     });
   }
 
-  private inlineScripts(
-    html: string,
-    entryFile: string,
-    fileMap: Map<string, HtmlProjectFile>,
-    warnings: string[],
-    missing: Set<string>,
-  ): string {
-    const scriptPattern = /<script([^>]*?)src=['"]([^'"]+)['"]([^>]*)><\/script>/gi;
-
-    return html.replace(scriptPattern, (fullMatch, beforeSrc, src, afterSrc) => {
-      if (EXTERNAL_REF_PATTERN.test(src)) {
-        warnings.push(`保留外部腳本資源：${src}`);
-        return fullMatch;
-      }
-
-      const resolvedPath = resolveRelativePath(entryFile, src);
-      const scriptFile = fileMap.get(resolvedPath);
-      if (!scriptFile) {
-        missing.add(resolvedPath);
-        return fullMatch;
-      }
-
-      return `<script${beforeSrc}${afterSrc} data-project-path="${resolvedPath}">\n${scriptFile.content}\n</script>`;
-    });
-  }
-
   private buildArtifact(
     project: HtmlProject,
     files: HtmlProjectFile[],
@@ -404,9 +689,27 @@ class HtmlPreviewService {
       };
     }
 
+    const vfsCtx = createVfsBuildContext();
     let html = entryFile.content;
+
+    // V10: strip <base> first (breaks VFS path assumptions).
+    html = removeBaseTags(html, warnings);
+    // CSS: inline <link rel=stylesheet> as <style> (preserves classic behavior; CSS files also
+    // enter the manifest below so the bootstrap can resolve url()/@import to blob URLs).
     html = this.inlineCss(html, entryFile.path, fileMap, warnings, missing);
-    html = this.inlineScripts(html, entryFile.path, fileMap, warnings, missing);
+    // Modules: extract <script type=module> (V3 specifier rewrite), defer to bootstrap.
+    html = extractModuleScripts(html, entryFile.path, fileMap, warnings, missing, vfsCtx);
+    // Classic scripts: inline <script src> (after module tags are gone).
+    html = inlineClassicScripts(
+      html,
+      entryFile.path,
+      fileMap,
+      warnings,
+      missing,
+      vfsCtx.classicScriptPaths,
+    );
+    // Assets: <img>/<source>/<video>/<audio>/<link rel=icon> → data-vfs + missing detection.
+    html = tagVfsAssets(html, entryFile.path, fileMap, warnings, missing);
 
     if (missing.size > 0) {
       const missingPaths = Array.from(missing);
@@ -424,7 +727,44 @@ class HtmlPreviewService {
       };
     }
 
-    const bridgedHtml = injectRuntimeBridge(html, project.id, project.previewVersion);
+    // Build the manifest from every project file except the entry HTML. Module JS files get
+    // specifier-rewritten content (V3); classic-script JS files are excluded from the import map
+    // (isModule=false) since they execute inlined. Inline-module synthetics are appended.
+    for (const file of files) {
+      if (file.path === entryFile.path) {
+        continue;
+      }
+      const isClassic = vfsCtx.classicScriptPaths.has(file.path);
+      const isModule = file.kind === 'js' && !isClassic;
+      const content = isModule
+        ? rewriteModuleSpecifiers(file.content, file.path).code
+        : file.content;
+      const existing = vfsCtx.manifestFiles.find(f => f.path === file.path);
+      if (existing) {
+        existing.content = content;
+        existing.isModule = isModule;
+      } else {
+        addManifestFile(vfsCtx, {
+          path: file.path,
+          kind: file.kind,
+          mime: mimeForFile(file.path, file.kind),
+          encoding: file.encoding === 'base64' ? 'base64' : 'utf-8',
+          content,
+          isModule,
+        });
+      }
+    }
+
+    const manifest: VfsManifest = {
+      files: vfsCtx.manifestFiles,
+      entryModules: vfsCtx.entryModules,
+    };
+
+    // Embed VFS scaffolding (manifest + bootstrap in <head>) then the harness bridge (before
+    // </body>). Single pipeline: even a classic-only project gets an empty VFS + bootstrap that
+    // dispatches vfs-ready, so the bridge ready-ack contract never deadlocks (V1).
+    let scaffoldedHtml = injectVfsScaffolding(html, manifest, project.id, project.previewVersion);
+    scaffoldedHtml = injectRuntimeBridge(scaffoldedHtml, project.id, project.previewVersion);
 
     return {
       projectId: project.id,
@@ -432,11 +772,12 @@ class HtmlPreviewService {
       entryFile: project.entryFile,
       previewReady: true,
       previewUrlType: 'blob',
-      html: bridgedHtml,
+      html: scaffoldedHtml,
       warnings,
       error: null,
       diagnostics: buildReadyDiagnostics(warnings),
       generatedAt,
+      vfsFileCount: vfsCtx.manifestFiles.length,
     };
   }
 
