@@ -67,7 +67,14 @@ const parseEmbeddedManifest = (html: string) => {
     throw new Error('no data-vfs-manifest script found');
   }
   return JSON.parse(match[1]) as {
-    files: Array<{ path: string; kind: string; mime: string; isModule: boolean; content: string }>;
+    files: Array<{
+      path: string;
+      kind: string;
+      mime: string;
+      isModule: boolean;
+      content: string;
+      encoding?: 'utf-8' | 'base64';
+    }>;
     entryModules: Array<{ path: string }>;
   };
 };

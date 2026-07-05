@@ -311,3 +311,56 @@ describe('buildVfsBootstrapScript', () => {
     expect(occurrences).toBe(1);
   });
 });
+
+describe('buildVfsBootstrapScript — IIFE execution in jsdom', () => {
+  // Execute the generated IIFE against a live jsdom document to verify runtime behavior that
+  // pure helpers cannot (the corrupt-manifest path does not reach dynamic import(), so jsdom
+  // execution is safe and deterministic here).
+  const runBootstrap = (manifestContent: string) => {
+    document.head.innerHTML = `<script type="application/json" data-vfs-manifest>${manifestContent}</script>`;
+    // Clean slate between runs.
+    // @ts-ignore
+    delete (window as unknown as Record<string, unknown>).__vfsReady__;
+    // @ts-ignore
+    delete (window as unknown as Record<string, unknown>).__vfsErrors__;
+    const script = buildVfsBootstrapScript({ projectId: 'p-exec', previewVersion: 1 });
+    const body = script.replace(/^<script data-vfs-bootstrap>/, '').replace(/<\/script>$/, '');
+    // Indirect eval (0,eval) runs in the jsdom global scope; not flagged by no-eval.
+    (0, eval)(body);
+    return {
+      // @ts-ignore
+      ready: (window as unknown as { __vfsReady__?: { done: boolean; degraded: boolean } })
+        .__vfsReady__,
+      // @ts-ignore
+      errors: (window as unknown as { __vfsErrors__?: Array<{ kind: string; message: string }> })
+        .__vfsErrors__,
+    };
+  };
+
+  it('AC11: a corrupt manifest still signals vfs-ready (degraded) with a buffered parse error — never not_executed', () => {
+    // Intentionally malformed JSON. readManifest catches JSON.parse, sets degraded, buffers the
+    // error, and still calls signalReady — so the harness bridge will ack with has_errors.
+    const { ready, errors } = runBootstrap('{ this is not valid json');
+    expect(ready).toBeDefined();
+    expect(ready?.done).toBe(true);
+    expect(ready?.degraded).toBe(true);
+    expect(errors).toBeDefined();
+    expect(errors!.some(e => /manifest parse failed/i.test(e.message))).toBe(true);
+  });
+
+  it('an empty manifest signals a clean (non-degraded) vfs-ready', async () => {
+    // The empty-manifest path goes through whenDomReady (async setTimeout), so the vfs-ready
+    // signal lands on the next tick — await it before asserting.
+    const pending = runBootstrap(JSON.stringify({ files: [], entryModules: [] }));
+    await new Promise(resolve => setTimeout(resolve, 50));
+    // @ts-ignore
+    const ready = (window as unknown as { __vfsReady__?: { done: boolean; degraded: boolean } })
+      .__vfsReady__;
+    // @ts-ignore
+    const errors = (window as unknown as { __vfsErrors__?: unknown[] }).__vfsErrors__;
+    expect(ready?.done).toBe(true);
+    expect(ready?.degraded).toBe(false);
+    expect(errors).toEqual([]);
+    void pending;
+  });
+});
