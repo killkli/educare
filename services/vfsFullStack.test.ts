@@ -53,6 +53,12 @@ describe('harness bridge IIFE — vfs:ready + error-buffer drain (architect #1)'
   });
 
   it('AC11: when the bootstrap pre-signaled vfs-ready (degraded) with a buffered parse error, the bridge posts runtime-errors then ready', async () => {
+    // The bridge install sentinel is defineProperty(configurable:false), so a second bridge
+    // scenario in this file would silently no-op (the IIFE returns early). Fail loudly instead.
+    expect(
+      w.__harnessRuntimeBridgeInstalled__,
+      'bridge already installed — only one scenario per file',
+    ).toBeUndefined();
     installMeta('proj-fs', 1);
     // Simulate the bootstrap's corrupt-manifest output: it set the latch + buffered the error.
     w.__vfsReady__ = { done: true, degraded: true };
