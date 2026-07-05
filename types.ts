@@ -243,7 +243,7 @@ export interface HtmlProjectPreviewDiagnostics {
  * bridge 會去重、上限 50 筆、訊息截斷。
  */
 export interface HtmlProjectRuntimeErrorEntry {
-  kind: 'error' | 'unhandledrejection' | 'console_error' | 'console_warn';
+  kind: 'error' | 'unhandledrejection' | 'console_error' | 'console_warn' | 'missing_reference';
   message: string;
   stack?: string;
   source?: string;
@@ -278,7 +278,25 @@ export interface HtmlProjectPreviewArtifact {
   error?: string | null;
   diagnostics?: HtmlProjectPreviewDiagnostics;
   generatedAt: number;
+  /**
+   * VFS 沙盒:實際放入 manifest 的檔案計數(含 module/css/asset,
+   * 不含 entry HTML 本身)。供 telemetry size warning 與診斷參考。
+   */
+  vfsFileCount?: number;
 }
+
+/**
+ * VFS 沙盒 (選項 A) 預覽警告分類。warnings 維持 string[],
+ * 但產生端應使用本集中常數避免拼寫漂移,測試端以常數鍵比對。
+ */
+export const PREVIEW_WARNING_KINDS = {
+  baseTagRemoved: 'base_tag_removed',
+  unresolvedModuleSpecifier: 'unresolved_module_specifier',
+  externalStylesheetPreserved: 'external_stylesheet_preserved',
+  externalScriptPreserved: 'external_script_preserved',
+} as const;
+export type HtmlProjectPreviewWarningKind =
+  (typeof PREVIEW_WARNING_KINDS)[keyof typeof PREVIEW_WARNING_KINDS];
 
 export interface HtmlProjectSummary {
   projectId: string;

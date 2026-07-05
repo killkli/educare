@@ -57,6 +57,25 @@ Object.defineProperty(window, 'sessionStorage', {
 // Mock fetch for API calls
 global.fetch = vi.fn();
 
+// Stub URL.createObjectURL / revokeObjectURL for jsdom (VFS bootstrap unit tests, V8).
+// jsdom does not implement these. Individual tests may override via Object.defineProperty
+// (configurable/writable) — this default just ensures the symbols exist.
+let vfsBlobCounter = 0;
+if (typeof URL.createObjectURL !== 'function') {
+  Object.defineProperty(URL, 'createObjectURL', {
+    value: vi.fn(() => `blob:vfs-test-${++vfsBlobCounter}`),
+    configurable: true,
+    writable: true,
+  });
+}
+if (typeof URL.revokeObjectURL !== 'function') {
+  Object.defineProperty(URL, 'revokeObjectURL', {
+    value: vi.fn(),
+    configurable: true,
+    writable: true,
+  });
+}
+
 // Mock DOM methods
 // @ts-ignore
 globalThis.Element.prototype.scrollIntoView = vi.fn();
