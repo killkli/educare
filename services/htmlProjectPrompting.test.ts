@@ -273,4 +273,19 @@ describe('buildHtmlProjectSystemPrompt', () => {
     );
     expect(prompt).toContain("Before calling reportTurnOutcome(outcome:'complete')");
   });
+
+  it('includes VFS sandbox capabilities and boundaries (V10)', () => {
+    const prompt = buildHtmlProjectSystemPrompt({ activeProjectId: null });
+    // Capabilities: modules, images, fetch, CSS url()/@import.
+    expect(prompt).toContain('multi-file ES modules');
+    expect(prompt).toContain('relative specifiers');
+    expect(prompt).toContain('fetch("./data.json")');
+    expect(prompt).toContain('CSS url()/@import');
+    // Boundaries: Worker, XHR, dynamic import concat, style="" url(), CDN.
+    expect(prompt).toContain('Web Workers');
+    expect(prompt).toContain('XMLHttpRequest');
+    expect(prompt).toContain('dynamic import()');
+    expect(prompt).toContain('style="..." attributes');
+    expect(prompt).toContain('external CDN resources require live network');
+  });
 });

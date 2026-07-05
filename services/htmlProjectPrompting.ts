@@ -407,6 +407,12 @@ const buildPackSpecificGuidance = (packSet: HtmlProjectToolPackName[]): string[]
   return guidance;
 };
 
+export const SANDBOX_CAPABILITIES_PROMPT =
+  'Preview sandbox capabilities: the rendered preview runs in a sandboxed iframe with a virtual file system (VFS) that fully supports multi-file ES modules (use relative specifiers like "./utils.js" or "/lib/helper.js" — circular imports work), image assets referenced by <img>/<picture>/<source> src or srcset, fetch() of project files (e.g. fetch("./data.json")), and CSS url()/@import references in both .css files and inline <style> blocks. Use project-relative paths for every local reference. Missing files and unresolved module specifiers surface as structured diagnostics (missing_reference / runtime errors) that you can read via getPreviewRuntimeErrors and self-repair from.';
+
+export const SANDBOX_BOUNDARIES_PROMPT =
+  'Preview sandbox boundaries — these are NOT supported inside the sandbox: Web Workers (new Worker("./w.js") cannot resolve against the sandbox), XMLHttpRequest for local files (use fetch() instead), dynamic import() whose specifier is built by string concatenation at runtime (only literal specifiers can be resolved), url() references inside inline style="..." attributes (move them into a <style> block or .css file), and external CDN resources require live network access. Bare module specifiers (e.g. import "react") will not resolve unless you bundle them. Prefer self-contained projects that rely only on browser-native features and the project files themselves.';
+
 export const buildHtmlProjectSystemPrompt = (
   options?: string | null | BuildHtmlProjectSystemPromptOptions,
 ): string => {
@@ -438,6 +444,8 @@ export const buildHtmlProjectSystemPrompt = (
     visibleToolPrompt,
     summaryPrompt,
     'Always use virtual project-root paths like /index.html, /src/app.js, or /data/ruby.js. Never use host filesystem paths or URLs.',
+    SANDBOX_CAPABILITIES_PROMPT,
+    SANDBOX_BOUNDARIES_PROMPT,
     ...packSpecificGuidance,
     'Each displayed line in readFile.numberedContent starts with "<line> | ". That line-number prefix is only for display and must never be copied into replaceInFile.oldText, replaceInFile.newText, modifyLinesInFile.content, or modifyLinesInFile.expectedOriginal.',
     'If a tool returns a recoverable validation error, retry once with corrected arguments or a smaller payload. If the same recoverable error repeats with stronger fallback guidance, follow that fallback instead of repeating the exact same failing call.',
